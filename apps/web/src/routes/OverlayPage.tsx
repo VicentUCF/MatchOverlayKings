@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { animate, createTimeline, stagger } from 'animejs';
+import { createTimeline, stagger } from 'animejs';
 import type { MatchSetScore, MatchState } from '@kpl/shared';
 import { CardAnnouncementScene } from '../components/CardAnnouncementScene.js';
 import { PrematchOverlayScene } from '../components/PrematchOverlayScene.js';
 import { Scoreboard } from '../components/Scoreboard.js';
+import { SideChangeScene } from '../components/SideChangeScene.js';
 import { useCardAnnouncementQueue } from '../hooks/useCardAnnouncementQueue.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
 
@@ -20,12 +21,17 @@ interface PrematchSceneState {
   exiting: boolean;
 }
 
+interface SideChangeSceneState {
+  signal: SideChangeSignal;
+  state: MatchState;
+}
+
 export function OverlayPage({ eventId }: { eventId: string }) {
   const match = useMatchSocket(eventId, 'overlay', '');
   const overlayRef = useRef<HTMLDivElement>(null);
   const sideChangeBaselineVersionRef = useRef<number | null>(null);
   const lastSideChangeKeyRef = useRef<string | null>(null);
-  const [activeSideChange, setActiveSideChange] = useState<SideChangeSignal | null>(null);
+  const [activeSideChange, setActiveSideChange] = useState<SideChangeSceneState | null>(null);
   const [prematchScene, setPrematchScene] = useState<PrematchSceneState | null>(null);
   const settings = match.state?.overlaySettings;
   const shouldShowScoreboard = Boolean(match.state && match.state.status === 'live' && settings?.visible !== false);
@@ -70,7 +76,7 @@ export function OverlayPage({ eventId }: { eventId: string }) {
     lastSideChangeKeyRef.current = nextKey;
 
     if (signal.totalGames % 2 === 1) {
-      setActiveSideChange(signal);
+      setActiveSideChange({ signal, state: match.state });
     }
   }, [match.state]);
 
@@ -172,7 +178,12 @@ export function OverlayPage({ eventId }: { eventId: string }) {
         />
       ) : null}
       {activeSideChange ? (
-        <SideChangeOverlay signal={activeSideChange} onDone={clearSideChange} />
+        <SideChangeScene
+          signal={activeSideChange.signal}
+          state={activeSideChange.state}
+          teams={match.teams}
+          onDone={clearSideChange}
+        />
       ) : null}
       {prematchScene ? (
         <PrematchOverlayScene
@@ -187,70 +198,6 @@ export function OverlayPage({ eventId }: { eventId: string }) {
         <div className="overlay-loading">KPL</div>
       ) : null}
     </main>
-  );
-}
-
-function SideChangeOverlay({ signal, onDone }: { signal: SideChangeSignal; onDone: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!ref.current) {
-      return undefined;
-    }
-
-    if (prefersReducedMotion()) {
-      const timeoutId = window.setTimeout(onDone, 3_800);
-
-      return () => {
-        window.clearTimeout(timeoutId);
-      };
-    }
-
-    const badge = ref.current.querySelector('.side-change-badge');
-    const panelAnimation = animate(ref.current, {
-      opacity: [{ from: 0, to: 1 }],
-      duration: 140,
-      ease: 'outCubic',
-    });
-    const badgeAnimation = badge
-      ? animate(badge, {
-          opacity: [{ from: 0, to: 1 }],
-          scale: [{ from: 0.7, to: 1 }],
-          y: [{ from: 30, to: 0 }],
-          duration: 520,
-          ease: 'outBack(1.45)',
-        })
-      : null;
-    const outTimer = window.setTimeout(() => {
-      if (!ref.current) {
-        onDone();
-        return;
-      }
-
-      animate(ref.current, {
-        opacity: [{ from: 1, to: 0 }],
-        y: [{ from: 0, to: -18 }],
-        duration: 320,
-        ease: 'inCubic',
-        onComplete: onDone,
-      });
-    }, 3_600);
-
-    return () => {
-      window.clearTimeout(outTimer);
-      panelAnimation.revert();
-      badgeAnimation?.revert();
-    };
-  }, [onDone]);
-
-  return (
-    <div className="side-change-announcement" ref={ref}>
-      <div className="side-change-badge">
-        <span>CAMBIO DE LADO</span>
-        <strong>{signal.homeGames}-{signal.awayGames}</strong>
-        <small>Set {signal.setNumber}</small>
-      </div>
-    </div>
   );
 }
 
