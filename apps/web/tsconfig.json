@@ -3,6 +3,9 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "noEmit": true,
+    "paths": {
+      "@kpl/shared": ["../../packages/shared/src/index.ts"]
+    },
     "types": ["vite/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
