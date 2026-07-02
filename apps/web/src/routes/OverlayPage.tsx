@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { animate } from 'animejs';
+import type { CSSProperties } from 'react';
+import { animate, createTimeline, stagger } from 'animejs';
 import type { MatchCardAnnouncement, MatchSetScore, MatchState, Team } from '@kpl/shared';
 import { Scoreboard } from '../components/Scoreboard.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
@@ -16,9 +17,10 @@ interface SideChangeSignal {
 export function OverlayPage({ eventId }: { eventId: string }) {
   const match = useMatchSocket(eventId, 'overlay', '');
   const overlayRef = useRef<HTMLDivElement>(null);
+  const announcementReadyRef = useRef(false);
   const lastAnnouncementIdRef = useRef<string | null>(null);
+  const sideChangeBaselineVersionRef = useRef<number | null>(null);
   const lastSideChangeKeyRef = useRef<string | null>(null);
-  const sideChangeReadyRef = useRef(false);
   const [activeCard, setActiveCard] = useState<MatchCardAnnouncement | null>(null);
   const [activeSideChange, setActiveSideChange] = useState<SideChangeSignal | null>(null);
   const settings = match.state?.overlaySettings;
@@ -28,7 +30,23 @@ export function OverlayPage({ eventId }: { eventId: string }) {
   const clearSideChange = useCallback(() => setActiveSideChange(null), []);
 
   useEffect(() => {
-    if (!announcement || match.state?.status !== 'live' || lastAnnouncementIdRef.current === announcement.id) {
+    if (match.state?.status !== 'live') {
+      return;
+    }
+
+    if (!announcement) {
+      announcementReadyRef.current = true;
+      lastAnnouncementIdRef.current = null;
+      return;
+    }
+
+    if (!announcementReadyRef.current) {
+      announcementReadyRef.current = true;
+      lastAnnouncementIdRef.current = announcement.id;
+      return;
+    }
+
+    if (lastAnnouncementIdRef.current === announcement.id) {
       return;
     }
 
@@ -37,11 +55,20 @@ export function OverlayPage({ eventId }: { eventId: string }) {
   }, [announcement, match.state?.status]);
 
   useEffect(() => {
-    const signal = match.state ? getSideChangeSignal(match.state) : null;
+    if (!match.state) {
+      return;
+    }
+
+    const signal = getSideChangeSignal(match.state);
     const nextKey = signal?.key ?? null;
 
-    if (!sideChangeReadyRef.current) {
-      sideChangeReadyRef.current = true;
+    if (sideChangeBaselineVersionRef.current === null) {
+      sideChangeBaselineVersionRef.current = match.state.version;
+      lastSideChangeKeyRef.current = nextKey;
+      return;
+    }
+
+    if (match.state.version <= sideChangeBaselineVersionRef.current) {
       lastSideChangeKeyRef.current = nextKey;
       return;
     }
@@ -68,15 +95,52 @@ export function OverlayPage({ eventId }: { eventId: string }) {
       return undefined;
     }
 
-    const animation = animate(scoreboard, {
-      opacity: [{ from: 0, to: 1 }],
-      y: [{ from: -16, to: 0 }],
-      duration: 420,
-      ease: 'outCubic',
+    const enterX = settings?.position === 'top-left' ? -120 : 0;
+    const enterY = settings?.position === 'bottom-center' ? 80 : settings?.position === 'center' ? 36 : -24;
+    const startScale = settings?.size === 'large' ? 0.92 : 0.96;
+    const timeline = createTimeline({
+      defaults: {
+        ease: 'outExpo',
+      },
     });
 
+    timeline
+      .set(scoreboard, {
+        opacity: 0,
+        translateX: enterX,
+        translateY: enterY,
+        scale: startScale,
+      })
+      .add(scoreboard, {
+        opacity: [0, 1],
+        translateX: [enterX, 0],
+        translateY: [enterY, 0],
+        scale: [startScale, 1],
+        duration: 540,
+      })
+      .add(
+        scoreboard.querySelectorAll('.scoreboard-header, .score-grid-head, .set-strip'),
+        {
+          opacity: [0, 1],
+          translateY: [20, 0],
+          duration: 380,
+          delay: stagger(48),
+        },
+        '-=310',
+      )
+      .add(
+        scoreboard.querySelectorAll('.team-logo, .team-identity, .score-number, .point-number, .status-badge'),
+        {
+          opacity: [0, 1],
+          scale: [0.76, 1],
+          duration: 380,
+          delay: stagger(44, { from: 'center' }),
+        },
+        '-=280',
+      );
+
     return () => {
-      animation.revert();
+      timeline.revert();
     };
   }, [settings?.position, settings?.size, shouldShowScoreboard]);
 
@@ -186,6 +250,9 @@ function MatchCardAnnouncementOverlay({
   const ref = useRef<HTMLDivElement>(null);
   const card = findMatchCard(announcement.cardId);
   const team = teams.find((item) => item.id === announcement.teamId);
+  const teamStyle = {
+    '--team-color': team?.primaryColor ?? '#ff2c78',
+  } as CSSProperties;
 
   useEffect(() => {
     if (!ref.current) {
@@ -256,7 +323,10 @@ function MatchCardAnnouncementOverlay({
 
   return (
     <div className="stream-card-announcement" ref={ref}>
-      <div className="stream-card-caption">
+      <div className="stream-card-caption" style={teamStyle}>
+        <span className="stream-card-team-logo">
+          {team?.logoUrl ? <img src={team.logoUrl} alt="" /> : streamTeamLabel(team, announcement.teamId).slice(0, 3)}
+        </span>
         <strong>{streamTeamLabel(team, announcement.teamId)}</strong>
         <span>utiliza {announcement.cardName}</span>
       </div>

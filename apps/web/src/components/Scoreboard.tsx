@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import type { CSSProperties } from 'react';
 import { Crown, MapPin } from 'lucide-react';
 import { animate, stagger } from 'animejs';
 import {
@@ -51,9 +52,13 @@ export function Scoreboard({ state, teams, mode }: ScoreboardProps) {
   return (
     <section className={`scoreboard ${mode}`} data-status={state.status} ref={boardRef}>
       <header className="scoreboard-header">
-        <div>
+        <div className="scoreboard-title">
+          <span className="scoreboard-league-mark">
+            <img src="/logos/kpl.png" alt="" />
+            <em>Live</em>
+          </span>
           <strong>{state.title}</strong>
-          <span>
+          <span className="court-label">
             <MapPin size={14} />
             {state.courtName || 'Pista'}
           </span>
@@ -115,27 +120,44 @@ function TeamRow({
   const isPressure = pointContextSide === side;
   const lineup = state.lineups[side];
   const playerNames = [lineup.player1, lineup.player2].filter(Boolean).join(' / ');
+  const teamStyle = {
+    '--team-color': team?.primaryColor ?? 'var(--accent)',
+    '--team-secondary': team?.secondaryColor ?? '#0d1016',
+  } as CSSProperties;
 
   return (
     <>
-      <div className={`team-cell ${isWinner ? 'winner' : ''}`}>
-        <span className="team-logo" style={{ '--team-color': team?.primaryColor } as React.CSSProperties}>
-          {team?.logoUrl ? <img src={team.logoUrl} alt="" /> : team?.shortName.slice(0, 2)}
+      <div className={`team-cell ${isWinner ? 'winner' : ''}`} data-side={side} style={teamStyle}>
+        <span className="team-logo">
+          {team?.logoUrl ? <img src={team.logoUrl} alt="" /> : teamInitials(team?.shortName ?? side)}
         </span>
-        <span>
+        <span className="team-identity">
           <strong>{team?.shortName ?? side}</strong>
           <small>{playerNames || team?.name || side}</small>
         </span>
         {state.servingSide === side ? <span className="serve-badge">Saque</span> : null}
         {isWinner ? <Crown size={18} /> : null}
       </div>
-      <strong className="score-number">{getCompletedSetCount(state, side)}</strong>
-      <strong className="score-number">{activeGames}</strong>
-      <strong className={`point-number ${isPressure ? 'pressure' : ''}`}>
+      <strong className="score-number sets-number" style={teamStyle}>
+        {getCompletedSetCount(state, side)}
+      </strong>
+      <strong className="score-number games-number" style={teamStyle}>
+        {activeGames}
+      </strong>
+      <strong className={`point-number ${isPressure ? 'pressure' : ''}`} style={teamStyle}>
         {state.status === 'finished' ? '-' : formatPoint(state, side)}
       </strong>
     </>
   );
+}
+
+function teamInitials(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 }
 
 function StatusBadge({

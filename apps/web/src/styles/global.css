@@ -1242,3 +1242,518 @@ select {
     grid-template-columns: 1fr;
   }
 }
+
+.scoreboard-title,
+.team-identity {
+  min-width: 0;
+}
+
+.scoreboard-title,
+.team-identity {
+  display: grid;
+}
+
+.scoreboard-title {
+  gap: 4px;
+}
+
+.scoreboard-league-mark {
+  display: none;
+}
+
+.scoreboard-league-mark img {
+  width: 58px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.scoreboard-league-mark em {
+  font-style: normal;
+}
+
+.team-identity {
+  gap: 2px;
+}
+
+.team-cell svg {
+  flex: 0 0 auto;
+}
+
+.overlay-score-wrap {
+  width: 890px;
+  filter: drop-shadow(0 24px 36px rgba(0, 0, 0, 0.5));
+}
+
+.overlay-score-wrap[data-position='top-left'] {
+  left: 42px;
+  top: 34px;
+}
+
+.overlay-score-wrap[data-position='bottom-center'] {
+  bottom: 46px;
+}
+
+.overlay-score-wrap[data-size='compact'] {
+  width: 720px;
+}
+
+.overlay-score-wrap[data-size='large'] {
+  width: 1040px;
+}
+
+.overlay-page .scoreboard.overlay {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  clip-path: polygon(0 0, calc(100% - 34px) 0, 100% 34px, 100% 100%, 0 100%);
+  background:
+    linear-gradient(135deg, rgba(5, 8, 12, 0.98), rgba(13, 18, 26, 0.94)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 8px);
+  box-shadow:
+    -5px 5px 0 #34d8ff,
+    5px -5px 0 #ff2c78,
+    0 18px 42px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(8px);
+}
+
+.overlay-page .scoreboard.overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, rgba(255, 44, 120, 0.2), transparent 36%),
+    linear-gradient(270deg, rgba(52, 216, 255, 0.18), transparent 42%);
+  opacity: 0.8;
+}
+
+.overlay-page .scoreboard.overlay .scoreboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 68px;
+  padding: 10px 34px 10px 16px;
+  border-bottom: 3px solid #ff2c78;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.overlay-page .scoreboard.overlay .scoreboard-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 14px;
+}
+
+.overlay-page .scoreboard.overlay .scoreboard-league-mark {
+  grid-row: 1 / 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 46px;
+  padding-right: 14px;
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ff2c78;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.overlay-page .scoreboard.overlay .scoreboard-league-mark img {
+  width: 62px;
+  height: 40px;
+}
+
+.overlay-page .scoreboard.overlay .scoreboard-title > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 23px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.overlay-page .scoreboard.overlay .court-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #c6ceda;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.overlay-page .scoreboard.overlay .status-badge {
+  min-width: 124px;
+  border-radius: 6px;
+  padding: 9px 14px;
+  color: #071018;
+  background: #34d8ff;
+  border: 0;
+  font-size: 13px;
+  font-weight: 900;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.overlay-page .scoreboard.overlay .status-badge.hot {
+  color: #07100c;
+  background: #51f56a;
+}
+
+.overlay-page .scoreboard.overlay .status-badge.finished {
+  color: #ffffff;
+  background: #ff405e;
+}
+
+.overlay-page .scoreboard.overlay .score-grid {
+  grid-template-columns: minmax(340px, 1fr) 86px 96px 138px;
+  background: rgba(4, 7, 11, 0.36);
+}
+
+.overlay-page .scoreboard.overlay .score-grid > * {
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+}
+
+.overlay-page .scoreboard.overlay .score-grid-head {
+  display: grid;
+  align-items: center;
+  min-height: 30px;
+  padding: 7px 14px;
+  color: #c6ceda;
+  background: rgba(255, 255, 255, 0.055);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.overlay-page .scoreboard.overlay .score-grid-head:not(.team-col) {
+  justify-items: center;
+}
+
+.overlay-page .scoreboard.overlay .team-cell {
+  position: relative;
+  align-items: center;
+  gap: 16px;
+  min-height: 86px;
+  padding: 8px 14px 8px 18px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--team-color) 22%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in srgb, var(--team-secondary) 72%, #121821), rgba(8, 10, 15, 0.78));
+}
+
+.overlay-page .scoreboard.overlay .team-cell::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 5px;
+  background: var(--team-color);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--team-color) 82%, transparent);
+}
+
+.overlay-page .scoreboard.overlay .team-logo {
+  width: 72px;
+  height: 72px;
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.22), transparent 42%),
+    color-mix(in srgb, var(--team-color) 24%, #0d1016);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--team-color) 38%, transparent),
+    0 12px 26px rgba(0, 0, 0, 0.38);
+}
+
+.overlay-page .scoreboard.overlay .team-logo img {
+  width: 92%;
+  height: 92%;
+  filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.42));
+}
+
+.overlay-page .scoreboard.overlay .team-identity {
+  align-content: center;
+}
+
+.overlay-page .scoreboard.overlay .team-cell strong {
+  font-size: 29px;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.overlay-page .scoreboard.overlay .team-cell small {
+  color: #d7dfec;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.overlay-page .scoreboard.overlay .serve-badge {
+  margin-left: auto;
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: #07100c;
+  background: #51f56a;
+  border: 0;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.overlay-page .scoreboard.overlay .team-cell.winner {
+  color: #ffe9a3;
+}
+
+.overlay-page .scoreboard.overlay .score-number,
+.overlay-page .scoreboard.overlay .point-number {
+  min-height: 86px;
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 8px;
+  color: #f8fbff;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--team-color) 14%, rgba(255, 255, 255, 0.06)), rgba(6, 8, 12, 0.78)),
+    color-mix(in srgb, var(--team-secondary) 44%, #10141d);
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.48);
+}
+
+.overlay-page .scoreboard.overlay .point-number {
+  color: #ffffff;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--team-color) 30%, rgba(255, 255, 255, 0.08)), rgba(6, 8, 12, 0.8)),
+    color-mix(in srgb, var(--team-secondary) 52%, #10141d);
+  font-size: 49px;
+}
+
+.overlay-page .scoreboard.overlay .point-number.pressure {
+  color: #51f56a;
+  text-shadow:
+    0 0 16px rgba(81, 245, 106, 0.42),
+    0 4px 14px rgba(0, 0, 0, 0.54);
+}
+
+.overlay-page .scoreboard.overlay .set-strip {
+  min-height: 44px;
+  padding: 9px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.overlay-page .scoreboard.overlay .set-strip span {
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: #c6ceda;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.overlay-page .scoreboard.overlay .set-strip span.complete {
+  color: #071018;
+  background: #34d8ff;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .score-grid {
+  grid-template-columns: minmax(270px, 1fr) 68px 76px 106px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .scoreboard-header {
+  min-height: 58px;
+  padding: 8px 30px 8px 12px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .scoreboard-league-mark {
+  height: 40px;
+  gap: 8px;
+  padding-right: 10px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .scoreboard-league-mark img {
+  width: 50px;
+  height: 34px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .scoreboard-title > strong {
+  font-size: 18px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .team-cell,
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .score-number,
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .point-number {
+  min-height: 70px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .team-logo {
+  width: 56px;
+  height: 56px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .team-cell {
+  gap: 12px;
+  padding: 7px 10px 7px 14px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .team-cell strong {
+  font-size: 22px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .team-cell small {
+  font-size: 11px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .score-number {
+  font-size: 31px;
+}
+
+.overlay-score-wrap[data-size='compact'] .scoreboard.overlay .point-number {
+  font-size: 39px;
+}
+
+.overlay-score-wrap[data-size='large'] .scoreboard.overlay .score-grid {
+  grid-template-columns: minmax(410px, 1fr) 100px 112px 154px;
+}
+
+.overlay-score-wrap[data-size='large'] .scoreboard.overlay .scoreboard-header {
+  min-height: 78px;
+}
+
+.overlay-score-wrap[data-size='large'] .scoreboard.overlay .scoreboard-title > strong {
+  font-size: 28px;
+}
+
+.overlay-score-wrap[data-size='large'] .scoreboard.overlay .team-cell,
+.overlay-score-wrap[data-size='large'] .scoreboard.overlay .score-number,
+.overlay-score-wrap[data-size='large'] .scoreboard.overlay .point-number {
+  min-height: 100px;
+}
+
+.overlay-score-wrap[data-size='large'] .scoreboard.overlay .team-logo {
+  width: 86px;
+  height: 86px;
+}
+
+.overlay-score-wrap[data-size='large'] .scoreboard.overlay .team-cell strong {
+  font-size: 34px;
+}
+
+.overlay-score-wrap[data-size='large'] .scoreboard.overlay .score-number {
+  font-size: 48px;
+}
+
+.overlay-score-wrap[data-size='large'] .scoreboard.overlay .point-number {
+  font-size: 58px;
+}
+
+.side-change-badge {
+  border-radius: 8px;
+  clip-path: polygon(0 0, calc(100% - 40px) 0, 100% 34%, 100% 100%, 0 100%);
+  background:
+    linear-gradient(135deg, rgba(5, 8, 12, 0.98), rgba(13, 18, 26, 0.94)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 8px);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow:
+    -5px 5px 0 #34d8ff,
+    5px -5px 0 #ff2c78,
+    0 28px 70px rgba(0, 0, 0, 0.56);
+}
+
+.side-change-badge span {
+  border-radius: 6px;
+  padding: 8px 18px;
+  color: #07100c;
+  background: #51f56a;
+  font-weight: 900;
+}
+
+.side-change-badge strong {
+  margin-top: 8px;
+  font-weight: 900;
+}
+
+.stream-card-caption {
+  top: 8vh;
+  right: clamp(48px, 6vw, 128px);
+  left: auto;
+  translate: 0 0;
+  gap: 14px;
+  min-height: 72px;
+  border-radius: 8px;
+  padding: 8px 24px 8px 12px;
+  background:
+    linear-gradient(135deg, rgba(5, 8, 12, 0.96), rgba(13, 18, 26, 0.92)),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 8px);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow:
+    -4px 4px 0 #34d8ff,
+    4px -4px 0 #ff2c78,
+    0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+.stream-card-team-logo {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  color: #ffffff;
+  background: color-mix(in srgb, var(--team-color) 28%, #0d1016);
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  font-weight: 900;
+}
+
+.stream-card-team-logo img {
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+}
+
+.stream-card-caption strong {
+  color: #51f56a;
+}
+
+@media (max-width: 920px) {
+  .overlay-score-wrap,
+  .overlay-score-wrap[data-size='compact'],
+  .overlay-score-wrap[data-size='large'] {
+    width: min(720px, calc(100vw - 28px));
+  }
+
+  .overlay-page .scoreboard.overlay .score-grid {
+    grid-template-columns: minmax(230px, 1fr) 58px 66px 88px;
+  }
+
+  .overlay-page .scoreboard.overlay .team-logo {
+    width: 50px;
+    height: 50px;
+  }
+
+  .overlay-page .scoreboard.overlay .team-cell,
+  .overlay-page .scoreboard.overlay .score-number,
+  .overlay-page .scoreboard.overlay .point-number {
+    min-height: 64px;
+  }
+
+  .overlay-page .scoreboard.overlay .team-cell strong {
+    font-size: 19px;
+  }
+
+  .overlay-page .scoreboard.overlay .team-cell small,
+  .overlay-page .scoreboard.overlay .scoreboard-league-mark em {
+    display: none;
+  }
+
+  .overlay-page .scoreboard.overlay .score-number {
+    font-size: 28px;
+  }
+
+  .overlay-page .scoreboard.overlay .point-number {
+    font-size: 34px;
+  }
+}
