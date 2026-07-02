@@ -1,0 +1,50 @@
+[
+  {
+    "id": "kings-of-favar",
+    "name": "Kings of Favar",
+    "shortName": "Kings",
+    "logoUrl": "/logos/kings.png",
+    "primaryColor": "#D1007A",
+    "secondaryColor": "#0F1115"
+  },
+  {
+    "id": "red-lions",
+    "name": "Red Lions",
+    "shortName": "Red Lions",
+    "logoUrl": "/logos/red-lions.png",
+    "primaryColor": "#E21A23",
+    "secondaryColor": "#14151A"
+  },
+  {
+    "id": "barbaridad-team",
+    "name": "Barbaridad Team",
+    "shortName": "Barbaridad",
+    "logoUrl": "/logos/barbaridad.webp",
+    "primaryColor": "#F4B000",
+    "secondaryColor": "#17120A"
+  },
+  {
+    "id": "magic-city",
+    "name": "Magic City",
+    "shortName": "Magic",
+    "logoUrl": "/logos/magic-city.webp",
+    "primaryColor": "#20B8F0",
+    "secondaryColor": "#15131C"
+  },
+  {
+    "id": "thormentadores",
+    "name": "Thormentadores",
+    "shortName": "Thormen.",
+    "logoUrl": "/logos/thormentadores.png",
+    "primaryColor": "#8E44FF",
+    "secondaryColor": "#0E1018"
+  },
+  {
+    "id": "titanics",
+    "name": "Titanics",
+    "shortName": "Titanics",
+    "logoUrl": "/logos/titanics.png",
+    "primaryColor": "#1C7C54",
+    "secondaryColor": "#101512"
+  }
+]

@@ -1,0 +1,72 @@
+{
+  "id": "pista-3",
+  "title": "Partido Pista 3",
+  "homeTeamId": "thormentadores",
+  "awayTeamId": "titanics",
+  "lineups": {
+    "home": {
+      "player1": "",
+      "player2": ""
+    },
+    "away": {
+      "player1": "",
+      "player2": ""
+    }
+  },
+  "servingSide": "home",
+  "courtName": "Pista 3",
+  "status": "pre_match",
+  "config": {
+    "setsToWin": 2,
+    "gamesPerSet": 6,
+    "tieBreakAt": 6,
+    "tieBreakTarget": 7,
+    "tieBreakWinBy": 2,
+    "deuceMode": "golden-point"
+  },
+  "state": {
+    "id": "pista-3",
+    "title": "Partido Pista 3",
+    "homeTeamId": "thormentadores",
+    "awayTeamId": "titanics",
+    "lineups": {
+      "home": {
+        "player1": "",
+        "player2": ""
+      },
+      "away": {
+        "player1": "",
+        "player2": ""
+      }
+    },
+    "servingSide": "home",
+    "courtName": "Pista 3",
+    "status": "pre_match",
+    "config": {
+      "setsToWin": 2,
+      "gamesPerSet": 6,
+      "tieBreakAt": 6,
+      "tieBreakTarget": 7,
+      "tieBreakWinBy": 2,
+      "deuceMode": "golden-point"
+    },
+    "sets": [
+      {
+        "homeGames": 0,
+        "awayGames": 0,
+        "status": "active",
+        "winner": null,
+        "tieBreak": null
+      }
+    ],
+    "currentGame": {
+      "homePoints": 0,
+      "awayPoints": 0,
+      "isTieBreak": false
+    },
+    "winner": null,
+    "history": [],
+    "version": 1,
+    "updatedAt": "2026-07-02T11:23:30.224Z"
+  }
+}

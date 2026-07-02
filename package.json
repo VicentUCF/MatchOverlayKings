@@ -1,0 +1,31 @@
+{
+  "name": "kpl-live-overlays",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.6.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @kpl/shared && npm run build -w @kpl/web && npm run dev -w @kpl/server",
+    "dev:server": "npm run dev -w @kpl/server",
+    "dev:web": "npm run dev -w @kpl/web",
+    "start": "npm run start -w @kpl/server",
+    "build": "npm run build -w @kpl/shared && npm run build -w @kpl/server && npm run build -w @kpl/web",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "verify": "npm run lint && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.39.1",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.49.0",
+    "vitest": "^4.0.8"
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "id": "pista-5",
+  "title": "Partido Pista 5",
+  "homeTeamId": "red-lions",
+  "awayTeamId": "titanics",
+  "lineups": {
+    "home": {
+      "player1": "",
+      "player2": ""
+    },
+    "away": {
+      "player1": "",
+      "player2": ""
+    }
+  },
+  "servingSide": "home",
+  "courtName": "Pista 5",
+  "status": "pre_match",
+  "config": {
+    "setsToWin": 2,
+    "gamesPerSet": 6,
+    "tieBreakAt": 6,
+    "tieBreakTarget": 7,
+    "tieBreakWinBy": 2,
+    "deuceMode": "golden-point"
+  },
+  "state": {
+    "id": "pista-5",
+    "title": "Partido Pista 5",
+    "homeTeamId": "red-lions",
+    "awayTeamId": "titanics",
+    "lineups": {
+      "home": {
+        "player1": "",
+        "player2": ""
+      },
+      "away": {
+        "player1": "",
+        "player2": ""
+      }
+    },
+    "servingSide": "home",
+    "courtName": "Pista 5",
+    "status": "pre_match",
+    "config": {
+      "setsToWin": 2,
+      "gamesPerSet": 6,
+      "tieBreakAt": 6,
+      "tieBreakTarget": 7,
+      "tieBreakWinBy": 2,
+      "deuceMode": "golden-point"
+    },
+    "sets": [
+      {
+        "homeGames": 0,
+        "awayGames": 0,
+        "status": "active",
+        "winner": null,
+        "tieBreak": null
+      }
+    ],
+    "currentGame": {
+      "homePoints": 0,
+      "awayPoints": 0,
+      "isTieBreak": false
+    },
+    "winner": null,
+    "history": [
+      {
+        "id": "pista-5-2-new_match",
+        "commandId": "e2502618-dace-4a09-9f08-e62daf178e3c",
+        "type": "new_match",
+        "side": null,
+        "label": "Nueva partida",
+        "before": {
+          "status": "pre_match",
+          "sets": [
+            {
+              "homeGames": 0,
+              "awayGames": 0,
+              "status": "active",
+              "winner": null,
+              "tieBreak": null
+            }
+          ],
+          "currentGame": {
+            "homePoints": 0,
+            "awayPoints": 0,
+            "isTieBreak": false
+          },
+          "winner": null
+        },
+        "after": {
+          "status": "pre_match",
+          "sets": [
+            {
+              "homeGames": 0,
+              "awayGames": 0,
+              "status": "active",
+              "winner": null,
+              "tieBreak": null
+            }
+          ],
+          "currentGame": {
+            "homePoints": 0,
+            "awayPoints": 0,
+            "isTieBreak": false
+          },
+          "winner": null
+        },
+        "createdAt": "2026-07-02T11:24:52.985Z"
+      }
+    ],
+    "version": 2,
+    "updatedAt": "2026-07-02T11:24:52.985Z"
+  }
+}
