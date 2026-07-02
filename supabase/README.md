@@ -19,6 +19,15 @@ La migracion inicial crea el club `kpl`, 4 pistas (`pista-1` a `pista-4`), equip
 5. Entra una vez en `/admin`; `claim_default_club()` asocia el primer usuario autenticado al club `kpl`.
 6. Desactiva altas publicas si no quieres que alguien pueda registrar usuarios desde Auth.
 
+Para aplicar desde el repo:
+
+```bash
+SUPABASE_DB_URL='postgresql://...' npm run supabase:deploy
+npm run supabase:check
+```
+
+Usa la connection string de Postgres desde Settings > Database. Las API keys nuevas (`sb_publishable_...` y `sb_secret_...`) no ejecutan DDL SQL.
+
 ## Variables Vercel
 
 ```bash

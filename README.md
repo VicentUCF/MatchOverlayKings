@@ -43,6 +43,13 @@ URLs locales con Vite:
 - Control pista 1: `http://localhost:5173/control/pista-1`
 - Overlay pista 1: `http://localhost:5173/overlay/pista-1/scoreboard`
 
+URLs de produccion previstas:
+
+- Selector publico: `https://live.kingspadelleague.com/`
+- Admin: `https://live.kingspadelleague.com/admin`
+- Control pista 1: `https://live.kingspadelleague.com/control/pista-1`
+- Overlay pista 1: `https://live.kingspadelleague.com/overlay/pista-1/scoreboard`
+
 ## Supabase
 
 La migracion inicial crea:
@@ -65,6 +72,15 @@ Para ejecutar los tests SQL/RPC:
 ```bash
 supabase test db
 ```
+
+Para aplicar las migraciones al proyecto remoto:
+
+```bash
+SUPABASE_DB_URL='postgresql://...' npm run supabase:deploy
+npm run supabase:check
+```
+
+`SUPABASE_DB_URL` es la connection string de Postgres del proyecto Supabase. No sirve la publishable key ni la secret API key para crear tablas, RLS o funciones SQL.
 
 ## Vercel
 

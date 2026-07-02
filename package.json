@@ -19,10 +19,13 @@
     "build": "npm run build -w @kpl/shared && npm run build -w @kpl/server && npm run build -w @kpl/web",
     "build:vercel": "npm run build -w @kpl/shared && npm run build -w @kpl/web",
     "lint": "eslint .",
-    "test": "vitest run",
-    "test:e2e": "playwright test",
-    "verify": "npm run lint && npm run test && npm run build"
-  },
+        "test": "vitest run",
+        "test:e2e": "playwright test",
+        "supabase:deploy": "node scripts/apply-supabase-migrations.mjs",
+        "supabase:ensure-admin": "node scripts/ensure-supabase-admin.mjs",
+        "supabase:check": "node scripts/check-supabase.mjs",
+        "verify": "npm run lint && npm run test && npm run build"
+    },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@playwright/test": "^1.57.0",

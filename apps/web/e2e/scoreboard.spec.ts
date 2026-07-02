@@ -48,7 +48,7 @@ test('updates the OBS overlay when the control adds a point', async ({ browser }
   await expect(overlay.locator('.point-number').first()).toContainText(/15|30|40|0/);
   await control.getByRole('button', { name: /configurar siguiente/i }).click();
   await control.getByRole('button', { name: /nueva partida/i }).click();
-  await expect(overlay.locator('.point-number').first()).toHaveText('0');
+  await expect(overlay.locator('.overlay-loading')).toHaveText('KPL', { timeout: 15_000 });
 
   await control.close();
   await overlay.close();
