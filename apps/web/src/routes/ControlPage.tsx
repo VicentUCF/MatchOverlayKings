@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  CreditCard,
   Eye,
   EyeOff,
   Flag,
   ListRestart,
-  Maximize2,
-  Minimize2,
+  Menu,
   MonitorPlay,
   Move,
+  Pencil,
   Repeat2,
   Play,
   Plus,
@@ -17,9 +18,10 @@ import {
   Square,
   Wifi,
   WifiOff,
+  X,
 } from 'lucide-react';
 import { animate, stagger } from 'animejs';
-import { DEFAULT_OVERLAY_SETTINGS } from '@kpl/shared';
+import { DEFAULT_OVERLAY_SETTINGS, formatPoint, getCompletedSetCount } from '@kpl/shared';
 import type {
   ManualScorePatch,
   MatchGameScore,
@@ -28,7 +30,6 @@ import type {
   MatchSetScore,
   OverlayPosition,
   OverlaySettingsPatch,
-  OverlaySize,
   Side,
   Team,
 } from '@kpl/shared';
@@ -37,6 +38,7 @@ import { useMatchSocket } from '../hooks/useMatchSocket.js';
 import { MATCH_CARDS, type MatchCardDefinition } from '../lib/match-cards.js';
 
 type ControlPhase = 'setup' | 'score';
+type MobilePanel = 'cards' | 'edit' | 'menu';
 
 export function ControlPage({ eventId }: { eventId: string }) {
   const match = useMatchSocket(eventId, 'control', '');
@@ -56,6 +58,7 @@ export function ControlPage({ eventId }: { eventId: string }) {
   const [manualHomePoints, setManualHomePoints] = useState(0);
   const [manualAwayPoints, setManualAwayPoints] = useState(0);
   const [phase, setPhase] = useState<ControlPhase>('setup');
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel | null>(null);
   const stageRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -81,6 +84,7 @@ export function ControlPage({ eventId }: { eventId: string }) {
     }
 
     setPhase(state.status === 'pre_match' ? 'setup' : 'score');
+    setMobilePanel(null);
   }, [eventId, state?.status]);
 
   useEffect(() => {
@@ -177,6 +181,8 @@ export function ControlPage({ eventId }: { eventId: string }) {
 
   const overlaySettings = state?.overlaySettings ?? DEFAULT_OVERLAY_SETTINGS;
   const isSetupPhase = phase === 'setup';
+  const homeTeam = state ? match.teams.find((team) => team.id === state.homeTeamId) : undefined;
+  const awayTeam = state ? match.teams.find((team) => team.id === state.awayTeamId) : undefined;
 
   const eventPanel = (
     <section className="operator-panel">
@@ -280,26 +286,14 @@ export function ControlPage({ eventId }: { eventId: string }) {
         <span>{overlaySettings.visible ? 'Marcador visible' : 'Marcador oculto'}</span>
       </button>
 
-      <SegmentedControl<OverlaySize>
-        label="Tamano"
-        value={overlaySettings.size}
-        disabled={!state || match.pending}
-        options={[
-          { value: 'compact', label: 'S', icon: <Minimize2 size={16} /> },
-          { value: 'standard', label: 'M', icon: <Move size={16} /> },
-          { value: 'large', label: 'L', icon: <Maximize2 size={16} /> },
-        ]}
-        onChange={(size) => void updateOverlaySettings({ size })}
-      />
-
       <SegmentedControl<OverlayPosition>
-        label="Posicion"
+        label="Preset"
         value={overlaySettings.position}
         disabled={!state || match.pending}
         options={[
-          { value: 'top-left', label: 'Arriba', icon: <MonitorPlay size={16} /> },
+          { value: 'top-left', label: 'Lateral', icon: <MonitorPlay size={16} /> },
           { value: 'center', label: 'Centro', icon: <Move size={16} /> },
-          { value: 'bottom-center', label: 'Abajo', icon: <MonitorPlay size={16} /> },
+          { value: 'bottom-center', label: 'Inferior', icon: <MonitorPlay size={16} /> },
         ]}
         onChange={(position) => void updateOverlaySettings({ position })}
       />
@@ -335,11 +329,42 @@ export function ControlPage({ eventId }: { eventId: string }) {
     </section>
   );
 
+  const matchMenuPanel = (
+    <section className="operator-panel mobile-menu-panel">
+      <h2>Menu partido</h2>
+      <div className="quick-actions mobile-menu-actions">
+        <button type="button" onClick={() => void match.setStatus('live')} disabled={!state || match.pending}>
+          <Play size={18} />
+          Live
+        </button>
+        <button type="button" onClick={() => void match.setStatus('pre_match')} disabled={!state || match.pending}>
+          <Square size={18} />
+          Pre
+        </button>
+        <button type="button" onClick={() => void match.setStatus('finished')} disabled={!state || match.pending}>
+          <Flag size={18} />
+          Final
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMobilePanel(null);
+            setPhase('setup');
+          }}
+          disabled={!state}
+        >
+          <Repeat2 size={18} />
+          Siguiente
+        </button>
+      </div>
+    </section>
+  );
+
   return (
-    <main className="control-page">
+    <main className={`control-page ${isSetupPhase ? 'setup-mode' : 'score-mode'}`}>
       <header className="control-topbar">
         <div className="brand">
-          <img src="/logos/kpl.png" alt="" />
+          <img src="/logos/kpl-wordmark.png" alt="" />
           <span>
             <strong>KPL Live Control</strong>
             <small>{eventId}</small>
@@ -383,8 +408,20 @@ export function ControlPage({ eventId }: { eventId: string }) {
           </section>
         </section>
       ) : (
-        <section className="control-layout control-stage" ref={stageRef}>
+        <section className="control-layout control-stage score-layout" ref={stageRef}>
           <section className="score-panel live-score-panel">
+            {state ? (
+              <MobileScoreControl
+                state={state}
+                teams={match.teams}
+                activeSet={activeSet}
+                pending={match.pending}
+                onAddPoint={(side) => void match.addPoint(side)}
+                onUndo={() => void match.undo()}
+                onOpenPanel={setMobilePanel}
+              />
+            ) : null}
+
             {state ? (
               <Scoreboard state={state} teams={match.teams} mode="control" />
             ) : (
@@ -392,48 +429,222 @@ export function ControlPage({ eventId }: { eventId: string }) {
             )}
 
             <div className="point-controls">
-              <PointButton side="home" state={state} onClick={() => match.addPoint('home')} pending={match.pending} />
-              <PointButton side="away" state={state} onClick={() => match.addPoint('away')} pending={match.pending} />
+              <PointButton
+                side="home"
+                state={state}
+                label={homeTeam?.shortName ?? 'Local'}
+                onClick={() => void match.addPoint('home')}
+                pending={match.pending}
+              />
+              <PointButton
+                side="away"
+                state={state}
+                label={awayTeam?.shortName ?? 'Visitante'}
+                onClick={() => void match.addPoint('away')}
+                pending={match.pending}
+              />
             </div>
 
-            <div className="quick-actions">
-              <button type="button" onClick={() => match.undo()} disabled={!state || match.pending}>
+            <nav className="control-action-bar" aria-label="Acciones del marcador">
+              <button type="button" className="danger" onClick={() => void match.undo()} disabled={!state || match.pending}>
                 <RotateCcw size={18} />
-                Undo
+                <span>Deshacer</span>
               </button>
-              <button type="button" onClick={() => match.setStatus('live')} disabled={!state || match.pending}>
-                <Play size={18} />
-                Live
+              <button type="button" onClick={() => setMobilePanel('cards')} disabled={!state}>
+                <CreditCard size={18} />
+                <span>Carta especial</span>
               </button>
-              <button type="button" onClick={() => match.setStatus('pre_match')} disabled={!state || match.pending}>
-                <Square size={18} />
-                Pre
+              <button type="button" onClick={() => setMobilePanel('edit')} disabled={!state}>
+                <Pencil size={18} />
+                <span>Editar marcador</span>
               </button>
-              <button type="button" onClick={() => match.setStatus('finished')} disabled={!state || match.pending}>
-                <Flag size={18} />
-                Final
+              <button type="button" onClick={() => setMobilePanel('menu')} disabled={!state}>
+                <Menu size={18} />
+                <span>Menu</span>
               </button>
-            </div>
+            </nav>
           </section>
-
-          <aside className="side-panel">
-            {overlayPanel}
-            {cardsPanel}
-            {eventPanel}
-            <section className="operator-panel">
-              <h2>Partido</h2>
-              <button type="button" onClick={() => setPhase('setup')}>
-                <Repeat2 size={18} />
-                Configurar siguiente
-              </button>
-            </section>
-            {correctionPanel}
-          </aside>
         </section>
       )}
 
+      <MobileControlModal title="Carta especial" open={mobilePanel === 'cards'} onClose={() => setMobilePanel(null)}>
+        {cardsPanel}
+      </MobileControlModal>
+      <MobileControlModal title="Editar marcador" open={mobilePanel === 'edit'} onClose={() => setMobilePanel(null)}>
+        {correctionPanel}
+      </MobileControlModal>
+      <MobileControlModal title="Menu" open={mobilePanel === 'menu'} onClose={() => setMobilePanel(null)}>
+        {matchMenuPanel}
+        {overlayPanel}
+        {eventPanel}
+      </MobileControlModal>
+
       {match.error ? <div className="toast-error">{match.error}</div> : null}
     </main>
+  );
+}
+
+function MobileScoreControl({
+  state,
+  teams,
+  activeSet,
+  pending,
+  onAddPoint,
+  onUndo,
+  onOpenPanel,
+}: {
+  state: MatchState;
+  teams: Team[];
+  activeSet: MatchSetScore | null;
+  pending: boolean;
+  onAddPoint: (side: Side) => void;
+  onUndo: () => void;
+  onOpenPanel: (panel: MobilePanel) => void;
+}) {
+  const home = teams.find((team) => team.id === state.homeTeamId);
+  const away = teams.find((team) => team.id === state.awayTeamId);
+  const servingTeam = state.servingSide === 'home' ? home : away;
+  const homeName = home?.shortName ?? 'Equipo A';
+  const awayName = away?.shortName ?? 'Equipo B';
+
+  return (
+    <section className="mobile-score-control" aria-label="Control movil del marcador">
+      <header className="mobile-score-header">
+        <img src="/logos/kpl-wordmark.png" alt="" />
+        <span className={`mobile-live-pill ${state.status}`}>{statusLabel(state.status)}</span>
+      </header>
+
+      <div className="mobile-score-title">
+        <span />
+        <strong>{state.title || 'Marcador del partido'}</strong>
+        <span />
+      </div>
+
+      <div className="mobile-team-score-grid">
+        <MobileTeamBlock team={home} fallback={homeName} side="home" />
+        <div className="mobile-versus" aria-hidden="true">
+          VS
+        </div>
+        <MobileTeamBlock team={away} fallback={awayName} side="away" />
+        <strong className="mobile-point-value home">{formatPoint(state, 'home')}</strong>
+        <strong className="mobile-point-value away">{formatPoint(state, 'away')}</strong>
+      </div>
+
+      <dl className="mobile-score-stats">
+        <div>
+          <dt>Juegos</dt>
+          <dd>
+            <span className="home">{activeSet?.homeGames ?? 0}</span>
+            <span>-</span>
+            <span className="away">{activeSet?.awayGames ?? 0}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>Sets</dt>
+          <dd>
+            <span className="home">{getCompletedSetCount(state, 'home')}</span>
+            <span>-</span>
+            <span className="away">{getCompletedSetCount(state, 'away')}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>Saque</dt>
+          <dd className="serve-stat">
+            <span className="mobile-ball" />
+            <span>{servingTeam?.shortName ?? sideLabel(state.servingSide)}</span>
+          </dd>
+        </div>
+        <div>
+          <dt>Estado</dt>
+          <dd>{state.courtName || statusLabel(state.status)}</dd>
+        </div>
+      </dl>
+
+      <div className="mobile-point-actions">
+        <button type="button" className="home" onClick={() => onAddPoint('home')} disabled={pending || state.status === 'finished'}>
+          <Plus size={42} />
+          <span>Punto {homeName}</span>
+        </button>
+        <button type="button" className="away" onClick={() => onAddPoint('away')} disabled={pending || state.status === 'finished'}>
+          <Plus size={42} />
+          <span>Punto {awayName}</span>
+        </button>
+      </div>
+
+      <nav className="mobile-action-dock" aria-label="Acciones del marcador">
+        <button type="button" className="danger" onClick={onUndo} disabled={pending}>
+          <RotateCcw size={34} />
+          <span>Deshacer</span>
+        </button>
+        <button type="button" onClick={() => onOpenPanel('cards')}>
+          <CreditCard size={32} />
+          <span>Carta especial</span>
+        </button>
+        <button type="button" onClick={() => onOpenPanel('edit')}>
+          <Pencil size={32} />
+          <span>Editar marcador</span>
+        </button>
+        <button type="button" onClick={() => onOpenPanel('menu')}>
+          <Menu size={34} />
+          <span>Menu</span>
+        </button>
+      </nav>
+    </section>
+  );
+}
+
+function MobileTeamBlock({
+  team,
+  fallback,
+  side,
+}: {
+  team: Team | undefined;
+  fallback: string;
+  side: Side;
+}) {
+  return (
+    <div className={`mobile-team-block ${side}`}>
+      <span className="mobile-team-logo">
+        {team?.logoUrl ? <img src={team.logoUrl} alt="" /> : teamInitials(fallback)}
+      </span>
+      <strong>{fallback}</strong>
+    </div>
+  );
+}
+
+function MobileControlModal({
+  title,
+  open,
+  onClose,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="mobile-modal-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="mobile-modal-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="mobile-modal-header">
+          <strong>{title}</strong>
+          <button type="button" aria-label="Cerrar" onClick={onClose}>
+            <X size={22} />
+          </button>
+        </header>
+        <div className="mobile-modal-content">{children}</div>
+      </section>
+    </div>
   );
 }
 
@@ -568,22 +779,21 @@ function createEmptyLineups(): MatchLineups {
 function PointButton({
   side,
   state,
+  label,
   onClick,
   pending,
 }: {
   side: Side;
   state: ReturnType<typeof useMatchSocket>['state'];
+  label: string;
   onClick: () => void;
   pending: boolean;
 }) {
-  const teamId = side === 'home' ? state?.homeTeamId : state?.awayTeamId;
-  const label = side === 'home' ? 'Local' : 'Visitante';
-
   return (
     <button type="button" className={`point-button ${side}`} onClick={onClick} disabled={!state || pending || state.status === 'finished'}>
       <Plus size={28} />
       <span>+ punto</span>
-      <strong>{teamId ? label : side}</strong>
+      <strong>{label}</strong>
     </button>
   );
 }
@@ -622,6 +832,23 @@ function connectionLabel(state: string): string {
 
 function sideLabel(side: Side): string {
   return side === 'home' ? 'Local' : 'Visitante';
+}
+
+function statusLabel(status: MatchState['status']): string {
+  return {
+    pre_match: 'Pre',
+    live: 'En directo',
+    finished: 'Final',
+  }[status];
+}
+
+function teamInitials(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 }
 
 function prefersReducedMotion(): boolean {

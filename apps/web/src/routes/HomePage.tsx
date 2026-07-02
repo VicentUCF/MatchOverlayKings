@@ -70,7 +70,7 @@ export function HomePage() {
     <main className="home-page">
       <header className="home-topbar">
         <div className="brand">
-          <img src="/logos/kpl.png" alt="" />
+          <img src="/logos/kpl-wordmark.png" alt="" />
           <span>
             <strong>KPL Live</strong>
             <small>Resultados en directo</small>

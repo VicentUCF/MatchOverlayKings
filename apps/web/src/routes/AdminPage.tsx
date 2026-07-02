@@ -90,7 +90,7 @@ export function AdminPage() {
       <main className="home-page">
         <section className="admin-login">
           <div className="brand">
-            <img src="/logos/kpl.png" alt="" />
+            <img src="/logos/kpl-wordmark.png" alt="" />
             <span>
               <strong>KPL Admin</strong>
               <small>Acceso de control</small>
@@ -123,7 +123,7 @@ export function AdminPage() {
     <main className="home-page">
       <header className="home-topbar">
         <div className="brand">
-          <img src="/logos/kpl.png" alt="" />
+          <img src="/logos/kpl-wordmark.png" alt="" />
           <span>
             <strong>KPL Admin</strong>
             <small>Panel de pistas</small>

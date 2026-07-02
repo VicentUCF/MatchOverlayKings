@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { Crown, MapPin } from 'lucide-react';
-import { animate, stagger } from 'animejs';
+import { animate } from 'animejs';
 import {
   formatPoint,
   getActiveSet,
@@ -18,43 +18,63 @@ interface ScoreboardProps {
 
 export function Scoreboard({ state, teams, mode }: ScoreboardProps) {
   const boardRef = useRef<HTMLElement>(null);
+  const previousScoreValuesRef = useRef<Record<string, string> | null>(null);
   const home = teams.find((team) => team.id === state.homeTeamId);
   const away = teams.find((team) => team.id === state.awayTeamId);
   const activeSet = state.status === 'finished' ? state.sets.at(-1) : getActiveSet(state);
   const pointContext = getPointContext(state);
+  const scoreValues = {
+    'home-sets': String(getCompletedSetCount(state, 'home')),
+    'home-games': String(activeSet?.homeGames ?? 0),
+    'home-points': state.status === 'finished' ? '-' : formatPoint(state, 'home'),
+    'away-sets': String(getCompletedSetCount(state, 'away')),
+    'away-games': String(activeSet?.awayGames ?? 0),
+    'away-points': state.status === 'finished' ? '-' : formatPoint(state, 'away'),
+  };
 
   useEffect(() => {
     if (!boardRef.current || prefersReducedMotion()) {
-      return undefined;
+      previousScoreValuesRef.current = scoreValues;
+      return;
     }
 
-    const animation = animate(boardRef.current.querySelectorAll('.score-number, .point-number, .status-badge'), {
-      opacity: [{ from: 0.64, to: 1 }],
-      scale: [{ from: 1.08, to: 1 }],
-      delay: stagger(24, { from: 'center' }),
-      duration: mode === 'overlay' ? 360 : 240,
+    const previousScoreValues = previousScoreValuesRef.current;
+    previousScoreValuesRef.current = scoreValues;
+
+    if (!previousScoreValues) {
+      return;
+    }
+
+    const changedKeys = Object.entries(scoreValues)
+      .filter(([key, value]) => previousScoreValues[key] !== value)
+      .map(([key]) => key);
+
+    if (changedKeys.length === 0) {
+      return;
+    }
+
+    const changedCells = changedKeys
+      .map((key) => boardRef.current?.querySelector(`[data-score-key="${key}"]`))
+      .filter((cell): cell is Element => Boolean(cell));
+
+    const animation = animate(changedCells, {
+      opacity: [{ from: 0.58, to: 1 }],
+      scale: [{ from: 1.1, to: 1 }],
+      duration: mode === 'overlay' ? 320 : 220,
       ease: 'outCubic',
     });
 
     return () => {
       animation.revert();
     };
-  }, [
-    mode,
-    state.currentGame.awayPoints,
-    state.currentGame.homePoints,
-    state.currentGame.isTieBreak,
-    state.sets,
-    state.status,
-    state.version,
-  ]);
+  });
 
   return (
     <section className={`scoreboard ${mode}`} data-status={state.status} ref={boardRef}>
       <header className="scoreboard-header">
         <div className="scoreboard-title">
           <span className="scoreboard-league-mark">
-            <img src="/logos/kpl.png" alt="" />
+            <img src="/logos/kpl-wordmark.png" alt="" />
             <em>Live</em>
           </span>
           <strong>{state.title}</strong>
@@ -138,13 +158,13 @@ function TeamRow({
         {state.servingSide === side ? <span className="serve-badge">Saque</span> : null}
         {isWinner ? <Crown size={18} /> : null}
       </div>
-      <strong className="score-number sets-number" style={teamStyle}>
+      <strong className="score-number sets-number" data-score-key={`${side}-sets`} style={teamStyle}>
         {getCompletedSetCount(state, side)}
       </strong>
-      <strong className="score-number games-number" style={teamStyle}>
+      <strong className="score-number games-number" data-score-key={`${side}-games`} style={teamStyle}>
         {activeGames}
       </strong>
-      <strong className={`point-number ${isPressure ? 'pressure' : ''}`} style={teamStyle}>
+      <strong className={`point-number ${isPressure ? 'pressure' : ''}`} data-score-key={`${side}-points`} style={teamStyle}>
         {state.status === 'finished' ? '-' : formatPoint(state, side)}
       </strong>
     </>

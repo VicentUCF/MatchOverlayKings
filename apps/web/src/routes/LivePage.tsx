@@ -1,9 +1,15 @@
 import { ArrowLeft, Wifi, WifiOff } from 'lucide-react';
+import { CardAnnouncementScene } from '../components/CardAnnouncementScene.js';
 import { Scoreboard } from '../components/Scoreboard.js';
+import { useCardAnnouncementQueue } from '../hooks/useCardAnnouncementQueue.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
 
 export function LivePage({ eventId }: { eventId: string }) {
   const match = useMatchSocket(eventId, 'viewer', '');
+  const { activeAnnouncement, completeAnnouncement } = useCardAnnouncementQueue(
+    match.state?.cards?.announcement ?? null,
+    match.state?.status === 'live',
+  );
 
   return (
     <main className="watch-page">
@@ -30,6 +36,14 @@ export function LivePage({ eventId }: { eventId: string }) {
           <div className="empty-panel">Este partido no esta en directo.</div>
         ) : null}
       </section>
+
+      {activeAnnouncement ? (
+        <CardAnnouncementScene
+          announcement={activeAnnouncement}
+          teams={match.teams}
+          onDone={completeAnnouncement}
+        />
+      ) : null}
     </main>
   );
 }
