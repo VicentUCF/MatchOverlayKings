@@ -71,10 +71,12 @@ button:disabled {
 .watch-topbar,
 .control-layout,
 .phase-tabs,
+.control-status-strip,
 .point-controls,
 .quick-actions,
 .setup-actions,
 .team-select-grid,
+.segmented-control,
 .manual-grid,
 .scoreboard-header,
 .team-cell,
@@ -365,6 +367,23 @@ label span,
   margin: 0 auto;
 }
 
+.control-status-strip {
+  align-items: center;
+  gap: 10px;
+  max-width: 1480px;
+  min-height: 48px;
+  margin: 0 auto 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 194, 168, 0.28);
+  border-radius: 8px;
+  color: #d9fff7;
+  background: rgba(0, 194, 168, 0.1);
+}
+
+.control-mode-tabs {
+  max-width: 620px;
+}
+
 .score-panel {
   flex: 1 1 auto;
   min-width: 0;
@@ -374,6 +393,18 @@ label span,
   width: min(420px, 100%);
   display: grid;
   gap: 12px;
+}
+
+.setup-layout {
+  align-items: stretch;
+}
+
+.setup-layout .setup-stack {
+  width: min(560px, 100%);
+}
+
+.setup-preview {
+  align-self: flex-start;
 }
 
 .operator-panel,
@@ -457,6 +488,162 @@ select {
   align-items: center;
   justify-content: space-between;
   padding-top: 6px;
+}
+
+.overlay-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.match-cards-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.card-team-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.card-team-switch button {
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  border-radius: 8px;
+  padding: 8px;
+  color: #f7f8fb;
+  background: #0b0d12;
+  border: 1px solid var(--line);
+}
+
+.card-team-switch button.active {
+  border-color: rgba(0, 194, 168, 0.42);
+  background: rgba(0, 194, 168, 0.12);
+}
+
+.card-team-switch strong,
+.card-team-switch span,
+.card-side-heading strong,
+.card-side-heading span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-team-switch span {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.card-side-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.card-side-heading span {
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.card-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.card-action-grid button {
+  min-width: 0;
+  min-height: 126px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  border-radius: 8px;
+  padding: 7px;
+  color: #f7f8fb;
+  background: #0b0d12;
+  border: 1px solid var(--line);
+}
+
+.card-action-grid button.used {
+  border-color: rgba(0, 194, 168, 0.42);
+  background: rgba(0, 194, 168, 0.12);
+}
+
+.card-action-grid img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.card-action-grid span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.switch-button {
+  width: 100%;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #f7f8fb;
+  background: #202634;
+  border: 1px solid var(--line);
+}
+
+.switch-button.on {
+  color: #d9fff7;
+  background: rgba(0, 194, 168, 0.16);
+  border-color: rgba(0, 194, 168, 0.34);
+}
+
+.segmented-field {
+  display: grid;
+  gap: 8px;
+}
+
+.segmented-field > span {
+  color: var(--text-soft);
+}
+
+.segmented-control {
+  gap: 6px;
+  min-width: 0;
+  padding: 4px;
+  border-radius: 8px;
+  background: #0b0d12;
+  border: 1px solid var(--line);
+}
+
+.segmented-control button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 6px;
+  color: var(--text-soft);
+  background: transparent;
+}
+
+.segmented-control button.active {
+  color: #ffffff;
+  background: #202634;
 }
 
 .scoreboard {
@@ -718,11 +905,39 @@ select {
   position: relative;
 }
 
-.overlay-page .scoreboard.overlay {
+.overlay-score-wrap {
   position: absolute;
+  width: 760px;
+  max-width: calc(100vw - 40px);
+}
+
+.overlay-score-wrap[data-position='top-left'] {
   left: 48px;
   top: 46px;
-  width: 760px;
+}
+
+.overlay-score-wrap[data-position='center'] {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.overlay-score-wrap[data-position='bottom-center'] {
+  left: 50%;
+  bottom: 54px;
+  transform: translateX(-50%);
+}
+
+.overlay-score-wrap[data-size='compact'] {
+  width: 620px;
+}
+
+.overlay-score-wrap[data-size='large'] {
+  width: 940px;
+}
+
+.overlay-page .scoreboard.overlay {
+  width: 100%;
   border-radius: 8px;
   background:
     linear-gradient(100deg, rgba(230, 0, 126, 0.26), transparent 44%),
@@ -756,6 +971,50 @@ select {
   font-size: 36px;
 }
 
+.overlay-score-wrap[data-size='compact'] .scoreboard-header strong {
+  font-size: 18px;
+}
+
+.overlay-score-wrap[data-size='compact'] .team-logo {
+  width: 36px;
+  height: 36px;
+}
+
+.overlay-score-wrap[data-size='compact'] .team-cell {
+  padding: 10px 12px;
+}
+
+.overlay-score-wrap[data-size='compact'] .team-cell strong {
+  font-size: 20px;
+}
+
+.overlay-score-wrap[data-size='compact'] .score-number,
+.overlay-score-wrap[data-size='compact'] .point-number {
+  font-size: 30px;
+}
+
+.overlay-score-wrap[data-size='large'] .scoreboard-header strong {
+  font-size: 28px;
+}
+
+.overlay-score-wrap[data-size='large'] .team-logo {
+  width: 50px;
+  height: 50px;
+}
+
+.overlay-score-wrap[data-size='large'] .team-cell {
+  padding: 16px 18px;
+}
+
+.overlay-score-wrap[data-size='large'] .team-cell strong {
+  font-size: 30px;
+}
+
+.overlay-score-wrap[data-size='large'] .score-number,
+.overlay-score-wrap[data-size='large'] .point-number {
+  font-size: 44px;
+}
+
 .overlay-loading {
   position: absolute;
   left: 48px;
@@ -768,9 +1027,108 @@ select {
   background: rgba(8, 10, 15, 0.86);
 }
 
+.overlay-blank {
+  position: absolute;
+  inset: 0;
+}
+
+.side-change-announcement {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.side-change-badge {
+  display: grid;
+  place-items: center;
+  min-width: min(620px, calc(100vw - 80px));
+  min-height: 190px;
+  padding: 28px 38px;
+  border-radius: 8px;
+  color: #ffffff;
+  background:
+    linear-gradient(100deg, rgba(230, 0, 126, 0.3), transparent 54%),
+    rgba(8, 10, 15, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.56);
+  backdrop-filter: blur(8px);
+}
+
+.side-change-badge span {
+  color: #d9fff7;
+  font-size: clamp(24px, 3.2vw, 52px);
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.side-change-badge strong {
+  font-size: clamp(58px, 7vw, 112px);
+  line-height: 0.95;
+  font-variant-numeric: tabular-nums;
+}
+
+.side-change-badge small {
+  color: var(--text-soft);
+  font-size: clamp(16px, 1.5vw, 26px);
+}
+
+.stream-card-announcement {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.stream-card-image {
+  width: min(420px, 30vw);
+  max-height: 72vh;
+  object-fit: contain;
+  filter: drop-shadow(0 32px 52px rgba(0, 0, 0, 0.62));
+}
+
+.stream-card-caption {
+  position: absolute;
+  top: 9vh;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 0 22px;
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(8, 10, 15, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+  translate: -50% 0;
+}
+
+.stream-card-caption strong,
+.stream-card-caption span {
+  white-space: nowrap;
+}
+
+.stream-card-caption strong {
+  color: #ffcf66;
+  font-size: clamp(26px, 2.8vw, 44px);
+}
+
+.stream-card-caption span {
+  font-size: clamp(20px, 2vw, 34px);
+}
+
 @media (max-width: 920px) {
   .control-layout {
     display: grid;
+  }
+
+  .setup-layout .setup-stack {
+    width: 100%;
   }
 
   .match-row {
@@ -793,6 +1151,10 @@ select {
 
   .point-controls {
     display: grid;
+  }
+
+  .card-action-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -822,6 +1184,10 @@ select {
   .phase-tabs,
   .setup-actions {
     display: grid;
+  }
+
+  .control-status-strip {
+    align-items: flex-start;
   }
 
   .match-action {
@@ -859,6 +1225,14 @@ select {
   .point-number {
     font-size: 24px;
     padding: 8px 4px;
+  }
+
+  .point-button {
+    min-height: 128px;
+  }
+
+  .card-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .lineup-grid,

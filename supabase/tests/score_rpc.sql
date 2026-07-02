@@ -226,6 +226,23 @@ begin
   perform pg_temp.assert_eq_int((v_duplicate ->> 'version')::int, (v_state ->> 'version')::int, 'duplicate command keeps version');
   perform pg_temp.assert_eq_int((v_duplicate #>> '{currentGame,homePoints}')::int, 1, 'duplicate command does not score twice');
 
+  v_state := public.use_match_card('pista-1', (v_state ->> 'version')::int, 'sql-card-home', 'home', '2vs1', '2VS1');
+  perform pg_temp.assert_eq_text(v_state #>> '{cards,home,cardId}', '2vs1', 'card use stored on side');
+  perform pg_temp.assert_eq_text(v_state #>> '{cards,announcement,cardName}', '2VS1', 'card announcement stored');
+
+  begin
+    perform public.use_match_card('pista-1', (v_state ->> 'version')::int, 'sql-card-home-second', 'home', 'comodin', 'Comodin');
+    raise exception 'Second card use should have failed.';
+  exception
+    when others then
+      if sqlerrm <> 'Ese equipo ya ha utilizado su carta.' then
+        raise;
+      end if;
+  end;
+
+  v_state := public.reset_match('pista-1', (v_state ->> 'version')::int, 'sql-reset-after-card');
+  perform pg_temp.assert_true(v_state #> '{cards,home}' = 'null'::jsonb, 'reset clears home card');
+
   begin
     perform public.add_point('pista-1', ((v_state ->> 'version')::int - 1), 'sql-version-conflict', 'home');
     raise exception 'Version conflict should have failed.';

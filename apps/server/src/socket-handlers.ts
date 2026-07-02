@@ -7,6 +7,8 @@ import {
   startNewMatch,
   undoLastScoringCommand,
   updateMatchMeta,
+  updateOverlaySettings,
+  useMatchCard,
 } from '@kpl/shared';
 import type {
   Ack,
@@ -106,6 +108,18 @@ export function registerSocketHandlers(options: SocketHandlerOptions): void {
     socket.on('match:newMatch', (payload, ack) =>
       runControlCommand(options, socket, payload, ack, (state) =>
         startNewMatch(state, payload.setup, payload.commandId),
+      ),
+    );
+
+    socket.on('overlay:updateSettings', (payload, ack) =>
+      runControlCommand(options, socket, payload, ack, (state) =>
+        updateOverlaySettings(state, payload.patch, payload.commandId),
+      ),
+    );
+
+    socket.on('match:useCard', (payload, ack) =>
+      runControlCommand(options, socket, payload, ack, (state) =>
+        useMatchCard(state, payload.side, payload.cardId, payload.cardName, payload.commandId),
       ),
     );
   });

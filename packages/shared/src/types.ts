@@ -4,6 +4,16 @@ export type Side = 'home' | 'away';
 export type MatchStatus = 'pre_match' | 'live' | 'finished';
 export type DeuceMode = 'golden-point' | 'advantage';
 export type ClientRole = 'control' | 'overlay' | 'viewer';
+export type OverlaySize = 'compact' | 'standard' | 'large';
+export type OverlayPosition = 'top-left' | 'center' | 'bottom-center';
+export type MatchCardId =
+  | '2vs1'
+  | 'restas-tu'
+  | 'cambiate'
+  | 'robo-saque'
+  | 'solo-un-saque'
+  | 'comodin'
+  | 'robo-carta';
 
 export interface Team {
   id: TeamId;
@@ -53,6 +63,32 @@ export interface MatchGameScore {
   isTieBreak: boolean;
 }
 
+export interface OverlaySettings {
+  visible: boolean;
+  size: OverlaySize;
+  position: OverlayPosition;
+}
+
+export type OverlaySettingsPatch = Partial<OverlaySettings>;
+
+export interface MatchCardUse {
+  side: Side;
+  teamId: TeamId;
+  cardId: MatchCardId;
+  cardName: string;
+  usedAt: string;
+}
+
+export interface MatchCardAnnouncement extends MatchCardUse {
+  id: string;
+}
+
+export interface MatchCardsState {
+  home: MatchCardUse | null;
+  away: MatchCardUse | null;
+  announcement: MatchCardAnnouncement | null;
+}
+
 export interface ScoreSnapshot {
   status: MatchStatus;
   sets: MatchSetScore[];
@@ -63,7 +99,16 @@ export interface ScoreSnapshot {
 export interface MatchHistoryEntry {
   id: string;
   commandId: string;
-  type: 'add_point' | 'undo' | 'reset' | 'manual_patch' | 'update_meta' | 'set_status' | 'new_match';
+  type:
+    | 'add_point'
+    | 'undo'
+    | 'reset'
+    | 'manual_patch'
+    | 'update_meta'
+    | 'set_status'
+    | 'new_match'
+    | 'update_overlay'
+    | 'use_card';
   side: Side | null;
   label: string;
   before: ScoreSnapshot;
@@ -84,6 +129,8 @@ export interface MatchState {
   sets: MatchSetScore[];
   currentGame: MatchGameScore;
   winner: Side | null;
+  overlaySettings: OverlaySettings;
+  cards: MatchCardsState;
   history: MatchHistoryEntry[];
   version: number;
   updatedAt: string;
@@ -99,6 +146,8 @@ export interface EventDefinition {
   courtName: string;
   status: MatchStatus;
   config: MatchConfig;
+  overlaySettings?: OverlaySettings;
+  cards?: MatchCardsState;
   state: MatchState | null;
 }
 
@@ -157,6 +206,16 @@ export interface NewMatchPayload extends VersionedCommandPayload {
   setup: NewMatchSetup;
 }
 
+export interface UpdateOverlaySettingsPayload extends VersionedCommandPayload {
+  patch: OverlaySettingsPatch;
+}
+
+export interface UseMatchCardPayload extends VersionedCommandPayload {
+  side: Side;
+  cardId: MatchCardId;
+  cardName: string;
+}
+
 export type CommandErrorCode =
   | 'BAD_REQUEST'
   | 'FORBIDDEN'
@@ -201,4 +260,12 @@ export interface ClientToServerEvents {
   ) => void;
   'match:setStatus': (payload: SetStatusPayload, ack: (response: Ack<MatchState>) => void) => void;
   'match:newMatch': (payload: NewMatchPayload, ack: (response: Ack<MatchState>) => void) => void;
+  'overlay:updateSettings': (
+    payload: UpdateOverlaySettingsPayload,
+    ack: (response: Ack<MatchState>) => void,
+  ) => void;
+  'match:useCard': (
+    payload: UseMatchCardPayload,
+    ack: (response: Ack<MatchState>) => void,
+  ) => void;
 }

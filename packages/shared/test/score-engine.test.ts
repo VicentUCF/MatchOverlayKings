@@ -10,6 +10,7 @@ import {
   resetMatch,
   startNewMatch,
   undoLastScoringCommand,
+  useMatchCard,
 } from '../src/index.js';
 import type { EventDefinition, MatchState, Side } from '../src/index.js';
 
@@ -158,6 +159,23 @@ describe('score engine', () => {
     expect(state.lineups.home.player1).toBe('A');
     expect(state.servingSide).toBe('away');
     expect(state.history).toHaveLength(1);
+  });
+
+  it('allows one match card per side and clears cards on reset', () => {
+    let state = createInitialMatchState(event);
+    state = addPoint(state, 'home', 'go-live');
+    state = useMatchCard(state, 'home', '2vs1', '2VS1', 'card-1');
+
+    expect(state.cards.home?.cardId).toBe('2vs1');
+    expect(state.cards.announcement?.cardName).toBe('2VS1');
+    expect(() => useMatchCard(state, 'home', 'comodin', 'Comodin', 'card-2')).toThrow(
+      'Ese equipo ya ha utilizado su carta.',
+    );
+
+    state = resetMatch(state, 'reset-after-card');
+
+    expect(state.cards.home).toBeNull();
+    expect(state.cards.announcement).toBeNull();
   });
 
   it('detects set point and match point', () => {

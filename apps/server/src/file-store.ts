@@ -101,6 +101,8 @@ export class FileStore {
         courtName: next.courtName,
         status: next.status,
         config: next.config,
+        overlaySettings: next.overlaySettings,
+        cards: next.cards,
         state: next,
       };
 

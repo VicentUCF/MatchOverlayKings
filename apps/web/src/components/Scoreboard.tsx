@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react';
 import { Crown, MapPin } from 'lucide-react';
+import { animate, stagger } from 'animejs';
 import {
   formatPoint,
   getActiveSet,
@@ -14,13 +16,40 @@ interface ScoreboardProps {
 }
 
 export function Scoreboard({ state, teams, mode }: ScoreboardProps) {
+  const boardRef = useRef<HTMLElement>(null);
   const home = teams.find((team) => team.id === state.homeTeamId);
   const away = teams.find((team) => team.id === state.awayTeamId);
   const activeSet = state.status === 'finished' ? state.sets.at(-1) : getActiveSet(state);
   const pointContext = getPointContext(state);
 
+  useEffect(() => {
+    if (!boardRef.current || prefersReducedMotion()) {
+      return undefined;
+    }
+
+    const animation = animate(boardRef.current.querySelectorAll('.score-number, .point-number, .status-badge'), {
+      opacity: [{ from: 0.64, to: 1 }],
+      scale: [{ from: 1.08, to: 1 }],
+      delay: stagger(24, { from: 'center' }),
+      duration: mode === 'overlay' ? 360 : 240,
+      ease: 'outCubic',
+    });
+
+    return () => {
+      animation.revert();
+    };
+  }, [
+    mode,
+    state.currentGame.awayPoints,
+    state.currentGame.homePoints,
+    state.currentGame.isTieBreak,
+    state.sets,
+    state.status,
+    state.version,
+  ]);
+
   return (
-    <section className={`scoreboard ${mode}`} data-status={state.status}>
+    <section className={`scoreboard ${mode}`} data-status={state.status} ref={boardRef}>
       <header className="scoreboard-header">
         <div>
           <strong>{state.title}</strong>
@@ -63,6 +92,10 @@ export function Scoreboard({ state, teams, mode }: ScoreboardProps) {
       </footer>
     </section>
   );
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 function TeamRow({

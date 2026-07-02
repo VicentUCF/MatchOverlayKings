@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  Eye,
+  EyeOff,
   Flag,
   ListRestart,
+  Maximize2,
+  Minimize2,
+  MonitorPlay,
+  Move,
   Repeat2,
   Play,
   Plus,
@@ -12,9 +18,23 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
-import type { ManualScorePatch, MatchGameScore, MatchLineups, MatchSetScore, Side } from '@kpl/shared';
+import { animate, stagger } from 'animejs';
+import { DEFAULT_OVERLAY_SETTINGS } from '@kpl/shared';
+import type {
+  ManualScorePatch,
+  MatchGameScore,
+  MatchLineups,
+  MatchState,
+  MatchSetScore,
+  OverlayPosition,
+  OverlaySettingsPatch,
+  OverlaySize,
+  Side,
+  Team,
+} from '@kpl/shared';
 import { Scoreboard } from '../components/Scoreboard.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
+import { MATCH_CARDS, type MatchCardDefinition } from '../lib/match-cards.js';
 
 type ControlPhase = 'setup' | 'score';
 
@@ -36,6 +56,7 @@ export function ControlPage({ eventId }: { eventId: string }) {
   const [manualHomePoints, setManualHomePoints] = useState(0);
   const [manualAwayPoints, setManualAwayPoints] = useState(0);
   const [phase, setPhase] = useState<ControlPhase>('setup');
+  const stageRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!state) {
@@ -61,6 +82,24 @@ export function ControlPage({ eventId }: { eventId: string }) {
 
     setPhase(state.status === 'pre_match' ? 'setup' : 'score');
   }, [eventId, state?.status]);
+
+  useEffect(() => {
+    if (!stageRef.current || prefersReducedMotion()) {
+      return undefined;
+    }
+
+    const animation = animate(stageRef.current.querySelectorAll('.score-panel, .operator-panel'), {
+      opacity: [{ from: 0, to: 1 }],
+      y: [{ from: 10, to: 0 }],
+      delay: stagger(35),
+      duration: 280,
+      ease: 'outCubic',
+    });
+
+    return () => {
+      animation.revert();
+    };
+  }, [eventId, phase, state?.status]);
 
   function setupPayload() {
     return {
@@ -132,6 +171,13 @@ export function ControlPage({ eventId }: { eventId: string }) {
     await match.manualPatch(patch);
   }
 
+  async function updateOverlaySettings(patch: OverlaySettingsPatch) {
+    await match.updateOverlaySettings(patch);
+  }
+
+  const overlaySettings = state?.overlaySettings ?? DEFAULT_OVERLAY_SETTINGS;
+  const isSetupPhase = phase === 'setup';
+
   const eventPanel = (
     <section className="operator-panel">
       <h2>Evento</h2>
@@ -154,7 +200,7 @@ export function ControlPage({ eventId }: { eventId: string }) {
 
   const setupPanel = (
     <section className="operator-panel setup-panel">
-      <h2>Configuracion del partido</h2>
+      <h2>{state?.status === 'pre_match' ? 'Preparar partido' : 'Preparar siguiente'}</h2>
       <label>
         <span>Titulo</span>
         <input value={metaTitle} onChange={(event) => setMetaTitle(event.target.value)} />
@@ -221,6 +267,54 @@ export function ControlPage({ eventId }: { eventId: string }) {
     </section>
   );
 
+  const overlayPanel = (
+    <section className="operator-panel overlay-panel">
+      <h2>OBS marcador</h2>
+      <button
+        type="button"
+        className={`switch-button ${overlaySettings.visible ? 'on' : ''}`}
+        onClick={() => void updateOverlaySettings({ visible: !overlaySettings.visible })}
+        disabled={!state || match.pending}
+      >
+        {overlaySettings.visible ? <Eye size={18} /> : <EyeOff size={18} />}
+        <span>{overlaySettings.visible ? 'Marcador visible' : 'Marcador oculto'}</span>
+      </button>
+
+      <SegmentedControl<OverlaySize>
+        label="Tamano"
+        value={overlaySettings.size}
+        disabled={!state || match.pending}
+        options={[
+          { value: 'compact', label: 'S', icon: <Minimize2 size={16} /> },
+          { value: 'standard', label: 'M', icon: <Move size={16} /> },
+          { value: 'large', label: 'L', icon: <Maximize2 size={16} /> },
+        ]}
+        onChange={(size) => void updateOverlaySettings({ size })}
+      />
+
+      <SegmentedControl<OverlayPosition>
+        label="Posicion"
+        value={overlaySettings.position}
+        disabled={!state || match.pending}
+        options={[
+          { value: 'top-left', label: 'Arriba', icon: <MonitorPlay size={16} /> },
+          { value: 'center', label: 'Centro', icon: <Move size={16} /> },
+          { value: 'bottom-center', label: 'Abajo', icon: <MonitorPlay size={16} /> },
+        ]}
+        onChange={(position) => void updateOverlaySettings({ position })}
+      />
+    </section>
+  );
+
+  const cardsPanel = state ? (
+    <MatchCardsPanel
+      state={state}
+      teams={match.teams}
+      pending={match.pending}
+      onUse={(side, card) => void match.useMatchCard(side, card.id, card.name)}
+    />
+  ) : null;
+
   const correctionPanel = (
     <section className="operator-panel danger-zone">
       <h2>Correccion</h2>
@@ -258,29 +352,44 @@ export function ControlPage({ eventId }: { eventId: string }) {
         </div>
       </header>
 
-      <nav className="phase-tabs" aria-label="Fase de control">
-        <button type="button" className={phase === 'setup' ? 'active' : ''} onClick={() => setPhase('setup')}>
-          Configuracion
-        </button>
-        <button type="button" className={phase === 'score' ? 'active' : ''} onClick={() => setPhase('score')}>
-          Marcador
-        </button>
-      </nav>
+      {state?.status === 'pre_match' ? (
+        <div className="control-status-strip">
+          <Play size={18} />
+          <span>Configura equipos, jugadores y saque antes de iniciar.</span>
+        </div>
+      ) : (
+        <nav className="phase-tabs control-mode-tabs" aria-label="Fase de control">
+          <button type="button" className={phase === 'score' ? 'active' : ''} onClick={() => setPhase('score')}>
+            Marcador
+          </button>
+          <button type="button" className={phase === 'setup' ? 'active' : ''} onClick={() => setPhase('setup')}>
+            Siguiente
+          </button>
+        </nav>
+      )}
 
-      {phase === 'setup' ? (
-        <section className="control-layout setup-layout">
-          <section className="score-panel">
-            {state ? <Scoreboard state={state} teams={match.teams} mode="control" /> : <div className="loading-panel">Cargando marcador</div>}
-          </section>
-          <aside className="side-panel">
+      {isSetupPhase ? (
+        <section className="control-layout setup-layout control-stage" ref={stageRef}>
+          <aside className="side-panel setup-stack">
             {eventPanel}
             {setupPanel}
           </aside>
+          <section className="score-panel setup-preview">
+            {state ? (
+              <Scoreboard state={state} teams={match.teams} mode="control" />
+            ) : (
+              <div className="loading-panel">Cargando marcador</div>
+            )}
+          </section>
         </section>
       ) : (
-        <section className="control-layout">
-          <section className="score-panel">
-            {state ? <Scoreboard state={state} teams={match.teams} mode="control" /> : <div className="loading-panel">Cargando marcador</div>}
+        <section className="control-layout control-stage" ref={stageRef}>
+          <section className="score-panel live-score-panel">
+            {state ? (
+              <Scoreboard state={state} teams={match.teams} mode="control" />
+            ) : (
+              <div className="loading-panel">Cargando marcador</div>
+            )}
 
             <div className="point-controls">
               <PointButton side="home" state={state} onClick={() => match.addPoint('home')} pending={match.pending} />
@@ -308,6 +417,8 @@ export function ControlPage({ eventId }: { eventId: string }) {
           </section>
 
           <aside className="side-panel">
+            {overlayPanel}
+            {cardsPanel}
             {eventPanel}
             <section className="operator-panel">
               <h2>Partido</h2>
@@ -323,6 +434,101 @@ export function ControlPage({ eventId }: { eventId: string }) {
 
       {match.error ? <div className="toast-error">{match.error}</div> : null}
     </main>
+  );
+}
+
+function MatchCardsPanel({
+  state,
+  teams,
+  pending,
+  onUse,
+}: {
+  state: MatchState;
+  teams: Team[];
+  pending: boolean;
+  onUse: (side: Side, card: MatchCardDefinition) => void;
+}) {
+  const [selectedSide, setSelectedSide] = useState<Side>('home');
+  const selectedTeam = teams.find((item) => item.id === (selectedSide === 'home' ? state.homeTeamId : state.awayTeamId));
+  const usedCard = state.cards?.[selectedSide] ?? null;
+
+  return (
+    <section className="operator-panel match-cards-panel">
+      <h2>Cartas banquillo</h2>
+      <div className="card-team-switch" role="group" aria-label="Equipo que usa la carta">
+        {(['home', 'away'] as const).map((side) => {
+          const team = teams.find((item) => item.id === (side === 'home' ? state.homeTeamId : state.awayTeamId));
+          const sideUsedCard = state.cards?.[side] ?? null;
+
+          return (
+            <button
+              key={side}
+              type="button"
+              className={selectedSide === side ? 'active' : ''}
+              onClick={() => setSelectedSide(side)}
+            >
+              <strong>{team?.shortName ?? sideLabel(side)}</strong>
+              <span>{sideUsedCard ? `Usada: ${sideUsedCard.cardName}` : 'Disponible'}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="card-side-heading">
+        <strong>{selectedTeam?.shortName ?? sideLabel(selectedSide)}</strong>
+        <span>{usedCard ? `Ya uso ${usedCard.cardName}` : 'Elige carta'}</span>
+      </div>
+
+      <div className="card-action-grid">
+        {MATCH_CARDS.map((card) => (
+          <button
+            key={card.id}
+            type="button"
+            className={usedCard?.cardId === card.id ? 'used' : ''}
+            onClick={() => onUse(selectedSide, card)}
+            disabled={pending || state.status !== 'live' || Boolean(usedCard)}
+            aria-label={`${selectedTeam?.shortName ?? sideLabel(selectedSide)} utiliza ${card.name}`}
+          >
+            <img src={card.imageUrl} alt="" />
+            <span>{card.name}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SegmentedControl<TValue extends string>({
+  label,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: TValue;
+  options: Array<{ value: TValue; label: string; icon: ReactNode }>;
+  disabled: boolean;
+  onChange: (value: TValue) => void;
+}) {
+  return (
+    <div className="segmented-field">
+      <span>{label}</span>
+      <div className="segmented-control" role="group" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={option.value === value ? 'active' : ''}
+            onClick={() => onChange(option.value)}
+            disabled={disabled}
+          >
+            {option.icon}
+            <span>{option.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -412,4 +618,12 @@ function connectionLabel(state: string): string {
     disconnected: 'Sin conexion',
     error: 'Error',
   }[state] ?? state;
+}
+
+function sideLabel(side: Side): string {
+  return side === 'home' ? 'Local' : 'Visitante';
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }

@@ -3,9 +3,11 @@ import type {
   ClientRole,
   ClientToServerEvents,
   ManualScorePatch,
+  MatchCardId,
   MatchMetaPatch,
   MatchState,
   NewMatchSetup,
+  OverlaySettingsPatch,
   Side,
   Team,
 } from '@kpl/shared';
@@ -37,6 +39,8 @@ export interface MatchSocketState {
   updateMeta: (patch: MatchMetaPatch) => Promise<boolean>;
   newMatch: (setup: NewMatchSetup) => Promise<boolean>;
   setStatus: (status: MatchState['status']) => Promise<boolean>;
+  updateOverlaySettings: (patch: OverlaySettingsPatch) => Promise<boolean>;
+  useMatchCard: (side: Side, cardId: MatchCardId, cardName: string) => Promise<boolean>;
   refreshEvents: () => Promise<void>;
 }
 
@@ -212,6 +216,8 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
       updateMeta: (patch: MatchMetaPatch) => send('match:updateMeta', { patch }),
       newMatch: (setup: NewMatchSetup) => send('match:newMatch', { setup }),
       setStatus: (status: MatchState['status']) => send('match:setStatus', { status }),
+      updateOverlaySettings: (patch: OverlaySettingsPatch) => send('overlay:updateSettings', { patch }),
+      useMatchCard: (side: Side, cardId: MatchCardId, cardName: string) => send('match:useCard', { side, cardId, cardName }),
       refreshEvents,
     }),
     [connectionState, error, events, pending, refreshEvents, send, state, teams],
@@ -254,6 +260,22 @@ function toRpcCall(
 
   if (event === 'match:setStatus') {
     return { rpcName: 'set_match_status', params: { ...base, p_status: payload.status } };
+  }
+
+  if (event === 'overlay:updateSettings') {
+    return { rpcName: 'update_overlay_settings', params: { ...base, p_patch: payload.patch } };
+  }
+
+  if (event === 'match:useCard') {
+    return {
+      rpcName: 'use_match_card',
+      params: {
+        ...base,
+        p_side: payload.side,
+        p_card_id: payload.cardId,
+        p_card_name: payload.cardName,
+      },
+    };
   }
 
   return { rpcName: 'new_match', params: { ...base, p_setup: payload.setup } };

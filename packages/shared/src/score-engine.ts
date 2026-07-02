@@ -1,11 +1,16 @@
 import type {
   EventDefinition,
   ManualScorePatch,
+  MatchCardId,
+  MatchCardsState,
+  MatchCardUse,
   MatchConfig,
   MatchGameScore,
   MatchHistoryEntry,
   MatchLineups,
   MatchMetaPatch,
+  OverlaySettings,
+  OverlaySettingsPatch,
   MatchSetScore,
   MatchState,
   MatchStatus,
@@ -24,7 +29,20 @@ export const DEFAULT_MATCH_CONFIG: MatchConfig = {
   deuceMode: 'golden-point',
 };
 
+export const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = {
+  visible: true,
+  size: 'standard',
+  position: 'top-left',
+};
+
+export const DEFAULT_MATCH_CARDS: MatchCardsState = {
+  home: null,
+  away: null,
+  announcement: null,
+};
+
 const POINT_LABELS = ['0', '15', '30', '40'] as const;
+const MATCH_CARD_IDS = ['2vs1', 'restas-tu', 'cambiate', 'robo-saque', 'solo-un-saque', 'comodin', 'robo-carta'] as const;
 
 export class ScoreEngineError extends Error {
   constructor(
@@ -53,6 +71,8 @@ export function createInitialMatchState(event: Omit<EventDefinition, 'state'>): 
     sets: [createActiveSet()],
     currentGame: createGame(false),
     winner: null,
+    overlaySettings: normalizeOverlaySettings(event.overlaySettings),
+    cards: normalizeMatchCards(event.cards),
     history: [],
     version: 1,
     updatedAt: now,
@@ -107,6 +127,7 @@ export function resetMatch(state: MatchState, commandId: string): MatchState {
     draft.sets = [createActiveSet()];
     draft.currentGame = createGame(false);
     draft.winner = null;
+    draft.cards = cloneMatchCards(DEFAULT_MATCH_CARDS);
   });
 }
 
@@ -123,6 +144,7 @@ export function startNewMatch(
   draft.sets = [createActiveSet()];
   draft.currentGame = createGame(false);
   draft.winner = null;
+  draft.cards = cloneMatchCards(DEFAULT_MATCH_CARDS);
 
   const after = getScoreSnapshot(draft);
   const now = new Date().toISOString();
@@ -178,6 +200,59 @@ export function updateMatchMeta(
 ): MatchState {
   return mutateWithHistory(state, commandId, 'update_meta', null, 'Actualizar partido', (draft) => {
     applyMetaPatch(draft, patch);
+  });
+}
+
+export function updateOverlaySettings(
+  state: MatchState,
+  patch: OverlaySettingsPatch,
+  commandId: string,
+): MatchState {
+  return mutateWithHistory(state, commandId, 'update_overlay', null, 'Actualizar OBS', (draft) => {
+    draft.overlaySettings = normalizeOverlaySettings({
+      ...draft.overlaySettings,
+      ...patch,
+    });
+  });
+}
+
+export function useMatchCard(
+  state: MatchState,
+  side: Side,
+  cardId: MatchCardId,
+  cardName: string,
+  commandId: string,
+): MatchState {
+  if (state.status !== 'live') {
+    throw new ScoreEngineError('VALIDATION_ERROR', 'Las cartas solo se pueden lanzar con el partido en directo.');
+  }
+
+  if (!isMatchCardId(cardId)) {
+    throw new ScoreEngineError('VALIDATION_ERROR', 'Carta no valida.');
+  }
+
+  if (state.cards?.[side]) {
+    throw new ScoreEngineError('VALIDATION_ERROR', 'Ese equipo ya ha utilizado su carta.');
+  }
+
+  return mutateWithHistory(state, commandId, 'use_card', side, `Carta ${sideLabel(side)}`, (draft) => {
+    const usedAt = new Date().toISOString();
+    const use: MatchCardUse = {
+      side,
+      teamId: side === 'home' ? draft.homeTeamId : draft.awayTeamId,
+      cardId,
+      cardName: cardName.trim() || cardId,
+      usedAt,
+    };
+
+    draft.cards = {
+      ...normalizeMatchCards(draft.cards),
+      [side]: use,
+      announcement: {
+        ...use,
+        id: commandId,
+      },
+    };
   });
 }
 
@@ -399,6 +474,8 @@ function cloneState(state: MatchState): MatchState {
     ...state,
     config: { ...state.config },
     lineups: cloneLineups(state.lineups),
+    overlaySettings: { ...normalizeOverlaySettings(state.overlaySettings) },
+    cards: cloneMatchCards(state.cards),
     sets: cloneSets(state.sets),
     currentGame: { ...state.currentGame },
     history: state.history.map((entry) => ({
@@ -419,6 +496,8 @@ function normalizeMatchState(state: MatchState, event: EventDefinition): MatchSt
     servingSide: state.servingSide === 'away' ? 'away' : event.servingSide,
     courtName: state.courtName || event.courtName,
     config: { ...DEFAULT_MATCH_CONFIG, ...state.config },
+    overlaySettings: normalizeOverlaySettings(state.overlaySettings ?? event.overlaySettings),
+    cards: normalizeMatchCards(state.cards ?? event.cards),
     sets: cloneSets(state.sets),
     currentGame: { ...state.currentGame },
     history: state.history.map((entry) => ({
@@ -484,6 +563,59 @@ function cloneLineups(lineups: MatchLineups | undefined): MatchLineups {
       player2: lineups?.away?.player2.trim() ?? fallback.away.player2,
     },
   };
+}
+
+function normalizeOverlaySettings(settings: Partial<OverlaySettings> | undefined): OverlaySettings {
+  return {
+    visible: typeof settings?.visible === 'boolean' ? settings.visible : DEFAULT_OVERLAY_SETTINGS.visible,
+    size: isOverlaySize(settings?.size) ? settings.size : DEFAULT_OVERLAY_SETTINGS.size,
+    position: isOverlayPosition(settings?.position) ? settings.position : DEFAULT_OVERLAY_SETTINGS.position,
+  };
+}
+
+function normalizeMatchCards(cards: Partial<MatchCardsState> | undefined): MatchCardsState {
+  const announcement = cloneCardUse(cards?.announcement);
+
+  return {
+    home: cloneCardUse(cards?.home),
+    away: cloneCardUse(cards?.away),
+    announcement: cards?.announcement && announcement
+      ? {
+          ...announcement,
+          id: cards.announcement.id || cards.announcement.usedAt,
+        }
+      : null,
+  };
+}
+
+function cloneMatchCards(cards: MatchCardsState | undefined): MatchCardsState {
+  return normalizeMatchCards(cards);
+}
+
+function cloneCardUse(cardUse: MatchCardUse | null | undefined): MatchCardUse | null {
+  if (!cardUse || !isMatchCardId(cardUse.cardId)) {
+    return null;
+  }
+
+  return {
+    side: cardUse.side === 'away' ? 'away' : 'home',
+    teamId: cardUse.teamId,
+    cardId: cardUse.cardId,
+    cardName: cardUse.cardName,
+    usedAt: cardUse.usedAt,
+  };
+}
+
+function isOverlaySize(value: unknown): value is OverlaySettings['size'] {
+  return value === 'compact' || value === 'standard' || value === 'large';
+}
+
+function isOverlayPosition(value: unknown): value is OverlaySettings['position'] {
+  return value === 'top-left' || value === 'center' || value === 'bottom-center';
+}
+
+function isMatchCardId(value: unknown): value is MatchCardId {
+  return MATCH_CARD_IDS.includes(value as MatchCardId);
 }
 
 function oppositeSide(side: Side): Side {

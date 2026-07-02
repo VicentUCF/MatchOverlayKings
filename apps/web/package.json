@@ -12,6 +12,7 @@
     "@kpl/shared": "0.1.0",
     "@supabase/supabase-js": "^2.110.0",
     "@vitejs/plugin-react": "^5.1.1",
+    "animejs": "^4.5.0",
     "lucide-react": "^0.561.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
