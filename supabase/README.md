@@ -23,12 +23,13 @@ La migracion inicial crea el club `kpl`, 4 pistas (`pista-1` a `pista-4`), equip
 
 ```bash
 VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
+VITE_SUPABASE_PUBLISHABLE_KEY=...
 ```
 
 ## Seguridad
 
-- `anon` solo puede leer equipos y `score_states` con `status = 'live'`.
+- La publishable key se usa en el frontend; la secret key queda fuera de Vercel/Vite.
+- El rol publico solo puede leer equipos y `score_states` con `status = 'live'`.
 - `authenticated` solo puede leer pistas, eventos y auditoria si pertenece al club.
 - Las mutaciones directas quedan bloqueadas por ausencia de politicas de escritura.
 - Las RPCs de marcador revocan ejecucion publica y conceden solo a `authenticated`.

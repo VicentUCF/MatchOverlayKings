@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const hasSupabase = Boolean(process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_ANON_KEY);
+const hasSupabase = Boolean(process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_PUBLISHABLE_KEY);
 const hasAdminCredentials = Boolean(process.env.KPL_E2E_EMAIL && process.env.KPL_E2E_PASSWORD);
 
 test('shows only live matches on the public home page', async ({ page }) => {

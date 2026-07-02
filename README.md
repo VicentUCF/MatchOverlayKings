@@ -26,7 +26,7 @@ Configura `apps/web/.env.local` con:
 
 ```bash
 VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
+VITE_SUPABASE_PUBLISHABLE_KEY=...
 ```
 
 Levanta Supabase local o usa un proyecto remoto con las migraciones de `supabase/migrations`. Despues crea el usuario del club en Supabase Auth. El primer login correcto en `/admin` reclama el club `kpl` mediante `claim_default_club()`.
@@ -72,7 +72,7 @@ Configura estas variables en Vercel:
 
 ```bash
 VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
+VITE_SUPABASE_PUBLISHABLE_KEY=...
 ```
 
 El build de Vercel usa:
@@ -92,4 +92,4 @@ npm run build:vercel
 npm run test:e2e
 ```
 
-Los e2e se omiten si no existen `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `KPL_E2E_EMAIL` y `KPL_E2E_PASSWORD` en el entorno de ejecucion.
+Los e2e se omiten si no existen `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `KPL_E2E_EMAIL` y `KPL_E2E_PASSWORD` en el entorno de ejecucion.
