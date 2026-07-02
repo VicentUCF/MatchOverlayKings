@@ -2,17 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Eye, RefreshCw, WifiOff } from 'lucide-react';
 import type { MatchState, Team } from '@kpl/shared';
-
-interface EventSummary {
-  id: string;
-  title: string;
-  courtName: string;
-  homeTeamId: string;
-  awayTeamId: string;
-  status: MatchState['status'];
-  version: number;
-  updatedAt: string;
-}
+import { type EventSummary, fetchEventSummaries, fetchTeams, subscribeToScoreStates } from '../lib/kpl-data.js';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -25,27 +15,27 @@ export function HomePage() {
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
   const liveEvents = useMemo(() => events.filter((event) => event.status === 'live'), [events]);
 
-  const loadEvents = useCallback(async () => {
-    setLoadState('loading');
-    setError(null);
+  const loadEvents = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoadState('loading');
+      setError(null);
+    }
 
     try {
-      const [eventsResponse, teamsResponse] = await Promise.all([
-        fetch('/api/events'),
-        fetch('/api/teams'),
+      const [eventsPayload, teamsPayload] = await Promise.all([
+        fetchEventSummaries({ liveOnly: true }),
+        fetchTeams(),
       ]);
 
-      if (!eventsResponse.ok || !teamsResponse.ok) {
-        throw new Error('No se pudieron cargar los partidos.');
-      }
-
-      const eventsPayload = (await eventsResponse.json()) as { events: EventSummary[] };
-      const teamsPayload = (await teamsResponse.json()) as { teams: Team[] };
-
-      setEvents(eventsPayload.events);
-      setTeams(teamsPayload.teams);
+      setEvents(eventsPayload);
+      setTeams(teamsPayload);
+      setError(null);
       setLoadState('ready');
     } catch (loadError) {
+      if (silent) {
+        return;
+      }
+
       setError(loadError instanceof Error ? loadError.message : 'Error desconocido.');
       setLoadState('error');
     }
@@ -53,6 +43,27 @@ export function HomePage() {
 
   useEffect(() => {
     void loadEvents();
+  }, [loadEvents]);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
+    try {
+      unsubscribe = subscribeToScoreStates(() => {
+        void loadEvents(true);
+      });
+    } catch {
+      unsubscribe = null;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadEvents(true);
+    }, 10_000);
+
+    return () => {
+      unsubscribe?.();
+      window.clearInterval(intervalId);
+    };
   }, [loadEvents]);
 
   return (

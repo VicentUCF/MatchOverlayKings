@@ -1,21 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Eye, Lock, MonitorPlay, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { Eye, Lock, LogOut, Mail, MonitorPlay, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import type { MatchState } from '@kpl/shared';
-
-interface EventSummary {
-  id: string;
-  title: string;
-  courtName: string;
-  homeTeamId: string;
-  awayTeamId: string;
-  status: MatchState['status'];
-  version: number;
-  updatedAt: string;
-}
+import { type EventSummary, fetchEventSummaries } from '../lib/kpl-data.js';
+import { supabase } from '../lib/supabase.js';
 
 export function AdminPage() {
-  const [pin, setPin] = useState(() => localStorage.getItem('kpl-control-pin') ?? '');
-  const [unlocked, setUnlocked] = useState(() => localStorage.getItem('kpl-control-pin') !== null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authenticated, setAuthenticated] = useState(false);
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -25,36 +17,75 @@ export function AdminPage() {
     setError(null);
 
     try {
-      const response = await fetch(
-        '/api/admin/events',
-        pin ? { headers: { 'x-control-pin': pin } } : undefined,
-      );
-
-      if (!response.ok) {
-        throw new Error('No se pudieron cargar las pistas.');
-      }
-
-      const payload = (await response.json()) as { events: EventSummary[] };
-      setEvents(payload.events);
+      const nextEvents = await fetchEventSummaries({ liveOnly: false });
+      setEvents(nextEvents);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Error desconocido.');
     } finally {
       setLoading(false);
     }
-  }, [pin]);
+  }, []);
 
   useEffect(() => {
-    if (unlocked) {
-      void loadEvents();
-    }
-  }, [loadEvents, unlocked]);
+    let mounted = true;
 
-  function unlockAdmin() {
-    localStorage.setItem('kpl-control-pin', pin);
-    setUnlocked(true);
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) {
+        return;
+      }
+
+      setAuthenticated(Boolean(data.session));
+    });
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthenticated(Boolean(session));
+    });
+
+    return () => {
+      mounted = false;
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authenticated) {
+      void claimClubAndLoad();
+    }
+  }, [authenticated]);
+
+  async function claimClubAndLoad() {
+    const { error: claimError } = await supabase.rpc('claim_default_club');
+
+    if (claimError) {
+      setError(claimError.message);
+      return;
+    }
+
+    await loadEvents();
   }
 
-  if (!unlocked) {
+  async function signIn() {
+    setLoading(true);
+    setError(null);
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (signInError) {
+      setError(signInError.message);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(false);
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    setAuthenticated(false);
+    setEvents([]);
+  }
+
+  if (!authenticated) {
     return (
       <main className="home-page">
         <section className="admin-login">
@@ -66,13 +97,21 @@ export function AdminPage() {
             </span>
           </div>
           <label>
-            <span>PIN</span>
+            <span>Email</span>
             <div className="input-icon">
-              <Lock size={16} />
-              <input value={pin} onChange={(event) => setPin(event.target.value)} type="password" autoFocus />
+              <Mail size={16} />
+              <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoFocus />
             </div>
           </label>
-          <button type="button" className="primary-action" onClick={unlockAdmin}>
+          <label>
+            <span>Password</span>
+            <div className="input-icon">
+              <Lock size={16} />
+              <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" />
+            </div>
+          </label>
+          {error ? <div className="empty-panel">{error}</div> : null}
+          <button type="button" className="primary-action" onClick={signIn} disabled={loading}>
             Entrar
           </button>
         </section>
@@ -94,6 +133,10 @@ export function AdminPage() {
         <button type="button" className="refresh-button" onClick={() => void loadEvents()} disabled={loading}>
           <RefreshCw size={18} />
           Actualizar
+        </button>
+        <button type="button" className="refresh-button" onClick={() => void signOut()}>
+          <LogOut size={18} />
+          Salir
         </button>
       </header>
 

@@ -9,11 +9,15 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run build -w @kpl/shared && npm run build -w @kpl/web && npm run dev -w @kpl/server",
+    "dev": "npm run build -w @kpl/shared && npm run dev -w @kpl/web",
+    "dev:legacy": "npm run build -w @kpl/shared && npm run build -w @kpl/web && npm run dev -w @kpl/server",
     "dev:server": "npm run dev -w @kpl/server",
     "dev:web": "npm run dev -w @kpl/web",
-    "start": "npm run start -w @kpl/server",
+    "preview:web": "npm run build:vercel && npm run preview -w @kpl/web -- --host 0.0.0.0 --port 4173",
+    "start": "npm run preview:web",
+    "start:server": "npm run start -w @kpl/server",
     "build": "npm run build -w @kpl/shared && npm run build -w @kpl/server && npm run build -w @kpl/web",
+    "build:vercel": "npm run build -w @kpl/shared && npm run build -w @kpl/web",
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test",

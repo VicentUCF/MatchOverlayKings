@@ -25,7 +25,10 @@ export function LivePage({ eventId }: { eventId: string }) {
         {match.state && match.state.status !== 'live' ? (
           <div className="empty-panel">Este partido no esta en directo.</div>
         ) : null}
-        {!match.state ? <div className="loading-panel">Cargando marcador</div> : null}
+        {!match.state && match.connectionState === 'connecting' ? <div className="loading-panel">Cargando marcador</div> : null}
+        {!match.state && match.connectionState !== 'connecting' ? (
+          <div className="empty-panel">Este partido no esta en directo.</div>
+        ) : null}
       </section>
     </main>
   );

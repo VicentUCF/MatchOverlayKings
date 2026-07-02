@@ -1,40 +1,95 @@
 # KPL Live Overlay Control
 
-Herramienta independiente para controlar overlays de OBS de KingsPadelLeague desde varios dispositivos mediante WebSocket.
+Frontend Vite/React para controlar marcadores de padel y overlays OBS de KingsPadelLeague. Produccion usa Vercel para servir la web y Supabase como backend: Auth, Postgres, RLS, RPC y Realtime.
 
-## MVP
+## Arquitectura v1
 
-- Marcador de padel para enfrentamientos.
-- Portada publica en `/` con solo partidos en directo.
-- Panel admin en `/admin` para abrir mandos y overlays de las cinco pistas.
-- Vista publica de marcador desde `/live/:eventId`.
-- Control en dos fases: configuracion del partido y marcador.
-- Control desde `/control/:eventId`.
-- Overlay transparente para OBS desde `/overlay/:eventId/scoreboard`.
-- Equipos fijos en `data/teams.json`.
-- Cinco pistas fijas en `data/events/pista-1.json` a `data/events/pista-5.json`.
+- 4 pistas fijas: `pista-1`, `pista-2`, `pista-3`, `pista-4`.
+- `/` es publico y solo lista partidos en directo.
+- `/live/:courtSlug` es publico y solo muestra una pista si esta `live`.
+- `/admin` usa Supabase Auth email/password y lista todas las pistas del club.
+- `/control/:courtSlug` tiene dos fases: configuracion del partido y marcador.
+- `/overlay/:courtSlug/scoreboard` es la ruta fija para OBS.
+- El frontend no calcula acciones criticas: llama RPCs de Supabase (`add_point`, `undo_last`, `manual_patch`, `reset_match`, `new_match`, `set_match_status`).
+- `score_states.state` conserva el `MatchState` actual en JSONB y `score_events` guarda auditoria completa.
+
+El servidor Fastify/Socket.IO queda como compatibilidad legacy local, no como backend de produccion.
 
 ## Desarrollo
 
 ```bash
 npm install
+cp apps/web/.env.example apps/web/.env.local
+```
+
+Configura `apps/web/.env.local` con:
+
+```bash
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+```
+
+Levanta Supabase local o usa un proyecto remoto con las migraciones de `supabase/migrations`. Despues crea el usuario del club en Supabase Auth. El primer login correcto en `/admin` reclama el club `kpl` mediante `claim_default_club()`.
+
+```bash
 npm run dev
 ```
 
-Servidor local:
+URLs locales con Vite:
 
-- Selector: `http://localhost:4300/`
-- Admin: `http://localhost:4300/admin`
-- Directo pista 1: `http://localhost:4300/live/pista-1`
-- Control pista 1: `http://localhost:4300/control/pista-1`
-- Overlay pista 1: `http://localhost:4300/overlay/pista-1/scoreboard`
-- Overlay pista 2: `http://localhost:4300/overlay/pista-2/scoreboard`
-- Health: `http://localhost:4300/health`
+- Selector publico: `http://localhost:5173/`
+- Admin: `http://localhost:5173/admin`
+- Directo pista 1: `http://localhost:5173/live/pista-1`
+- Control pista 1: `http://localhost:5173/control/pista-1`
+- Overlay pista 1: `http://localhost:5173/overlay/pista-1/scoreboard`
 
-En una LAN, usa la IP del portatil en lugar de `localhost`.
+## Supabase
+
+La migracion inicial crea:
+
+- `clubs`, `club_users`, `teams`, `courts`
+- `score_states`
+- `score_events`
+- RLS para lectura publica solo de `score_states.status = 'live'`
+- RPCs de marcador con bloqueo `FOR UPDATE`, `expected_version`, `command_id` idempotente y auditoria
+
+Para local, usa Supabase CLI:
+
+```bash
+supabase start
+supabase db reset
+```
+
+Para ejecutar los tests SQL/RPC:
+
+```bash
+supabase test db
+```
+
+## Vercel
+
+Configura estas variables en Vercel:
+
+```bash
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+```
+
+El build de Vercel usa:
+
+```bash
+npm run build:vercel
+```
+
+Salida: `apps/web/dist`. Las rutas SPA se reescriben a `index.html` en `vercel.json`.
 
 ## Verificacion
 
 ```bash
-npm run verify
+npm run lint
+npm run test
+npm run build:vercel
+npm run test:e2e
 ```
+
+Los e2e se omiten si no existen `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `KPL_E2E_EMAIL` y `KPL_E2E_PASSWORD` en el entorno de ejecucion.

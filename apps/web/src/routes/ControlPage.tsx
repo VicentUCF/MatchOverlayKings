@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Flag,
   ListRestart,
-  Lock,
   Repeat2,
   Play,
   Plus,
@@ -20,8 +19,7 @@ import { useMatchSocket } from '../hooks/useMatchSocket.js';
 type ControlPhase = 'setup' | 'score';
 
 export function ControlPage({ eventId }: { eventId: string }) {
-  const [pin, setPin] = useState(() => localStorage.getItem('kpl-control-pin') ?? '');
-  const match = useMatchSocket(eventId, 'control', pin);
+  const match = useMatchSocket(eventId, 'control', '');
   const state = match.state;
   const activeSet = useMemo(
     () => state?.sets.find((set) => set.status === 'active') ?? state?.sets.at(-1) ?? null,
@@ -63,11 +61,6 @@ export function ControlPage({ eventId }: { eventId: string }) {
 
     setPhase(state.status === 'pre_match' ? 'setup' : 'score');
   }, [eventId, state?.status]);
-
-  function persistPin(nextPin: string) {
-    setPin(nextPin);
-    localStorage.setItem('kpl-control-pin', nextPin);
-  }
 
   function setupPayload() {
     return {
@@ -151,13 +144,6 @@ export function ControlPage({ eventId }: { eventId: string }) {
             </option>
           ))}
         </select>
-      </label>
-      <label>
-        <span>PIN</span>
-        <div className="input-icon">
-          <Lock size={16} />
-          <input value={pin} onChange={(event) => persistPin(event.target.value)} type="password" />
-        </div>
       </label>
       <div className="version-row">
         <span>Version</span>

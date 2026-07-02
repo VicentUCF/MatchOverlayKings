@@ -1,33 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { io, type Socket } from 'socket.io-client';
 import type {
-  Ack,
   ClientRole,
   ClientToServerEvents,
   ManualScorePatch,
   MatchMetaPatch,
   MatchState,
   NewMatchSetup,
-  ServerToClientEvents,
   Side,
   Team,
 } from '@kpl/shared';
 import { createCommandId } from '../command-id.js';
+import {
+  type EventSummary,
+  fetchEventSummaries,
+  fetchMatchState,
+  fetchTeams,
+  subscribeToMatchState,
+} from '../lib/kpl-data.js';
+import { supabase } from '../lib/supabase.js';
 
-type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
 type CommandEventName = Exclude<keyof ClientToServerEvents, 'join:event'>;
-
-export interface EventSummary {
-  id: string;
-  title: string;
-  courtName: string;
-  homeTeamId: string;
-  awayTeamId: string;
-  status: MatchState['status'];
-  version: number;
-  updatedAt: string;
-}
+type RpcEventName = Exclude<CommandEventName, never>;
 
 export interface MatchSocketState {
   connectionState: ConnectionState;
@@ -53,43 +47,36 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
   const [events, setEvents] = useState<EventSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const socketRef = useRef<ClientSocket | null>(null);
   const stateRef = useRef<MatchState | null>(null);
+  void pin;
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
   const refreshEvents = useCallback(async () => {
-    const response = await fetch(eventsEndpoint(role), eventsFetchOptions(role, pin));
-    const payload = (await response.json()) as { events: EventSummary[] };
-    setEvents(payload.events);
-  }, [pin, role]);
+    const nextEvents = await fetchEventSummaries({ liveOnly: role !== 'control' });
+    setEvents(nextEvents);
+  }, [role]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadInitialData() {
       try {
-        const [teamsResponse, eventsResponse, stateResponse] = await Promise.all([
-          fetch('/api/teams'),
-          fetch(eventsEndpoint(role), eventsFetchOptions(role, pin)),
-          fetch(`/api/events/${eventId}/state`),
+        const [teamsPayload, eventsPayload, statePayload] = await Promise.all([
+          fetchTeams(),
+          fetchEventSummaries({ liveOnly: role !== 'control' }),
+          fetchMatchState(eventId),
         ]);
 
-        if (!teamsResponse.ok || !eventsResponse.ok || !stateResponse.ok) {
-          throw new Error('No se pudo cargar el evento.');
-        }
-
-        const teamsPayload = (await teamsResponse.json()) as { teams: Team[] };
-        const eventsPayload = (await eventsResponse.json()) as { events: EventSummary[] };
-        const statePayload = (await stateResponse.json()) as { state: MatchState };
-
         if (!cancelled) {
-          setTeams(teamsPayload.teams);
-          setEvents(eventsPayload.events);
-          setState(statePayload.state);
-          stateRef.current = statePayload.state;
+          setTeams(teamsPayload);
+          setEvents(eventsPayload);
+          setState(statePayload);
+          stateRef.current = statePayload;
+          setConnectionState('connected');
+          setError(null);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -104,64 +91,76 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
     return () => {
       cancelled = true;
     };
-  }, [eventId, pin, role]);
+  }, [eventId, role]);
 
   useEffect(() => {
-    const socket: ClientSocket = io({
-      transports: ['websocket'],
-      reconnection: true,
-    });
-    socketRef.current = socket;
     setConnectionState('connecting');
+    let unsubscribe: (() => void) | null = null;
 
-    socket.on('connect', () => {
-      const joinPayload = pin ? { eventId, role, pin } : { eventId, role };
+    try {
+      unsubscribe = subscribeToMatchState(eventId, (nextState) => {
+        setState(nextState);
+        stateRef.current = nextState;
+        setConnectionState('connected');
 
-      socket.emit('join:event', joinPayload, (response) => {
-        if (response.ok) {
-          setState(response.data);
-          stateRef.current = response.data;
-          setConnectionState('connected');
-          setError(null);
-        } else {
-          setConnectionState('error');
-          setError(response.error.message);
+        if (role !== 'control') {
+          void fetchEventSummaries({ liveOnly: true }).then(setEvents).catch(() => undefined);
         }
       });
-    });
-
-    socket.on('disconnect', () => {
-      setConnectionState('disconnected');
-    });
-
-    socket.on('connect_error', (connectError) => {
+    } catch (subscribeError) {
+      setError(errorMessage(subscribeError));
       setConnectionState('error');
-      setError(connectError.message);
-    });
-
-    socket.on('state:updated', (payload) => {
-      if (payload.eventId === eventId) {
-        setState(payload.state);
-        stateRef.current = payload.state;
-      }
-    });
+    }
 
     return () => {
-      socket.close();
-      socketRef.current = null;
+      unsubscribe?.();
     };
-  }, [eventId, pin, role]);
+  }, [eventId, role]);
+
+  useEffect(() => {
+    if (role === 'control') {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const refreshPublicState = async () => {
+      try {
+        const nextState = await fetchMatchState(eventId);
+
+        if (cancelled) {
+          return;
+        }
+
+        setState(nextState);
+        stateRef.current = nextState;
+        setConnectionState('connected');
+        setError(null);
+      } catch (refreshError) {
+        if (!cancelled && !stateRef.current) {
+          setError(errorMessage(refreshError));
+          setConnectionState('error');
+        }
+      }
+    };
+    const intervalId = window.setInterval(() => {
+      void refreshPublicState();
+    }, 5_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [eventId, role]);
 
   const send = useCallback(
-    async <TEvent extends CommandEventName>(
+    async <TEvent extends RpcEventName>(
       event: TEvent,
       payload: Omit<Parameters<ClientToServerEvents[TEvent]>[0], 'eventId' | 'expectedVersion' | 'commandId'>,
     ) => {
-      const socket = socketRef.current;
       const current = stateRef.current;
 
-      if (!socket || !current) {
-        setError('Socket no conectado.');
+      if (!current) {
+        setError('Marcador no cargado.');
         return false;
       }
 
@@ -169,31 +168,25 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
       setError(null);
 
       try {
-        return await new Promise<boolean>((resolve) => {
-          const commandPayload = {
-            ...payload,
-            eventId,
-            expectedVersion: current.version,
-            commandId: createCommandId(),
-          };
+        const commandPayload = {
+          ...payload,
+          eventId,
+          expectedVersion: current.version,
+          commandId: createCommandId(),
+        };
+        const { rpcName, params } = toRpcCall(event, commandPayload);
+        const { data, error: rpcError } = await supabase.rpc(rpcName, params);
 
-          const callback = (response: Ack<MatchState>) => {
-            if (response.ok) {
-              setState(response.data);
-              stateRef.current = response.data;
-              resolve(true);
-            } else {
-              setError(response.error.message);
-              resolve(false);
-            }
-          };
-          const args = [
-            commandPayload,
-            callback,
-          ] as unknown as Parameters<ClientToServerEvents[TEvent]>;
+        if (rpcError) {
+          setError(rpcError.message);
+          return false;
+        }
 
-          socket.emit(event, ...args);
-        });
+        const nextState = data as MatchState;
+        setState(nextState);
+        stateRef.current = nextState;
+        await refreshEvents();
+        return true;
       } catch (sendError) {
         setError(errorMessage(sendError));
         return false;
@@ -201,7 +194,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
         setPending(false);
       }
     },
-    [eventId],
+    [eventId, refreshEvents],
   );
 
   return useMemo(
@@ -229,14 +222,39 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Error desconocido.';
 }
 
-function eventsEndpoint(role: ClientRole): string {
-  return role === 'control' ? '/api/admin/events' : '/api/events';
-}
+function toRpcCall(
+  event: RpcEventName,
+  payload: Record<string, unknown>,
+): { rpcName: string; params: Record<string, unknown> } {
+  const base = {
+    p_court_slug: payload.eventId,
+    p_expected_version: payload.expectedVersion,
+    p_command_id: payload.commandId,
+  };
 
-function eventsFetchOptions(role: ClientRole, pin: string): RequestInit | undefined {
-  if (role !== 'control') {
-    return undefined;
+  if (event === 'score:addPoint') {
+    return { rpcName: 'add_point', params: { ...base, p_side: payload.side } };
   }
 
-  return pin ? { headers: { 'x-control-pin': pin } } : undefined;
+  if (event === 'score:undo') {
+    return { rpcName: 'undo_last', params: base };
+  }
+
+  if (event === 'score:resetMatch') {
+    return { rpcName: 'reset_match', params: base };
+  }
+
+  if (event === 'score:manualPatch') {
+    return { rpcName: 'manual_patch', params: { ...base, p_patch: payload.patch } };
+  }
+
+  if (event === 'match:updateMeta') {
+    return { rpcName: 'update_match_meta', params: { ...base, p_patch: payload.patch } };
+  }
+
+  if (event === 'match:setStatus') {
+    return { rpcName: 'set_match_status', params: { ...base, p_status: payload.status } };
+  }
+
+  return { rpcName: 'new_match', params: { ...base, p_setup: payload.setup } };
 }
