@@ -12,6 +12,7 @@ import {
   triggerOverlayDataScene,
   triggerSponsorFullscreen,
   undoLastScoringCommand,
+  updateOverlaySettings,
   updateSponsorTicker,
   useMatchCard,
 } from '../src/index.js';
@@ -185,6 +186,8 @@ describe('score engine', () => {
     let state = createInitialMatchState(event);
 
     expect(state.overlaySettings.dataScenesAuto).toBe(false);
+    expect(state.overlaySettings.soundEnabled).toBe(false);
+    expect(state.overlaySettings.soundVolume).toBe(0.55);
 
     state = triggerOverlayDataScene(
       state,
@@ -203,6 +206,23 @@ describe('score engine', () => {
     state = resetMatch(state, 'reset-after-data-scene');
 
     expect(state.dataScene).toBeNull();
+  });
+
+  it('controls overlay card sound settings', () => {
+    let state = createInitialMatchState(event);
+
+    state = updateOverlaySettings(state, { soundEnabled: true, soundVolume: 0.8 }, 'sound-settings-1');
+
+    expect(state.overlaySettings.soundEnabled).toBe(true);
+    expect(state.overlaySettings.soundVolume).toBe(0.8);
+
+    state = updateOverlaySettings(state, { soundVolume: 2 }, 'sound-settings-2');
+
+    expect(state.overlaySettings.soundVolume).toBe(1);
+
+    state = updateOverlaySettings(state, { soundVolume: -1 }, 'sound-settings-3');
+
+    expect(state.overlaySettings.soundVolume).toBe(0);
   });
 
   it('controls sponsor ads and keeps the ticker across resets', () => {

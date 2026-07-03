@@ -1,9 +1,14 @@
 .card-announcement-scene {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: 0;
   z-index: 60;
   display: grid;
   place-items: center;
+  width: 100vw;
+  height: var(--card-scene-viewport-height, 100dvh);
   isolation: isolate;
   overflow: hidden;
   color: var(--color-text-strong);
@@ -133,7 +138,8 @@
   align-items: center;
   gap: clamp(24px, 3vw, 50px);
   width: min(1660px, calc(100vw - 80px));
-  min-height: min(780px, calc(100vh - 96px));
+  height: min(780px, calc(var(--card-scene-viewport-height, 100dvh) - 96px));
+  min-height: 0;
 }
 
 .card-scene-copy {
@@ -278,7 +284,8 @@
     justify-items: center;
     gap: 18px;
     width: calc(100vw - 42px);
-    min-height: calc(100vh - 42px);
+    height: calc(var(--card-scene-viewport-height, 100dvh) - 42px);
+    min-height: 0;
     padding: 82px 0 24px;
   }
 
@@ -301,7 +308,7 @@
   }
 
   .card-scene-card-image {
-    max-height: 56vh;
+    max-height: min(56dvh, calc(var(--card-scene-viewport-height, 100dvh) - 260px));
   }
 
   .card-scene-team-badge {
@@ -329,30 +336,32 @@
 
   .card-scene-stage {
     width: calc(100vw - 28px);
-    min-height: calc(100vh - 28px);
-    gap: 14px;
-    padding: 62px 0 16px;
+    height: calc(var(--card-scene-viewport-height, 100dvh) - 18px);
+    min-height: 0;
+    gap: clamp(7px, 1.25vh, 12px);
+    padding: clamp(54px, 9vh, 66px) 0 max(46px, env(safe-area-inset-bottom));
   }
 
   .card-scene-copy {
-    gap: 8px;
+    gap: 5px;
   }
 
   .card-scene-copy > span {
-    font-size: 0.92rem;
+    font-size: clamp(0.78rem, 3.4vw, 0.92rem);
   }
 
   .card-scene-copy > strong {
-    font-size: 2.35rem;
+    font-size: clamp(1.95rem, 10.2vw, 2.35rem);
   }
 
   .card-scene-copy > small,
   .card-scene-team-badge small {
-    font-size: 0.88rem;
+    font-size: clamp(0.72rem, 3.2vw, 0.84rem);
   }
 
   .card-scene-card-frame {
-    width: min(310px, 72vw);
+    width: min(300px, 68vw);
+    max-height: 100%;
   }
 
   .card-scene-card-frame::after {
@@ -362,20 +371,126 @@
   .card-scene-team-badge {
     grid-template-columns: auto minmax(0, 1fr);
     width: 100%;
-    padding: 10px 12px 10px 10px;
+    min-height: 0;
+    padding: 8px 10px 8px 8px;
   }
 
   .card-scene-team-badge > span {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
   }
 
   .card-scene-team-badge strong {
-    font-size: 1.35rem;
+    font-size: clamp(1rem, 5vw, 1.24rem);
   }
 
   .card-scene-spark {
     width: 92px;
+  }
+
+  .card-scene-card-image {
+    max-height: min(38dvh, 320px);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 940px) {
+  .card-announcement-scene {
+    place-items: start center;
+  }
+
+  .card-scene-brand {
+    top: 8px;
+    left: 10px;
+    min-height: 34px;
+    padding: 4px 8px 4px 6px;
+  }
+
+  .card-scene-brand img {
+    width: 72px;
+    max-height: 24px;
+  }
+
+  .card-scene-brand span {
+    display: none;
+  }
+
+  .card-scene-stage {
+    grid-template-columns: minmax(190px, 0.95fr) minmax(118px, 20vw) minmax(218px, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: center;
+    justify-items: stretch;
+    gap: 12px;
+    width: calc(100vw - 20px);
+    height: calc(var(--card-scene-viewport-height, 100dvh) - max(84px, env(safe-area-inset-bottom)));
+    min-height: 0;
+    padding: 46px 0 0;
+  }
+
+  .card-scene-copy {
+    justify-self: end;
+    gap: 5px;
+    max-width: 270px;
+    text-align: right;
+  }
+
+  .card-scene-copy > span {
+    font-size: clamp(0.72rem, 2.1vw, 0.88rem);
+  }
+
+  .card-scene-copy > strong {
+    font-size: clamp(1.45rem, 6vw, 2.45rem);
+  }
+
+  .card-scene-copy > small {
+    justify-self: end;
+    max-width: 250px;
+    font-size: clamp(0.68rem, 2vw, 0.82rem);
+  }
+
+  .card-scene-card-frame {
+    width: min(168px, 20vw);
+    max-height: 100%;
+  }
+
+  .card-scene-card-frame::after {
+    inset: -8px;
+    border-radius: 14px;
+  }
+
+  .card-scene-card-frame::before {
+    filter: blur(20px);
+  }
+
+  .card-scene-card-image {
+    max-height: min(48vh, calc(var(--card-scene-viewport-height, 100dvh) - 126px));
+  }
+
+  .card-scene-team-badge {
+    justify-self: start;
+    width: 100%;
+    min-width: 0;
+    padding: 8px 10px 8px 8px;
+    box-shadow:
+      -3px 3px 0 var(--broadcast-cyan),
+      3px -3px 0 var(--color-brand),
+      0 16px 34px rgb(0 0 0 / 34%);
+  }
+
+  .card-scene-team-badge > span {
+    width: 40px;
+    height: 40px;
+  }
+
+  .card-scene-team-badge strong {
+    font-size: clamp(1rem, 3vw, 1.35rem);
+  }
+
+  .card-scene-team-badge small {
+    font-size: clamp(0.68rem, 1.8vw, 0.8rem);
+  }
+
+  .card-scene-spark {
+    width: 76px;
   }
 }
 

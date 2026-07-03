@@ -80,6 +80,8 @@ export interface OverlaySettings {
   size: OverlaySize;
   position: OverlayPosition;
   dataScenesAuto: boolean;
+  soundEnabled: boolean;
+  soundVolume: number;
 }
 
 export type OverlaySettingsPatch = Partial<OverlaySettings>;

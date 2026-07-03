@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { animate, stagger } from 'animejs';
 import type { MatchCardAnnouncement, Team } from '@kpl/shared';
@@ -18,10 +18,12 @@ export function CardAnnouncementScene({
   onDone: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const viewportStyle = useVisualViewportStyle();
   const card = findMatchCard(announcement.cardId);
   const team = teams.find((item) => item.id === announcement.teamId);
   const teamLabel = streamTeamLabel(team, announcement.teamId);
   const sceneStyle = {
+    ...viewportStyle,
     '--team-color': team?.primaryColor ?? '#e0bb45',
     '--team-accent': team?.secondaryColor ?? '#34d8ff',
   } as CSSProperties;
@@ -190,6 +192,32 @@ function streamTeamLabel(team: Team | undefined, teamId: string): string {
   }
 
   return team.name || team.shortName;
+}
+
+function useVisualViewportStyle(): CSSProperties {
+  const [height, setHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const updateHeight = () => {
+      setHeight(Math.floor(window.visualViewport?.height ?? window.innerHeight));
+    };
+
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    window.visualViewport?.addEventListener('resize', updateHeight);
+    window.visualViewport?.addEventListener('scroll', updateHeight);
+
+    return () => {
+      window.removeEventListener('resize', updateHeight);
+      window.visualViewport?.removeEventListener('resize', updateHeight);
+      window.visualViewport?.removeEventListener('scroll', updateHeight);
+    };
+  }, []);
+
+  return useMemo(
+    () => height ? ({ '--card-scene-viewport-height': `${height}px` } as CSSProperties) : {},
+    [height],
+  );
 }
 
 function prefersReducedMotion(): boolean {

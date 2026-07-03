@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   BarChart3,
   CalendarDays,
@@ -23,6 +23,8 @@ import {
   Square,
   Trophy,
   UsersRound,
+  Volume2,
+  VolumeX,
   Wifi,
   WifiOff,
   X,
@@ -331,6 +333,35 @@ export function ControlPage({ eventId }: { eventId: string }) {
         {overlaySettings.dataScenesAuto ? <Eye size={18} /> : <EyeOff size={18} />}
         <span>{overlaySettings.dataScenesAuto ? 'Auto previa activo' : 'Auto previa apagado'}</span>
       </button>
+
+      <button
+        type="button"
+        className={`switch-button ${overlaySettings.soundEnabled ? 'on' : ''}`}
+        onClick={() => void updateOverlaySettings({ soundEnabled: !overlaySettings.soundEnabled })}
+        disabled={!state || match.pending}
+      >
+        {overlaySettings.soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+        <span>{overlaySettings.soundEnabled ? 'Sonido cartas activo' : 'Sonido cartas apagado'}</span>
+      </button>
+
+      {overlaySettings.soundEnabled ? (
+        <label className="sound-volume-field">
+          <span>
+            <Volume2 size={16} />
+            Volumen cartas
+            <strong>{Math.round(overlaySettings.soundVolume * 100)}%</strong>
+          </span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="5"
+            value={Math.round(overlaySettings.soundVolume * 100)}
+            onChange={(event) => void updateOverlaySettings({ soundVolume: Number(event.target.value) / 100 })}
+            disabled={!state || match.pending}
+          />
+        </label>
+      ) : null}
     </section>
   );
 
@@ -453,7 +484,9 @@ export function ControlPage({ eventId }: { eventId: string }) {
           </aside>
           <section className="score-panel setup-preview">
             {state ? (
-              <Scoreboard state={state} teams={match.teams} mode="control" />
+              <div className="broadcast-scoreboard-shell overlay-page">
+                <Scoreboard state={state} teams={match.teams} mode="overlay" />
+              </div>
             ) : (
               <div className="loading-panel">Cargando marcador</div>
             )}
@@ -475,7 +508,9 @@ export function ControlPage({ eventId }: { eventId: string }) {
             ) : null}
 
             {state ? (
-              <Scoreboard state={state} teams={match.teams} mode="control" />
+              <div className="broadcast-scoreboard-shell overlay-page">
+                <Scoreboard state={state} teams={match.teams} mode="overlay" />
+              </div>
             ) : (
               <div className="loading-panel">Cargando marcador</div>
             )}
@@ -485,6 +520,7 @@ export function ControlPage({ eventId }: { eventId: string }) {
                 side="home"
                 state={state}
                 label={homeTeam?.shortName ?? 'Local'}
+                team={homeTeam}
                 onClick={() => void match.addPoint('home')}
                 pending={match.pending}
               />
@@ -492,6 +528,7 @@ export function ControlPage({ eventId }: { eventId: string }) {
                 side="away"
                 state={state}
                 label={awayTeam?.shortName ?? 'Visitante'}
+                team={awayTeam}
                 onClick={() => void match.addPoint('away')}
                 pending={match.pending}
               />
@@ -574,7 +611,11 @@ function MobileScoreControl({
   const awayName = away?.shortName ?? 'Equipo B';
 
   return (
-    <section className="mobile-score-control" aria-label="Control movil del marcador">
+    <section
+      className="mobile-score-control"
+      aria-label="Control movil del marcador"
+      style={mobileScoreTeamStyle(home, away, servingTeam)}
+    >
       <header className="mobile-score-header">
         <img src="/logos/kpl-wordmark.png" alt="" />
         <span className={`mobile-live-pill ${state.status}`}>{statusLabel(state.status)}</span>
@@ -627,11 +668,23 @@ function MobileScoreControl({
       </dl>
 
       <div className="mobile-point-actions">
-        <button type="button" className="home" onClick={() => onAddPoint('home')} disabled={pending || state.status === 'finished'}>
+        <button
+          type="button"
+          className="home"
+          style={teamPointButtonStyle(home)}
+          onClick={() => onAddPoint('home')}
+          disabled={pending || state.status === 'finished'}
+        >
           <Plus size={42} />
           <span>Punto {homeName}</span>
         </button>
-        <button type="button" className="away" onClick={() => onAddPoint('away')} disabled={pending || state.status === 'finished'}>
+        <button
+          type="button"
+          className="away"
+          style={teamPointButtonStyle(away)}
+          onClick={() => onAddPoint('away')}
+          disabled={pending || state.status === 'finished'}
+        >
           <Plus size={42} />
           <span>Punto {awayName}</span>
         </button>
@@ -1089,21 +1142,46 @@ function PointButton({
   side,
   state,
   label,
+  team,
   onClick,
   pending,
 }: {
   side: Side;
   state: ReturnType<typeof useMatchSocket>['state'];
   label: string;
+  team: Team | undefined;
   onClick: () => void;
   pending: boolean;
 }) {
   return (
-    <button type="button" className={`point-button ${side}`} onClick={onClick} disabled={!state || pending || state.status === 'finished'}>
+    <button
+      type="button"
+      className={`point-button ${side}`}
+      style={teamPointButtonStyle(team)}
+      onClick={onClick}
+      disabled={!state || pending || state.status === 'finished'}
+    >
       <Plus size={28} />
       <strong>{label}</strong>
     </button>
   );
+}
+
+function teamPointButtonStyle(team: Team | undefined): CSSProperties {
+  return {
+    '--point-team-color': team?.primaryColor ?? '#c9a227',
+    '--point-team-secondary': team?.secondaryColor ?? '#0d1016',
+  } as CSSProperties;
+}
+
+function mobileScoreTeamStyle(home: Team | undefined, away: Team | undefined, servingTeam: Team | undefined): CSSProperties {
+  return {
+    '--mobile-home-color': home?.primaryColor ?? '#c9a227',
+    '--mobile-home-secondary': home?.secondaryColor ?? '#0d1016',
+    '--mobile-away-color': away?.primaryColor ?? '#34d8ff',
+    '--mobile-away-secondary': away?.secondaryColor ?? '#0d1016',
+    '--mobile-serve-color': servingTeam?.primaryColor ?? '#c9a227',
+  } as CSSProperties;
 }
 
 function NumberField({

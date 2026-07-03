@@ -19,6 +19,8 @@ const DEFAULT_PARSED_OVERLAY_SETTINGS: OverlaySettings = {
   size: 'standard',
   position: 'top-left',
   dataScenesAuto: false,
+  soundEnabled: false,
+  soundVolume: 0.55,
 };
 const DEFAULT_PARSED_SPONSOR_ADS: SponsorAdsState = {
   ticker: {
@@ -155,6 +157,9 @@ function parseOverlaySettings(value: unknown): OverlaySettings {
     position,
     dataScenesAuto:
       typeof value.dataScenesAuto === 'boolean' ? value.dataScenesAuto : DEFAULT_PARSED_OVERLAY_SETTINGS.dataScenesAuto,
+    soundEnabled:
+      typeof value.soundEnabled === 'boolean' ? value.soundEnabled : DEFAULT_PARSED_OVERLAY_SETTINGS.soundEnabled,
+    soundVolume: clampNumber(value.soundVolume, 0, 1, DEFAULT_PARSED_OVERLAY_SETTINGS.soundVolume),
   };
 }
 

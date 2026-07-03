@@ -9,6 +9,7 @@ import { Scoreboard } from '../components/Scoreboard.js';
 import { SideChangeScene } from '../components/SideChangeScene.js';
 import { SponsorAdScene, hasSponsorTicker } from '../components/SponsorAdScene.js';
 import { useCardAnnouncementQueue } from '../hooks/useCardAnnouncementQueue.js';
+import { useCardAnnouncementSound } from '../hooks/useCardAnnouncementSound.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
 
 interface SideChangeSignal {
@@ -52,6 +53,12 @@ export function OverlayPage({ eventId }: { eventId: string }) {
   const clearPrematchScene = useCallback(() => setPrematchScene(null), []);
   const clearDataScene = useCallback(() => setActiveDataScene(null), []);
   const clearSponsorAd = useCallback(() => setActiveSponsorAd(null), []);
+
+  const cardSound = useCardAnnouncementSound({
+    announcementId: activeAnnouncement?.id ?? null,
+    enabled: settings?.soundEnabled ?? false,
+    volume: settings?.soundVolume ?? 0.55,
+  });
 
   useEffect(() => {
     document.documentElement.classList.add('overlay-document');
@@ -327,6 +334,11 @@ export function OverlayPage({ eventId }: { eventId: string }) {
       ) : null}
       <SponsorAdScene ticker={sponsorAds.ticker} fullscreen={activeSponsorAd} onFullscreenDone={clearSponsorAd} />
       {match.state?.overlaySettings.visible === false ? <div className="overlay-blank" /> : null}
+      {cardSound.blocked ? (
+        <button type="button" className="overlay-audio-unlock" onClick={cardSound.unlock}>
+          Activar sonido OBS
+        </button>
+      ) : null}
       {!match.state || match.state.status === 'finished' ? (
         <div className="overlay-loading">KPL</div>
       ) : null}

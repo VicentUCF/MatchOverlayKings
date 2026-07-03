@@ -101,6 +101,7 @@
 
   .score-layout > .side-panel,
   .live-score-panel > .scoreboard,
+  .live-score-panel > .broadcast-scoreboard-shell,
   .live-score-panel > .point-controls,
   .live-score-panel > .quick-actions,
   .live-score-panel > .control-action-bar {
@@ -211,6 +212,9 @@
   }
 
   .mobile-team-block {
+    --mobile-team-color: var(--color-brand-strong);
+    --mobile-team-secondary: #0d1016;
+
     display: grid;
     justify-items: center;
     align-self: end;
@@ -219,10 +223,16 @@
   }
 
   .mobile-team-block.home {
+    --mobile-team-color: var(--mobile-home-color, var(--color-brand-strong));
+    --mobile-team-secondary: var(--mobile-home-secondary, #0d1016);
+
     grid-area: homeTeam;
   }
 
   .mobile-team-block.away {
+    --mobile-team-color: var(--mobile-away-color, var(--broadcast-cyan));
+    --mobile-team-secondary: var(--mobile-away-secondary, #0d1016);
+
     grid-area: awayTeam;
   }
 
@@ -232,22 +242,17 @@
     width: clamp(74px, 13.5vh, 104px);
     height: clamp(74px, 13.5vh, 104px);
     border-radius: 8px;
-    border: 2px solid var(--color-border-strong);
+    border: 2px solid color-mix(in srgb, var(--mobile-team-color) 62%, transparent);
     background:
       radial-gradient(circle at 35% 24%, rgb(255 255 255 / 16%), transparent 34%),
-      rgb(201 162 39 / 10%);
-    color: var(--color-brand-strong);
+      color-mix(in srgb, var(--mobile-team-color) 15%, var(--mobile-team-secondary));
+    color: var(--mobile-team-color);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 8%),
+      0 0 22px color-mix(in srgb, var(--mobile-team-color) 16%, transparent);
     font-family: var(--font-family-heading);
     font-weight: 700;
     overflow: hidden;
-  }
-
-  .mobile-team-block.away .mobile-team-logo {
-    border-color: rgb(52 216 255 / 34%);
-    background:
-      radial-gradient(circle at 35% 24%, rgb(255 255 255 / 16%), transparent 34%),
-      rgb(52 216 255 / 8%);
-    color: var(--broadcast-cyan);
   }
 
   .mobile-team-logo img {
@@ -260,7 +265,7 @@
     min-width: 0;
     max-width: 100%;
     overflow: hidden;
-    color: var(--color-brand-strong);
+    color: var(--mobile-team-color);
     font-family: var(--font-family-heading);
     font-size: clamp(20px, 6.4vw, 30px);
     line-height: 1;
@@ -268,10 +273,6 @@
     text-overflow: ellipsis;
     text-transform: uppercase;
     white-space: nowrap;
-  }
-
-  .mobile-team-block.away strong {
-    color: var(--broadcast-cyan);
   }
 
   .mobile-versus {
@@ -298,15 +299,17 @@
   }
 
   .mobile-point-value {
+    --mobile-score-color: var(--mobile-home-color, var(--color-brand-strong));
+
     min-width: 0;
-    color: var(--color-brand-strong);
+    color: var(--mobile-score-color);
     font-family: var(--font-family-heading);
     font-size: clamp(52px, 15.5vh, 116px);
     font-variant-numeric: tabular-nums;
     font-weight: 700;
     line-height: 0.82;
     text-align: center;
-    text-shadow: 0 0 28px rgb(201 162 39 / 24%);
+    text-shadow: 0 0 28px color-mix(in srgb, var(--mobile-score-color) 30%, transparent);
   }
 
   .mobile-point-value.home {
@@ -314,9 +317,9 @@
   }
 
   .mobile-point-value.away {
+    --mobile-score-color: var(--mobile-away-color, var(--broadcast-cyan));
+
     grid-area: awayScore;
-    color: var(--broadcast-cyan);
-    text-shadow: 0 0 28px rgb(52 216 255 / 24%);
   }
 
   .mobile-score-stats {
@@ -372,11 +375,11 @@
   }
 
   .mobile-score-stats .home {
-    color: var(--color-brand-strong);
+    color: var(--mobile-home-color, var(--color-brand-strong));
   }
 
   .mobile-score-stats .away {
-    color: var(--broadcast-cyan);
+    color: var(--mobile-away-color, var(--broadcast-cyan));
   }
 
   .serve-stat {
@@ -388,8 +391,8 @@
     width: clamp(12px, 3.4vw, 18px);
     height: clamp(12px, 3.4vw, 18px);
     border-radius: 999px;
-    background: var(--color-brand-strong);
-    box-shadow: 0 0 16px rgb(224 187 69 / 62%);
+    background: var(--mobile-serve-color, var(--color-brand-strong));
+    box-shadow: 0 0 16px color-mix(in srgb, var(--mobile-serve-color, var(--color-brand-strong)) 62%, transparent);
   }
 
   .mobile-point-actions {
@@ -398,6 +401,9 @@
   }
 
   .mobile-point-actions button {
+    --point-team-color: var(--color-brand);
+    --point-team-secondary: #0d1016;
+
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
@@ -406,19 +412,21 @@
     min-height: clamp(70px, 13vh, 112px);
     border-radius: 8px;
     padding: 0 clamp(16px, 5vw, 26px);
-    color: var(--color-brand-contrast);
-    background: linear-gradient(180deg, var(--color-brand-strong), var(--color-brand));
+    color: #fff;
+    text-shadow: 0 2px 10px rgb(0 0 0 / 42%);
+    background:
+      radial-gradient(circle at 18% 14%, rgb(255 255 255 / 24%), transparent 25%),
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--point-team-color) 86%, #ffffff 14%),
+        color-mix(in srgb, var(--point-team-color) 68%, var(--point-team-secondary) 32%)
+      ),
+      var(--point-team-secondary);
+    border: 1px solid color-mix(in srgb, var(--point-team-color) 70%, #ffffff 10%);
     box-shadow:
-      0 0 0 1px rgb(255 255 255 / 18%) inset,
-      0 18px 34px -22px rgb(201 162 39 / 70%);
-  }
-
-  .mobile-point-actions button.away {
-    color: #041116;
-    background: linear-gradient(180deg, #5ee7ff, var(--broadcast-cyan));
-    box-shadow:
-      0 0 0 1px rgb(255 255 255 / 18%) inset,
-      0 18px 34px -22px rgb(52 216 255 / 70%);
+      inset 0 0 0 1px rgb(255 255 255 / 14%),
+      inset 0 -34px 52px color-mix(in srgb, var(--point-team-secondary) 38%, transparent),
+      0 18px 34px -22px color-mix(in srgb, var(--point-team-color) 76%, transparent);
   }
 
   .mobile-point-actions span {

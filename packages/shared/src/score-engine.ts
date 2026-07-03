@@ -41,6 +41,8 @@ export const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = {
   size: 'standard',
   position: 'top-left',
   dataScenesAuto: false,
+  soundEnabled: false,
+  soundVolume: 0.55,
 };
 
 export const DEFAULT_MATCH_CARDS: MatchCardsState = {
@@ -677,7 +679,23 @@ function normalizeOverlaySettings(settings: Partial<OverlaySettings> | undefined
       typeof settings?.dataScenesAuto === 'boolean'
         ? settings.dataScenesAuto
         : DEFAULT_OVERLAY_SETTINGS.dataScenesAuto,
+    soundEnabled:
+      typeof settings?.soundEnabled === 'boolean'
+        ? settings.soundEnabled
+        : DEFAULT_OVERLAY_SETTINGS.soundEnabled,
+    soundVolume:
+      typeof settings?.soundVolume === 'number'
+        ? clampNumber(settings.soundVolume, 0, 1, DEFAULT_OVERLAY_SETTINGS.soundVolume)
+        : DEFAULT_OVERLAY_SETTINGS.soundVolume,
   };
+}
+
+function clampNumber(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, value));
 }
 
 function normalizeMatchCards(cards: Partial<MatchCardsState> | undefined): MatchCardsState {

@@ -823,3 +823,186 @@
     font-size: 28px;
   }
 }
+
+.broadcast-scoreboard-shell.overlay-page {
+  position: relative;
+  width: 100%;
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  margin: 0 auto;
+  overflow: visible;
+  background: transparent;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay {
+  width: 100%;
+  box-shadow:
+    0 20px 60px rgb(0 0 0 / 34%),
+    inset 0 1px 0 rgb(255 255 255 / 6%);
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .scoreboard-header {
+  min-height: 72px;
+  padding: 12px 24px 12px 16px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .scoreboard-title {
+  gap: 3px 12px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .scoreboard-league-mark {
+  height: 46px;
+  padding-right: 12px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .scoreboard-league-mark img {
+  width: 64px;
+  height: 40px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .scoreboard-title > strong {
+  font-size: clamp(22px, 2.4vw, 30px);
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .court-label {
+  font-size: 13px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .status-badge {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-grid[data-set-count="1"] {
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 0.22fr) minmax(130px, 0.28fr);
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-grid[data-set-count="2"] {
+  grid-template-columns: minmax(0, 1fr) minmax(82px, 0.17fr) minmax(92px, 0.19fr) minmax(128px, 0.26fr);
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-grid[data-set-count="3"] {
+  grid-template-columns: minmax(0, 1fr) minmax(74px, 0.15fr) minmax(74px, 0.15fr) minmax(84px, 0.17fr) minmax(128px, 0.26fr);
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-cell,
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-number,
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .point-number {
+  min-height: 96px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-cell {
+  gap: 14px;
+  padding: 10px 14px 10px 18px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-cell::before {
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-logo {
+  width: 66px;
+  height: 66px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-cell strong {
+  font-size: clamp(26px, 2.8vw, 34px);
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-cell small {
+  font-size: 13px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .serve-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-number {
+  font-size: clamp(36px, 4vw, 52px);
+}
+
+.broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .point-number {
+  font-size: clamp(44px, 5vw, 64px);
+}
+
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 940px) {
+  .broadcast-scoreboard-shell.overlay-page {
+    width: 100%;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .scoreboard-header {
+    min-height: 49px;
+    padding: 6px 10px;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .scoreboard-league-mark,
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .court-label {
+    display: none;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .scoreboard-title {
+    gap: 0;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .scoreboard-title > strong {
+    font-size: clamp(18px, 4.6vw, 24px);
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .status-badge {
+    padding: 6px 9px;
+    font-size: 12px;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-grid[data-set-count="1"] {
+    grid-template-columns: minmax(0, 1fr) 54px 62px;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-grid[data-set-count="2"] {
+    grid-template-columns: minmax(0, 1fr) 42px 46px 56px;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-grid[data-set-count="3"] {
+    grid-template-columns: minmax(0, 1fr) 36px 36px 40px 56px;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-cell,
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-number,
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .point-number {
+    min-height: 66px;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-cell {
+    gap: 8px;
+    padding: 6px 10px;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-logo {
+    width: 30px;
+    height: 30px;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-cell strong {
+    font-size: clamp(17px, 4.4vw, 22px);
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .team-cell small {
+    font-size: 12px;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-number,
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .point-number {
+    padding: 4px 6px;
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .score-number {
+    font-size: clamp(24px, 7.6vh, 32px);
+  }
+
+  .broadcast-scoreboard-shell.overlay-page .scoreboard.overlay .point-number {
+    font-size: clamp(28px, 8.8vh, 38px);
+  }
+}
