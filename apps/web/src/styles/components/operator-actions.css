@@ -1,0 +1,145 @@
+.point-controls {
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.point-button {
+  flex: 1 1 0;
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  color: var(--color-brand-contrast);
+  background: linear-gradient(180deg, var(--color-brand-strong), var(--color-brand));
+  box-shadow: 0 18px 34px -22px rgb(201 162 39 / 68%);
+}
+
+.point-button.away {
+  color: #f7fbff;
+  background: linear-gradient(180deg, rgb(52 216 255 / 34%), rgb(255 255 255 / 6%)), var(--color-surface-raised);
+  border: 1px solid rgb(52 216 255 / 38%);
+}
+
+.point-button span {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.point-button strong {
+  font-size: clamp(20px, 3vw, 34px);
+}
+
+.quick-actions {
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.control-action-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.setup-actions {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quick-actions button,
+.control-action-bar button,
+.setup-actions button,
+.operator-panel button,
+.primary-action {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: var(--color-text-default);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
+    rgb(255 255 255 / 3%);
+  border: 1px solid var(--color-border-subtle);
+  font-weight: 800;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.quick-actions button:hover:not(:disabled),
+.control-action-bar button:hover:not(:disabled),
+.setup-actions button:hover:not(:disabled),
+.operator-panel button:hover:not(:disabled),
+.primary-action:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-strong);
+  transform: translateY(-1px);
+}
+
+.quick-actions button {
+  flex: 1 1 110px;
+}
+
+.control-action-bar button {
+  min-width: 0;
+  min-height: 72px;
+  flex-direction: column;
+  padding: 10px 8px;
+}
+
+.control-action-bar button.danger {
+  color: #ff6b76;
+  border-color: rgb(248 113 113 / 46%);
+  background: rgb(248 113 113 / 5%);
+}
+
+.control-action-bar svg {
+  width: 24px;
+  height: 24px;
+}
+
+.control-action-bar span {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: currentColor;
+  font-family: var(--font-family-heading);
+  font-size: 12px;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+}
+
+.setup-actions button {
+  flex: 1 1 160px;
+}
+
+.operator-panel > button {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.primary-action {
+  width: 100%;
+  color: var(--color-brand-contrast);
+  background: linear-gradient(135deg, var(--color-brand), var(--color-brand-strong));
+  border-color: transparent;
+  box-shadow: 0 8px 24px -8px rgb(201 162 39 / 40%);
+}
+
+.danger-zone button {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.mobile-score-control {
+  display: none;
+}

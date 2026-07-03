@@ -1,0 +1,38 @@
+.watch-topbar {
+  max-width: 860px;
+}
+
+.watch-score {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.watch-page .scoreboard {
+  border-color: rgb(201 162 39 / 24%);
+  background:
+    radial-gradient(circle at top left, rgb(201 162 39 / 10%), transparent 28%),
+    linear-gradient(180deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 1%)),
+    rgb(17 17 17 / 94%);
+}
+
+.watch-page .scoreboard-header {
+  padding: 18px;
+}
+
+.watch-page .scoreboard-header .status-badge {
+  display: none;
+}
+
+.watch-page .scoreboard-header strong {
+  max-width: 100%;
+  font-size: clamp(22px, 3vw, 34px);
+}
+
+.watch-page .team-cell {
+  padding: 18px;
+}
+
+.watch-page .score-number,
+.watch-page .point-number {
+  font-size: clamp(34px, 5vw, 58px);
+}

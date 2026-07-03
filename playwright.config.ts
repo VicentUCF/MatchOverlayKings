@@ -9,12 +9,12 @@ export default defineConfig({
   testDir: './apps/web/e2e',
   timeout: 30_000,
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: 'http://127.0.0.1:4300',
     trace: 'on-first-retry',
   },
   webServer: {
     command: 'npm run preview:web',
-    url: 'http://127.0.0.1:4173',
+    url: 'http://127.0.0.1:4300',
     reuseExistingServer: true,
     timeout: 120_000,
   },

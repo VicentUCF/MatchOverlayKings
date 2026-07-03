@@ -1,0 +1,221 @@
+.scoreboard {
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-strong);
+  background:
+    radial-gradient(circle at top left, rgb(201 162 39 / 13%), transparent 34%),
+    linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 1%)),
+    rgb(17 17 17 / 96%);
+  box-shadow:
+    0 20px 60px rgb(0 0 0 / 34%),
+    inset 0 1px 0 rgb(255 255 255 / 4%);
+}
+
+.scoreboard-header {
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.scoreboard-header strong {
+  display: block;
+  color: var(--color-text-strong);
+  font-family: var(--font-family-heading);
+  font-size: clamp(18px, 2vw, 28px);
+  line-height: 1;
+}
+
+.scoreboard-header span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.status-badge {
+  flex: 0 0 auto;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--color-brand-contrast);
+  background: linear-gradient(135deg, var(--color-brand), var(--color-brand-strong));
+  border: 1px solid transparent;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.scoreboard-header .status-badge {
+  color: var(--color-brand-contrast);
+}
+
+.scoreboard-header .status-badge.hot {
+  color: #201600;
+}
+
+.scoreboard-header .status-badge.finished {
+  color: #ffffff;
+}
+
+.status-badge.hot {
+  color: #201600;
+  background: var(--warning);
+  border-color: transparent;
+}
+
+.status-badge.finished {
+  color: #ffffff;
+  background: #b63434;
+  border-color: transparent;
+}
+
+.score-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(72px, 0.22fr) minmax(86px, 0.28fr) minmax(96px, 0.32fr);
+  align-items: stretch;
+}
+
+.score-grid > * {
+  min-width: 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.score-grid-head {
+  padding: 10px 14px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  background: rgb(255 255 255 / 4%);
+  font-weight: 900;
+}
+
+.team-cell {
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.team-cell strong,
+.team-cell small,
+.serve-badge {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-cell strong {
+  font-size: clamp(18px, 2vw, 30px);
+}
+
+.team-cell.winner {
+  color: var(--color-brand-strong);
+}
+
+.serve-badge {
+  flex: 0 0 auto;
+  border-radius: 8px;
+  padding: 5px 8px;
+  color: #082016;
+  background: var(--success);
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.team-logo {
+  --team-color: var(--accent);
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--team-color) 18%, #0d1016);
+  border: 1px solid color-mix(in srgb, var(--team-color) 55%, transparent);
+  overflow: hidden;
+}
+
+.team-logo img {
+  width: 82%;
+  height: 82%;
+  object-fit: contain;
+}
+
+.score-number,
+.point-number {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: var(--color-text-strong);
+  font-family: var(--font-family-heading);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(28px, 4vw, 52px);
+}
+
+.point-number {
+  color: var(--color-text-strong);
+  background: rgb(255 255 255 / 4%);
+}
+
+.point-number.pressure {
+  color: var(--color-brand-strong);
+}
+
+.set-strip {
+  align-items: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 10px 14px;
+}
+
+.set-strip span {
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #c8d0df;
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 800;
+}
+
+.set-strip span.complete {
+  color: var(--color-brand-contrast);
+  background: var(--color-brand);
+}
+
+.scoreboard-title,
+.team-identity {
+  min-width: 0;
+}
+
+.scoreboard-title,
+.team-identity {
+  display: grid;
+}
+
+.scoreboard-title {
+  gap: 4px;
+}
+
+.scoreboard-league-mark {
+  display: none;
+}
+
+.scoreboard-league-mark img {
+  width: 58px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.scoreboard-league-mark em {
+  font-style: normal;
+}
+
+.team-identity {
+  gap: 2px;
+}
+
+.team-cell svg {
+  flex: 0 0 auto;
+}

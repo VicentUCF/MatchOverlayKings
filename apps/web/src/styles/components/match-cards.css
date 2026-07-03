@@ -1,0 +1,103 @@
+.overlay-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.match-cards-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.card-team-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.card-team-switch button {
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  border-radius: 8px;
+  padding: 8px;
+  color: var(--color-text-default);
+  background: rgb(255 255 255 / 3%);
+  border: 1px solid var(--color-border-subtle);
+  font-weight: 800;
+}
+
+.card-team-switch button.active {
+  color: var(--color-brand-strong);
+  border-color: var(--color-border-strong);
+  background: rgb(201 162 39 / 10%);
+}
+
+.card-team-switch strong,
+.card-team-switch span,
+.card-side-heading strong,
+.card-side-heading span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-team-switch span {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.card-side-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.card-side-heading span {
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.card-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.card-action-grid button {
+  min-width: 0;
+  min-height: 126px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  border-radius: 8px;
+  padding: 7px;
+  color: var(--color-text-default);
+  background: rgb(255 255 255 / 3%);
+  border: 1px solid var(--color-border-subtle);
+  font-weight: 800;
+}
+
+.card-action-grid button.used {
+  color: var(--success);
+  border-color: rgb(16 185 129 / 30%);
+  background: rgb(16 185 129 / 10%);
+}
+
+.card-action-grid img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.card-action-grid span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.15;
+}

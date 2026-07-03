@@ -1,0 +1,12 @@
+.toast-error {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border-radius: 8px;
+  color: #ffeef1;
+  background: #661b28;
+  border: 1px solid rgba(255, 120, 135, 0.35);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.32);
+}

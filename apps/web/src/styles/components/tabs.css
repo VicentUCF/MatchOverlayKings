@@ -1,0 +1,23 @@
+.phase-tabs {
+  max-width: 1480px;
+  margin: 0 auto 16px;
+  gap: 8px;
+  padding: 4px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: rgb(17 17 17 / 92%);
+}
+
+.phase-tabs button {
+  flex: 1 1 0;
+  min-height: 42px;
+  border-radius: 6px;
+  color: var(--text-soft);
+  background: transparent;
+  font-weight: 800;
+}
+
+.phase-tabs button.active {
+  color: var(--color-brand-contrast);
+  background: linear-gradient(135deg, var(--color-brand), var(--color-brand-strong));
+}

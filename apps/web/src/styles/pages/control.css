@@ -1,0 +1,57 @@
+.control-layout {
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.control-status-strip {
+  align-items: center;
+  gap: 10px;
+  max-width: 1480px;
+  min-height: 48px;
+  margin: 0 auto 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  color: var(--color-brand-strong);
+  background: rgb(201 162 39 / 10%);
+  font-weight: 800;
+}
+
+.control-mode-tabs {
+  max-width: 620px;
+}
+
+.score-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.score-layout {
+  display: block;
+  width: 100%;
+  max-width: min(1120px, calc(100vw - 32px));
+}
+
+.score-layout .live-score-panel {
+  width: 100%;
+}
+
+.side-panel {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 12px;
+}
+
+.setup-layout {
+  align-items: stretch;
+}
+
+.setup-layout .setup-stack {
+  width: min(560px, 100%);
+}
+
+.setup-preview {
+  align-self: flex-start;
+}

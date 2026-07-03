@@ -1,0 +1,33 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at top left, rgb(201 162 39 / 12%), transparent 28%),
+    radial-gradient(circle at top right, rgb(255 255 255 / 4%), transparent 24%),
+    linear-gradient(180deg, rgb(255 255 255 / 2%), transparent 12%), var(--color-background);
+  color: var(--color-text-default);
+  font-family: var(--font-family-body);
+  line-height: 1.5;
+}
+
+html.overlay-document,
+body.overlay-body,
+body.overlay-body #root {
+  background: transparent;
+}
+
+body.overlay-body {
+  overflow: hidden;
+}

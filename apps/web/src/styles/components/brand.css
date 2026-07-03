@@ -1,0 +1,43 @@
+.brand {
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.brand img {
+  width: min(9rem, 38vw);
+  height: auto;
+  max-height: 3.35rem;
+  object-fit: contain;
+  filter: drop-shadow(0 0.75rem 1.5rem rgb(0 0 0 / 24%));
+}
+
+.brand strong,
+.brand small {
+  display: block;
+}
+
+.brand small,
+.scoreboard-header span,
+.team-cell small,
+.score-grid-head,
+.version-row span,
+label span,
+.section-heading span,
+.match-info small {
+  color: var(--text-soft);
+}
+
+.brand strong {
+  color: var(--color-text-strong);
+  font-family: var(--font-family-heading);
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.brand small {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
