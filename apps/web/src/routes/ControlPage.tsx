@@ -1101,7 +1101,6 @@ function PointButton({
   return (
     <button type="button" className={`point-button ${side}`} onClick={onClick} disabled={!state || pending || state.status === 'finished'}>
       <Plus size={28} />
-      <span>+ punto</span>
       <strong>{label}</strong>
     </button>
   );
