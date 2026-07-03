@@ -11,6 +11,7 @@ import type {
   OverlayDataSceneTarget,
   OverlaySettingsPatch,
   Side,
+  SponsorTickerPatch,
   Team,
 } from '@kpl/shared';
 import { createCommandId } from '../command-id.js';
@@ -44,6 +45,8 @@ export interface MatchSocketState {
   updateOverlaySettings: (patch: OverlaySettingsPatch) => Promise<boolean>;
   useMatchCard: (side: Side, cardId: MatchCardId, cardName: string) => Promise<boolean>;
   triggerDataScene: (kind: OverlayDataSceneKind, target: OverlayDataSceneTarget) => Promise<boolean>;
+  updateSponsorTicker: (patch: SponsorTickerPatch) => Promise<boolean>;
+  triggerSponsorFullscreen: (sponsorId: string | null, durationSeconds?: number) => Promise<boolean>;
   refreshEvents: () => Promise<void>;
 }
 
@@ -223,6 +226,12 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
       useMatchCard: (side: Side, cardId: MatchCardId, cardName: string) => send('match:useCard', { side, cardId, cardName }),
       triggerDataScene: (kind: OverlayDataSceneKind, target: OverlayDataSceneTarget) =>
         send('overlay:triggerDataScene', { kind, target }),
+      updateSponsorTicker: (patch: SponsorTickerPatch) => send('overlay:updateSponsorTicker', { patch }),
+      triggerSponsorFullscreen: (sponsorId: string | null, durationSeconds?: number) =>
+        send('overlay:triggerSponsorFullscreen', {
+          sponsorId,
+          ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+        }),
       refreshEvents,
     }),
     [connectionState, error, events, pending, refreshEvents, send, state, teams],
@@ -290,6 +299,24 @@ function toRpcCall(
         ...base,
         p_kind: payload.kind,
         p_target: payload.target,
+      },
+    };
+  }
+
+  if (event === 'overlay:updateSponsorTicker') {
+    return {
+      rpcName: 'update_sponsor_ticker',
+      params: { ...base, p_patch: payload.patch },
+    };
+  }
+
+  if (event === 'overlay:triggerSponsorFullscreen') {
+    return {
+      rpcName: 'trigger_sponsor_fullscreen',
+      params: {
+        ...base,
+        p_sponsor_id: payload.sponsorId,
+        p_duration_seconds: payload.durationSeconds ?? null,
       },
     };
   }

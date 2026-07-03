@@ -103,6 +103,7 @@ export class FileStore {
         config: next.config,
         overlaySettings: next.overlaySettings,
         cards: next.cards,
+        sponsorAds: next.sponsorAds,
         state: next,
       };
 

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createTimeline, stagger } from 'animejs';
-import type { MatchSetScore, MatchState, OverlayDataSceneState } from '@kpl/shared';
+import { DEFAULT_SPONSOR_ADS } from '@kpl/shared';
+import type { MatchSetScore, MatchState, OverlayDataSceneState, SponsorFullscreenState } from '@kpl/shared';
 import { CardAnnouncementScene } from '../components/CardAnnouncementScene.js';
 import { OverlayDataScene } from '../components/OverlayDataScene.js';
 import { PrematchOverlayScene } from '../components/PrematchOverlayScene.js';
 import { Scoreboard } from '../components/Scoreboard.js';
 import { SideChangeScene } from '../components/SideChangeScene.js';
+import { SponsorAdScene, hasSponsorTicker } from '../components/SponsorAdScene.js';
 import { useCardAnnouncementQueue } from '../hooks/useCardAnnouncementQueue.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
 
@@ -34,17 +36,22 @@ export function OverlayPage({ eventId }: { eventId: string }) {
   const lastSideChangeKeyRef = useRef<string | null>(null);
   const dataSceneBaselineVersionRef = useRef<number | null>(null);
   const lastDataSceneIdRef = useRef<string | null>(null);
+  const sponsorAdBaselineVersionRef = useRef<number | null>(null);
+  const lastSponsorAdIdRef = useRef<string | null>(null);
   const autoDataSceneIndexRef = useRef(0);
   const [activeSideChange, setActiveSideChange] = useState<SideChangeSceneState | null>(null);
   const [prematchScene, setPrematchScene] = useState<PrematchSceneState | null>(null);
   const [activeDataScene, setActiveDataScene] = useState<OverlayDataSceneState | null>(null);
+  const [activeSponsorAd, setActiveSponsorAd] = useState<SponsorFullscreenState | null>(null);
   const settings = match.state?.overlaySettings;
+  const sponsorAds = match.state?.sponsorAds ?? DEFAULT_SPONSOR_ADS;
   const shouldShowScoreboard = Boolean(match.state && match.state.status === 'live' && settings?.visible !== false);
   const announcement = match.state?.cards?.announcement ?? null;
   const { activeAnnouncement, completeAnnouncement } = useCardAnnouncementQueue(announcement, match.state?.status === 'live');
   const clearSideChange = useCallback(() => setActiveSideChange(null), []);
   const clearPrematchScene = useCallback(() => setPrematchScene(null), []);
   const clearDataScene = useCallback(() => setActiveDataScene(null), []);
+  const clearSponsorAd = useCallback(() => setActiveSponsorAd(null), []);
 
   useEffect(() => {
     document.documentElement.classList.add('overlay-document');
@@ -131,6 +138,40 @@ export function OverlayPage({ eventId }: { eventId: string }) {
 
     lastDataSceneIdRef.current = nextSceneId;
     setActiveDataScene(nextScene);
+  }, [match.state]);
+
+  useEffect(() => {
+    if (!match.state) {
+      setActiveSponsorAd(null);
+      return;
+    }
+
+    const nextAd = match.state.sponsorAds?.fullscreen ?? null;
+    const nextAdId = nextAd?.id ?? null;
+
+    if (sponsorAdBaselineVersionRef.current === null) {
+      sponsorAdBaselineVersionRef.current = match.state.version;
+      lastSponsorAdIdRef.current = nextAdId;
+      return;
+    }
+
+    if (match.state.version <= sponsorAdBaselineVersionRef.current) {
+      lastSponsorAdIdRef.current = nextAdId;
+      return;
+    }
+
+    if (!nextAd) {
+      lastSponsorAdIdRef.current = null;
+      setActiveSponsorAd(null);
+      return;
+    }
+
+    if (nextAdId === lastSponsorAdIdRef.current) {
+      return;
+    }
+
+    lastSponsorAdIdRef.current = nextAdId;
+    setActiveSponsorAd(nextAd);
   }, [match.state]);
 
   useEffect(() => {
@@ -243,7 +284,7 @@ export function OverlayPage({ eventId }: { eventId: string }) {
   }, [settings?.position, shouldShowScoreboard]);
 
   return (
-    <main className="overlay-page">
+    <main className="overlay-page" data-sponsor-ticker={hasSponsorTicker(sponsorAds.ticker) && !activeSponsorAd}>
       {shouldShowScoreboard && match.state ? (
         <div
           className="overlay-score-wrap"
@@ -284,6 +325,7 @@ export function OverlayPage({ eventId }: { eventId: string }) {
           onExitComplete={clearPrematchScene}
         />
       ) : null}
+      <SponsorAdScene ticker={sponsorAds.ticker} fullscreen={activeSponsorAd} onFullscreenDone={clearSponsorAd} />
       {match.state?.overlaySettings.visible === false ? <div className="overlay-blank" /> : null}
       {!match.state || match.state.status === 'finished' ? (
         <div className="overlay-loading">KPL</div>

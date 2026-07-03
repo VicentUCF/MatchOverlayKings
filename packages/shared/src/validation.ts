@@ -8,6 +8,9 @@ import type {
   MatchState,
   OverlaySettings,
   Side,
+  SponsorAdsState,
+  SponsorFullscreenState,
+  SponsorTickerState,
   Team,
 } from './types.js';
 
@@ -16,6 +19,15 @@ const DEFAULT_PARSED_OVERLAY_SETTINGS: OverlaySettings = {
   size: 'standard',
   position: 'top-left',
   dataScenesAuto: false,
+};
+const DEFAULT_PARSED_SPONSOR_ADS: SponsorAdsState = {
+  ticker: {
+    visible: false,
+    sponsorIds: [],
+    label: 'Patrocinadores oficiales',
+    speedSeconds: 28,
+  },
+  fullscreen: null,
 };
 const MATCH_CARD_IDS = ['2vs1', 'restas-tu', 'cambiate', 'robo-saque', 'solo-un-saque', 'comodin', 'robo-carta'] as const;
 
@@ -48,6 +60,7 @@ export function parseEventDefinition(value: unknown): EventDefinition {
     config: parseConfig(value.config),
     overlaySettings: parseOverlaySettings(value.overlaySettings),
     cards: parseMatchCards(value.cards),
+    sponsorAds: parseSponsorAds(value.sponsorAds),
     state: value.state === null || value.state === undefined ? null : (value.state as MatchState),
   };
 
@@ -164,6 +177,69 @@ function parseMatchCards(value: unknown): MatchCardsState {
   };
 }
 
+function parseSponsorAds(value: unknown): SponsorAdsState {
+  if (!isRecord(value)) {
+    return cloneSponsorAds(DEFAULT_PARSED_SPONSOR_ADS);
+  }
+
+  return {
+    ticker: parseSponsorTicker(value.ticker),
+    fullscreen: parseSponsorFullscreen(value.fullscreen),
+  };
+}
+
+function parseSponsorTicker(value: unknown): SponsorTickerState {
+  if (!isRecord(value)) {
+    return { ...DEFAULT_PARSED_SPONSOR_ADS.ticker };
+  }
+
+  return {
+    visible: typeof value.visible === 'boolean' ? value.visible : DEFAULT_PARSED_SPONSOR_ADS.ticker.visible,
+    sponsorIds: parseSponsorIds(value.sponsorIds),
+    label: readOptionalString(value, 'label') || DEFAULT_PARSED_SPONSOR_ADS.ticker.label,
+    speedSeconds: clampNumber(value.speedSeconds, 12, 90, DEFAULT_PARSED_SPONSOR_ADS.ticker.speedSeconds),
+  };
+}
+
+function parseSponsorFullscreen(value: unknown): SponsorFullscreenState | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const sponsorId = readOptionalString(value, 'sponsorId');
+
+  if (!sponsorId) {
+    return null;
+  }
+
+  const triggeredAt = readOptionalString(value, 'triggeredAt');
+
+  return {
+    id: readOptionalString(value, 'id') || triggeredAt || sponsorId,
+    sponsorId,
+    triggeredAt,
+    durationSeconds: clampNumber(value.durationSeconds, 4, 30, 8),
+  };
+}
+
+function parseSponsorIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))];
+}
+
+function cloneSponsorAds(value: SponsorAdsState): SponsorAdsState {
+  return {
+    ticker: {
+      ...value.ticker,
+      sponsorIds: [...value.ticker.sponsorIds],
+    },
+    fullscreen: value.fullscreen ? { ...value.fullscreen } : null,
+  };
+}
+
 function parseCardUse(value: unknown): MatchCardUse | null {
   if (!isRecord(value) || !isMatchCardId(value.cardId)) {
     return null;
@@ -210,6 +286,14 @@ function readNumber(record: Record<string, unknown>, key: string): number {
   }
 
   return value;
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, value));
 }
 
 function readStatus(value: unknown): EventDefinition['status'] {

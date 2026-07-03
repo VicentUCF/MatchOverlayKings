@@ -7,9 +7,12 @@ import {
   EyeOff,
   Flag,
   ListRestart,
+  Maximize2,
+  Megaphone,
   Menu,
   MonitorPlay,
   Move,
+  PanelBottom,
   Pencil,
   Repeat2,
   Play,
@@ -25,7 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import { animate, stagger } from 'animejs';
-import { DEFAULT_OVERLAY_SETTINGS, formatPoint, getCompletedSetCount } from '@kpl/shared';
+import { DEFAULT_OVERLAY_SETTINGS, DEFAULT_SPONSOR_ADS, formatPoint, getCompletedSetCount } from '@kpl/shared';
 import type {
   ManualScorePatch,
   MatchGameScore,
@@ -37,14 +40,17 @@ import type {
   OverlayPosition,
   OverlaySettingsPatch,
   Side,
+  SponsorAdsState,
+  SponsorTickerPatch,
   Team,
 } from '@kpl/shared';
 import { Scoreboard } from '../components/Scoreboard.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
 import { MATCH_CARDS, type MatchCardDefinition } from '../lib/match-cards.js';
+import { SPONSORS, getSponsorById } from '../lib/sponsors.js';
 
 type ControlPhase = 'setup' | 'score';
-type MobilePanel = 'cards' | 'data' | 'edit' | 'menu';
+type MobilePanel = 'cards' | 'data' | 'ads' | 'edit' | 'menu';
 
 export function ControlPage({ eventId }: { eventId: string }) {
   const match = useMatchSocket(eventId, 'control', '');
@@ -187,6 +193,14 @@ export function ControlPage({ eventId }: { eventId: string }) {
 
   async function triggerDataScene(kind: OverlayDataSceneKind, target: OverlayDataSceneTarget) {
     await match.triggerDataScene(kind, target);
+  }
+
+  async function updateSponsorTicker(patch: SponsorTickerPatch) {
+    await match.updateSponsorTicker(patch);
+  }
+
+  async function triggerSponsorFullscreen(sponsorId: string | null) {
+    await match.triggerSponsorFullscreen(sponsorId, 8);
   }
 
   const overlaySettings = state?.overlaySettings ?? DEFAULT_OVERLAY_SETTINGS;
@@ -335,6 +349,15 @@ export function ControlPage({ eventId }: { eventId: string }) {
       teams={match.teams}
       pending={match.pending}
       onTrigger={(kind, target) => void triggerDataScene(kind, target)}
+    />
+  ) : null;
+
+  const sponsorAdsPanel = state ? (
+    <SponsorAdsPanel
+      sponsorAds={state.sponsorAds ?? DEFAULT_SPONSOR_ADS}
+      pending={match.pending}
+      onUpdateTicker={(patch) => void updateSponsorTicker(patch)}
+      onTriggerFullscreen={(sponsorId) => void triggerSponsorFullscreen(sponsorId)}
     />
   ) : null;
 
@@ -487,6 +510,10 @@ export function ControlPage({ eventId }: { eventId: string }) {
                 <BarChart3 size={18} />
                 <span>OBS datos</span>
               </button>
+              <button type="button" onClick={() => setMobilePanel('ads')} disabled={!state}>
+                <Megaphone size={18} />
+                <span>Anuncios</span>
+              </button>
               <button type="button" onClick={() => setMobilePanel('edit')} disabled={!state}>
                 <Pencil size={18} />
                 <span>Editar marcador</span>
@@ -505,6 +532,9 @@ export function ControlPage({ eventId }: { eventId: string }) {
       </MobileControlModal>
       <MobileControlModal title="OBS datos" open={mobilePanel === 'data'} onClose={() => setMobilePanel(null)}>
         {dataScenesPanel}
+      </MobileControlModal>
+      <MobileControlModal title="Anuncios" open={mobilePanel === 'ads'} onClose={() => setMobilePanel(null)}>
+        {sponsorAdsPanel}
       </MobileControlModal>
       <MobileControlModal title="Editar marcador" open={mobilePanel === 'edit'} onClose={() => setMobilePanel(null)}>
         {correctionPanel}
@@ -615,6 +645,10 @@ function MobileScoreControl({
         <button type="button" onClick={() => onOpenPanel('cards')}>
           <CreditCard size={32} />
           <span>Carta especial</span>
+        </button>
+        <button type="button" onClick={() => onOpenPanel('ads')}>
+          <Megaphone size={32} />
+          <span>Anuncios</span>
         </button>
         <button type="button" onClick={() => onOpenPanel('edit')}>
           <Pencil size={32} />
@@ -839,6 +873,144 @@ function MatchCardsPanel({
   );
 }
 
+type SponsorTickerSpeed = 'fast' | 'normal' | 'slow';
+
+const SPONSOR_TICKER_SPEEDS: Record<SponsorTickerSpeed, number> = {
+  fast: 18,
+  normal: 28,
+  slow: 42,
+};
+
+function SponsorAdsPanel({
+  sponsorAds,
+  pending,
+  onUpdateTicker,
+  onTriggerFullscreen,
+}: {
+  sponsorAds: SponsorAdsState;
+  pending: boolean;
+  onUpdateTicker: (patch: SponsorTickerPatch) => void;
+  onTriggerFullscreen: (sponsorId: string | null) => void;
+}) {
+  const ads = sponsorAds ?? DEFAULT_SPONSOR_ADS;
+  const ticker = ads.ticker ?? DEFAULT_SPONSOR_ADS.ticker;
+  const selectedSet = new Set(ticker.sponsorIds);
+  const activeSponsor = ads.fullscreen ? getSponsorById(ads.fullscreen.sponsorId) : null;
+
+  function toggleSponsor(sponsorId: string) {
+    const nextIds = selectedSet.has(sponsorId)
+      ? ticker.sponsorIds.filter((id) => id !== sponsorId)
+      : [...ticker.sponsorIds, sponsorId];
+
+    onUpdateTicker({
+      sponsorIds: nextIds,
+      visible: nextIds.length > 0 ? ticker.visible : false,
+    });
+  }
+
+  return (
+    <section className="operator-panel sponsor-ads-panel">
+      <h2>Anuncios</h2>
+
+      <div className="sponsor-panel-heading">
+        <PanelBottom size={18} />
+        <strong>Barra inferior</strong>
+        <span>{ticker.sponsorIds.length} logos</span>
+      </div>
+
+      <button
+        type="button"
+        className={`switch-button ${ticker.visible ? 'on' : ''}`}
+        onClick={() => onUpdateTicker({ visible: !ticker.visible })}
+        disabled={pending || ticker.sponsorIds.length === 0}
+      >
+        {ticker.visible ? <Eye size={18} /> : <EyeOff size={18} />}
+        <span>{ticker.visible ? 'Barra activa' : 'Barra apagada'}</span>
+      </button>
+
+      <SegmentedControl<SponsorTickerSpeed>
+        label="Ritmo"
+        value={speedPreset(ticker.speedSeconds)}
+        disabled={pending}
+        options={[
+          { value: 'fast', label: 'Rapido', icon: <PanelBottom size={16} /> },
+          { value: 'normal', label: 'Medio', icon: <PanelBottom size={16} /> },
+          { value: 'slow', label: 'Lento', icon: <PanelBottom size={16} /> },
+        ]}
+        onChange={(speed) => onUpdateTicker({ speedSeconds: SPONSOR_TICKER_SPEEDS[speed] })}
+      />
+
+      <div className="sponsor-picker-grid">
+        {SPONSORS.map((sponsor) => {
+          const selected = selectedSet.has(sponsor.id);
+
+          return (
+            <button
+              key={sponsor.id}
+              type="button"
+              className={selected ? 'active' : ''}
+              onClick={() => toggleSponsor(sponsor.id)}
+              disabled={pending}
+            >
+              <span className="sponsor-panel-logo">
+                {sponsor.logoUrl ? <img src={sponsor.logoUrl} alt="" /> : sponsorInitials(sponsor.name)}
+              </span>
+              <span>
+                <strong>{sponsor.name}</strong>
+                <small>{selected ? 'En barra' : 'Agregar'}</small>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="sponsor-panel-heading">
+        <Maximize2 size={18} />
+        <strong>Pantalla grande</strong>
+        <span>{activeSponsor ? activeSponsor.name : 'Lista'}</span>
+      </div>
+
+      <div className="sponsor-fullscreen-grid">
+        {SPONSORS.map((sponsor) => (
+          <button
+            key={sponsor.id}
+            type="button"
+            onClick={() => onTriggerFullscreen(sponsor.id)}
+            disabled={pending}
+          >
+            <span className="sponsor-panel-logo">
+              {sponsor.logoUrl ? <img src={sponsor.logoUrl} alt="" /> : sponsorInitials(sponsor.name)}
+            </span>
+            <span>
+              <strong>{sponsor.name}</strong>
+              <small>Lanzar</small>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {ads.fullscreen ? (
+        <button type="button" className="sponsor-clear-button" onClick={() => onTriggerFullscreen(null)} disabled={pending}>
+          <X size={18} />
+          Limpiar pantalla
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function speedPreset(speedSeconds: number): SponsorTickerSpeed {
+  if (speedSeconds <= 20) {
+    return 'fast';
+  }
+
+  if (speedSeconds >= 36) {
+    return 'slow';
+  }
+
+  return 'normal';
+}
+
 function targetKey(target: OverlayDataSceneTarget): string {
   if (target.type === 'side') {
     return target.side;
@@ -991,6 +1163,10 @@ function teamInitials(value: string): string {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? '')
     .join('');
+}
+
+function sponsorInitials(value: string): string {
+  return teamInitials(value);
 }
 
 function prefersReducedMotion(): boolean {

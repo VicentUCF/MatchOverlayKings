@@ -16,6 +16,7 @@
 @import './components/forms.css';
 @import './components/match-cards.css';
 @import './components/segmented-controls.css';
+@import './components/sponsor-ads.css';
 @import './components/scoreboard.css';
 @import './components/operator-actions.css';
 @import './components/mobile-modal.css';
@@ -30,5 +31,6 @@
 @import './overlays/prematch-scene.css';
 @import './overlays/card-announcement-scene.css';
 @import './overlays/data-scene.css';
+@import './overlays/sponsor-ads.css';
 
 @import './responsive/app.css';

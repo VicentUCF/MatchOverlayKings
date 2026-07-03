@@ -10,7 +10,9 @@ import {
   resetMatch,
   startNewMatch,
   triggerOverlayDataScene,
+  triggerSponsorFullscreen,
   undoLastScoringCommand,
+  updateSponsorTicker,
   useMatchCard,
 } from '../src/index.js';
 import type { EventDefinition, MatchState, Side } from '../src/index.js';
@@ -201,6 +203,34 @@ describe('score engine', () => {
     state = resetMatch(state, 'reset-after-data-scene');
 
     expect(state.dataScene).toBeNull();
+  });
+
+  it('controls sponsor ads and keeps the ticker across resets', () => {
+    let state = createInitialMatchState(event);
+    state = updateSponsorTicker(
+      state,
+      {
+        visible: true,
+        sponsorIds: ['kpl', 'magic-city'],
+        speedSeconds: 18,
+      },
+      'sponsor-ticker-1',
+    );
+    state = triggerSponsorFullscreen(state, 'kpl', 8, 'sponsor-fullscreen-1');
+
+    expect(state.sponsorAds.ticker.visible).toBe(true);
+    expect(state.sponsorAds.ticker.sponsorIds).toEqual(['kpl', 'magic-city']);
+    expect(state.sponsorAds.fullscreen).toMatchObject({
+      id: 'sponsor-fullscreen-1',
+      sponsorId: 'kpl',
+      durationSeconds: 8,
+    });
+
+    state = resetMatch(state, 'reset-after-sponsor');
+
+    expect(state.sponsorAds.ticker.visible).toBe(true);
+    expect(state.sponsorAds.ticker.sponsorIds).toEqual(['kpl', 'magic-city']);
+    expect(state.sponsorAds.fullscreen).toBeNull();
   });
 
   it('detects set point and match point', () => {

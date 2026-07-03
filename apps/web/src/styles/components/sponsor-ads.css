@@ -1,0 +1,93 @@
+.sponsor-ads-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.sponsor-panel-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  color: var(--color-text-strong);
+}
+
+.sponsor-panel-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sponsor-panel-heading span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sponsor-picker-grid,
+.sponsor-fullscreen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
+}
+
+.sponsor-picker-grid button,
+.sponsor-fullscreen-grid button {
+  justify-content: flex-start;
+  min-height: 64px;
+  margin: 0;
+  padding: 8px 10px;
+}
+
+.sponsor-picker-grid button.active {
+  color: var(--color-brand-strong);
+  background: rgb(201 162 39 / 12%);
+  border-color: var(--color-border-strong);
+}
+
+.sponsor-panel-logo {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 7%);
+  border: 1px solid rgb(255 255 255 / 14%);
+  overflow: hidden;
+}
+
+.sponsor-panel-logo img {
+  width: 86%;
+  height: 86%;
+  object-fit: contain;
+}
+
+.sponsor-panel-logo + span {
+  display: grid;
+  min-width: 0;
+  text-align: left;
+}
+
+.sponsor-panel-logo + span strong,
+.sponsor-panel-logo + span small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sponsor-panel-logo + span small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.sponsor-clear-button {
+  color: #ff6b76;
+  border-color: rgb(248 113 113 / 46%);
+  background: rgb(248 113 113 / 5%);
+}

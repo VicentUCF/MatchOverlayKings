@@ -5,10 +5,12 @@ import {
   resetMatch,
   setMatchStatus,
   startNewMatch,
+  triggerSponsorFullscreen,
   triggerOverlayDataScene,
   undoLastScoringCommand,
   updateMatchMeta,
   updateOverlaySettings,
+  updateSponsorTicker,
   useMatchCard,
 } from '@kpl/shared';
 import type {
@@ -127,6 +129,18 @@ export function registerSocketHandlers(options: SocketHandlerOptions): void {
     socket.on('overlay:triggerDataScene', (payload, ack) =>
       runControlCommand(options, socket, payload, ack, (state) =>
         triggerOverlayDataScene(state, payload.kind, payload.target, payload.commandId),
+      ),
+    );
+
+    socket.on('overlay:updateSponsorTicker', (payload, ack) =>
+      runControlCommand(options, socket, payload, ack, (state) =>
+        updateSponsorTicker(state, payload.patch, payload.commandId),
+      ),
+    );
+
+    socket.on('overlay:triggerSponsorFullscreen', (payload, ack) =>
+      runControlCommand(options, socket, payload, ack, (state) =>
+        triggerSponsorFullscreen(state, payload.sponsorId, payload.durationSeconds, payload.commandId),
       ),
     );
   });

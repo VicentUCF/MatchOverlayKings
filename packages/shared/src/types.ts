@@ -1,5 +1,6 @@
 export type TeamId = string;
 export type EventId = string;
+export type SponsorId = string;
 export type Side = 'home' | 'away';
 export type MatchStatus = 'pre_match' | 'live' | 'finished';
 export type DeuceMode = 'golden-point' | 'advantage';
@@ -83,6 +84,27 @@ export interface OverlaySettings {
 
 export type OverlaySettingsPatch = Partial<OverlaySettings>;
 
+export interface SponsorTickerState {
+  visible: boolean;
+  sponsorIds: SponsorId[];
+  label: string;
+  speedSeconds: number;
+}
+
+export interface SponsorFullscreenState {
+  id: string;
+  sponsorId: SponsorId;
+  triggeredAt: string;
+  durationSeconds: number;
+}
+
+export interface SponsorAdsState {
+  ticker: SponsorTickerState;
+  fullscreen: SponsorFullscreenState | null;
+}
+
+export type SponsorTickerPatch = Partial<SponsorTickerState>;
+
 export interface MatchCardUse {
   side: Side;
   teamId: TeamId;
@@ -128,7 +150,9 @@ export interface MatchHistoryEntry {
     | 'new_match'
     | 'update_overlay'
     | 'use_card'
-    | 'trigger_data_scene';
+    | 'trigger_data_scene'
+    | 'update_sponsor_ticker'
+    | 'trigger_sponsor_ad';
   side: Side | null;
   label: string;
   before: ScoreSnapshot;
@@ -152,6 +176,7 @@ export interface MatchState {
   overlaySettings: OverlaySettings;
   cards: MatchCardsState;
   dataScene: OverlayDataSceneState | null;
+  sponsorAds: SponsorAdsState;
   history: MatchHistoryEntry[];
   version: number;
   updatedAt: string;
@@ -169,6 +194,7 @@ export interface EventDefinition {
   config: MatchConfig;
   overlaySettings?: OverlaySettings;
   cards?: MatchCardsState;
+  sponsorAds?: SponsorAdsState;
   state: MatchState | null;
 }
 
@@ -242,6 +268,15 @@ export interface TriggerOverlayDataScenePayload extends VersionedCommandPayload 
   target: OverlayDataSceneTarget;
 }
 
+export interface UpdateSponsorTickerPayload extends VersionedCommandPayload {
+  patch: SponsorTickerPatch;
+}
+
+export interface TriggerSponsorFullscreenPayload extends VersionedCommandPayload {
+  sponsorId: SponsorId | null;
+  durationSeconds?: number;
+}
+
 export type CommandErrorCode =
   | 'BAD_REQUEST'
   | 'FORBIDDEN'
@@ -296,6 +331,14 @@ export interface ClientToServerEvents {
   ) => void;
   'overlay:triggerDataScene': (
     payload: TriggerOverlayDataScenePayload,
+    ack: (response: Ack<MatchState>) => void,
+  ) => void;
+  'overlay:updateSponsorTicker': (
+    payload: UpdateSponsorTickerPayload,
+    ack: (response: Ack<MatchState>) => void,
+  ) => void;
+  'overlay:triggerSponsorFullscreen': (
+    payload: TriggerSponsorFullscreenPayload,
     ack: (response: Ack<MatchState>) => void,
   ) => void;
 }

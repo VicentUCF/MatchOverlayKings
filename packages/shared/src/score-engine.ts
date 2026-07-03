@@ -14,6 +14,10 @@ import type {
   OverlayDataSceneTarget,
   OverlaySettings,
   OverlaySettingsPatch,
+  SponsorAdsState,
+  SponsorFullscreenState,
+  SponsorTickerPatch,
+  SponsorTickerState,
   MatchSetScore,
   MatchState,
   MatchStatus,
@@ -43,6 +47,16 @@ export const DEFAULT_MATCH_CARDS: MatchCardsState = {
   home: null,
   away: null,
   announcement: null,
+};
+
+export const DEFAULT_SPONSOR_ADS: SponsorAdsState = {
+  ticker: {
+    visible: false,
+    sponsorIds: [],
+    label: 'Patrocinadores oficiales',
+    speedSeconds: 28,
+  },
+  fullscreen: null,
 };
 
 const POINT_LABELS = ['0', '15', '30', '40'] as const;
@@ -86,6 +100,7 @@ export function createInitialMatchState(event: Omit<EventDefinition, 'state'>): 
     overlaySettings: normalizeOverlaySettings(event.overlaySettings),
     cards: normalizeMatchCards(event.cards),
     dataScene: null,
+    sponsorAds: normalizeSponsorAds(event.sponsorAds),
     history: [],
     version: 1,
     updatedAt: now,
@@ -142,6 +157,7 @@ export function resetMatch(state: MatchState, commandId: string): MatchState {
     draft.winner = null;
     draft.cards = cloneMatchCards(DEFAULT_MATCH_CARDS);
     draft.dataScene = null;
+    draft.sponsorAds = clearSponsorFullscreen(draft.sponsorAds);
   });
 }
 
@@ -160,6 +176,7 @@ export function startNewMatch(
   draft.winner = null;
   draft.cards = cloneMatchCards(DEFAULT_MATCH_CARDS);
   draft.dataScene = null;
+  draft.sponsorAds = clearSponsorFullscreen(draft.sponsorAds);
 
   const after = getScoreSnapshot(draft);
   const now = new Date().toISOString();
@@ -287,6 +304,53 @@ export function triggerOverlayDataScene(
       kind,
       target: normalizeDataSceneTarget(target),
       triggeredAt: new Date().toISOString(),
+    };
+  });
+}
+
+export function updateSponsorTicker(
+  state: MatchState,
+  patch: SponsorTickerPatch,
+  commandId: string,
+): MatchState {
+  return mutateWithHistory(state, commandId, 'update_sponsor_ticker', null, 'Actualizar sponsors', (draft) => {
+    const current = normalizeSponsorAds(draft.sponsorAds);
+
+    draft.sponsorAds = {
+      ...current,
+      ticker: normalizeSponsorTicker({
+        ...current.ticker,
+        ...patch,
+      }),
+    };
+  });
+}
+
+export function triggerSponsorFullscreen(
+  state: MatchState,
+  sponsorId: string | null,
+  durationSeconds: number | undefined,
+  commandId: string,
+): MatchState {
+  const normalizedSponsorId = sponsorId?.trim() ?? '';
+
+  if (sponsorId !== null && !normalizedSponsorId) {
+    throw new ScoreEngineError('VALIDATION_ERROR', 'Patrocinador no valido.');
+  }
+
+  return mutateWithHistory(state, commandId, 'trigger_sponsor_ad', null, 'Anuncio sponsor OBS', (draft) => {
+    const current = normalizeSponsorAds(draft.sponsorAds);
+
+    draft.sponsorAds = {
+      ...current,
+      fullscreen: normalizedSponsorId
+        ? {
+            id: commandId,
+            sponsorId: normalizedSponsorId,
+            triggeredAt: new Date().toISOString(),
+            durationSeconds: normalizeSponsorDuration(durationSeconds),
+          }
+        : null,
     };
   });
 }
@@ -512,6 +576,7 @@ function cloneState(state: MatchState): MatchState {
     overlaySettings: { ...normalizeOverlaySettings(state.overlaySettings) },
     cards: cloneMatchCards(state.cards),
     dataScene: cloneDataScene(state.dataScene),
+    sponsorAds: cloneSponsorAds(state.sponsorAds),
     sets: cloneSets(state.sets),
     currentGame: { ...state.currentGame },
     history: state.history.map((entry) => ({
@@ -535,6 +600,7 @@ function normalizeMatchState(state: MatchState, event: EventDefinition): MatchSt
     overlaySettings: normalizeOverlaySettings(state.overlaySettings ?? event.overlaySettings),
     cards: normalizeMatchCards(state.cards ?? event.cards),
     dataScene: cloneDataScene(state.dataScene),
+    sponsorAds: normalizeSponsorAds(state.sponsorAds ?? event.sponsorAds),
     sets: cloneSets(state.sets),
     currentGame: { ...state.currentGame },
     history: state.history.map((entry) => ({
@@ -658,6 +724,70 @@ function cloneDataScene(scene: OverlayDataSceneState | null | undefined): Overla
     target: normalizeDataSceneTarget(scene.target),
     triggeredAt: scene.triggeredAt,
   };
+}
+
+function normalizeSponsorAds(ads: Partial<SponsorAdsState> | undefined): SponsorAdsState {
+  return {
+    ticker: normalizeSponsorTicker(ads?.ticker),
+    fullscreen: normalizeSponsorFullscreen(ads?.fullscreen),
+  };
+}
+
+function normalizeSponsorTicker(ticker: Partial<SponsorTickerState> | undefined): SponsorTickerState {
+  return {
+    visible: typeof ticker?.visible === 'boolean' ? ticker.visible : DEFAULT_SPONSOR_ADS.ticker.visible,
+    sponsorIds: normalizeSponsorIds(ticker?.sponsorIds),
+    label: ticker?.label?.trim() || DEFAULT_SPONSOR_ADS.ticker.label,
+    speedSeconds: normalizeTickerSpeed(ticker?.speedSeconds),
+  };
+}
+
+function normalizeSponsorFullscreen(fullscreen: SponsorFullscreenState | null | undefined): SponsorFullscreenState | null {
+  if (!fullscreen?.sponsorId?.trim()) {
+    return null;
+  }
+
+  return {
+    id: fullscreen.id || fullscreen.sponsorId,
+    sponsorId: fullscreen.sponsorId.trim(),
+    triggeredAt: fullscreen.triggeredAt,
+    durationSeconds: normalizeSponsorDuration(fullscreen.durationSeconds),
+  };
+}
+
+function cloneSponsorAds(ads: SponsorAdsState | undefined): SponsorAdsState {
+  return normalizeSponsorAds(ads);
+}
+
+function clearSponsorFullscreen(ads: SponsorAdsState | undefined): SponsorAdsState {
+  return {
+    ...normalizeSponsorAds(ads),
+    fullscreen: null,
+  };
+}
+
+function normalizeSponsorIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))];
+}
+
+function normalizeTickerSpeed(value: unknown): number {
+  return normalizeNumber(value, 12, 90, DEFAULT_SPONSOR_ADS.ticker.speedSeconds);
+}
+
+function normalizeSponsorDuration(value: unknown): number {
+  return normalizeNumber(value, 4, 30, 8);
+}
+
+function normalizeNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, value));
 }
 
 function normalizeDataSceneTarget(target: unknown): OverlayDataSceneTarget {
