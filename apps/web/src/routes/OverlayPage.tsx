@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createTimeline, stagger } from 'animejs';
-import type { MatchSetScore, MatchState } from '@kpl/shared';
+import type { MatchSetScore, MatchState, OverlayDataSceneState } from '@kpl/shared';
 import { CardAnnouncementScene } from '../components/CardAnnouncementScene.js';
+import { OverlayDataScene } from '../components/OverlayDataScene.js';
 import { PrematchOverlayScene } from '../components/PrematchOverlayScene.js';
 import { Scoreboard } from '../components/Scoreboard.js';
 import { SideChangeScene } from '../components/SideChangeScene.js';
@@ -31,14 +32,19 @@ export function OverlayPage({ eventId }: { eventId: string }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const sideChangeBaselineVersionRef = useRef<number | null>(null);
   const lastSideChangeKeyRef = useRef<string | null>(null);
+  const dataSceneBaselineVersionRef = useRef<number | null>(null);
+  const lastDataSceneIdRef = useRef<string | null>(null);
+  const autoDataSceneIndexRef = useRef(0);
   const [activeSideChange, setActiveSideChange] = useState<SideChangeSceneState | null>(null);
   const [prematchScene, setPrematchScene] = useState<PrematchSceneState | null>(null);
+  const [activeDataScene, setActiveDataScene] = useState<OverlayDataSceneState | null>(null);
   const settings = match.state?.overlaySettings;
   const shouldShowScoreboard = Boolean(match.state && match.state.status === 'live' && settings?.visible !== false);
   const announcement = match.state?.cards?.announcement ?? null;
   const { activeAnnouncement, completeAnnouncement } = useCardAnnouncementQueue(announcement, match.state?.status === 'live');
   const clearSideChange = useCallback(() => setActiveSideChange(null), []);
   const clearPrematchScene = useCallback(() => setPrematchScene(null), []);
+  const clearDataScene = useCallback(() => setActiveDataScene(null), []);
 
   useEffect(() => {
     document.documentElement.classList.add('overlay-document');
@@ -98,6 +104,83 @@ export function OverlayPage({ eventId }: { eventId: string }) {
 
     setPrematchScene(null);
   }, [match.state]);
+
+  useEffect(() => {
+    if (!match.state) {
+      setActiveDataScene(null);
+      return;
+    }
+
+    const nextScene = match.state.dataScene ?? null;
+    const nextSceneId = nextScene?.id ?? null;
+
+    if (dataSceneBaselineVersionRef.current === null) {
+      dataSceneBaselineVersionRef.current = match.state.version;
+      lastDataSceneIdRef.current = nextSceneId;
+      return;
+    }
+
+    if (match.state.version <= dataSceneBaselineVersionRef.current) {
+      lastDataSceneIdRef.current = nextSceneId;
+      return;
+    }
+
+    if (!nextScene || nextSceneId === lastDataSceneIdRef.current) {
+      return;
+    }
+
+    lastDataSceneIdRef.current = nextSceneId;
+    setActiveDataScene(nextScene);
+  }, [match.state]);
+
+  useEffect(() => {
+    const state = match.state;
+
+    if (!state) {
+      return undefined;
+    }
+
+    if (state.status !== 'pre_match') {
+      autoDataSceneIndexRef.current = 0;
+
+      if (activeDataScene?.id.startsWith('auto:')) {
+        setActiveDataScene(null);
+      }
+
+      return undefined;
+    }
+
+    if (!state.overlaySettings.dataScenesAuto || activeDataScene || activeAnnouncement) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const autoScenes: Array<Omit<OverlayDataSceneState, 'id' | 'triggeredAt'>> = [
+        { kind: 'team-roster', target: { type: 'side', side: 'home' } },
+        { kind: 'team-roster', target: { type: 'side', side: 'away' } },
+        { kind: 'standings', target: { type: 'league' } },
+        { kind: 'upcoming-matches', target: { type: 'league' } },
+      ];
+      const fallbackAutoScene: Omit<OverlayDataSceneState, 'id' | 'triggeredAt'> = {
+        kind: 'standings',
+        target: { type: 'league' },
+      };
+      const index = autoDataSceneIndexRef.current % autoScenes.length;
+      const next = autoScenes[index] ?? fallbackAutoScene;
+      autoDataSceneIndexRef.current += 1;
+
+      setActiveDataScene({
+        id: `auto:${state.id}:${index}:${Date.now()}`,
+        kind: next.kind,
+        target: next.target,
+        triggeredAt: new Date().toISOString(),
+      });
+    }, 900);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeAnnouncement, activeDataScene, match.state]);
 
   useEffect(() => {
     if (!shouldShowScoreboard || !overlayRef.current || prefersReducedMotion()) {
@@ -183,6 +266,14 @@ export function OverlayPage({ eventId }: { eventId: string }) {
           state={activeSideChange.state}
           teams={match.teams}
           onDone={clearSideChange}
+        />
+      ) : null}
+      {activeDataScene && match.state && !activeAnnouncement ? (
+        <OverlayDataScene
+          scene={activeDataScene}
+          state={match.state}
+          teams={match.teams}
+          onDone={clearDataScene}
         />
       ) : null}
       {prematchScene ? (

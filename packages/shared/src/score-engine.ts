@@ -9,6 +9,9 @@ import type {
   MatchHistoryEntry,
   MatchLineups,
   MatchMetaPatch,
+  OverlayDataSceneKind,
+  OverlayDataSceneState,
+  OverlayDataSceneTarget,
   OverlaySettings,
   OverlaySettingsPatch,
   MatchSetScore,
@@ -33,6 +36,7 @@ export const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = {
   visible: true,
   size: 'standard',
   position: 'top-left',
+  dataScenesAuto: false,
 };
 
 export const DEFAULT_MATCH_CARDS: MatchCardsState = {
@@ -43,6 +47,14 @@ export const DEFAULT_MATCH_CARDS: MatchCardsState = {
 
 const POINT_LABELS = ['0', '15', '30', '40'] as const;
 const MATCH_CARD_IDS = ['2vs1', 'restas-tu', 'cambiate', 'robo-saque', 'solo-un-saque', 'comodin', 'robo-carta'] as const;
+const OVERLAY_DATA_SCENE_KINDS = [
+  'standings',
+  'player-ranking',
+  'team-roster',
+  'calendar',
+  'upcoming-matches',
+  'latest-results',
+] as const;
 
 export class ScoreEngineError extends Error {
   constructor(
@@ -73,6 +85,7 @@ export function createInitialMatchState(event: Omit<EventDefinition, 'state'>): 
     winner: null,
     overlaySettings: normalizeOverlaySettings(event.overlaySettings),
     cards: normalizeMatchCards(event.cards),
+    dataScene: null,
     history: [],
     version: 1,
     updatedAt: now,
@@ -128,6 +141,7 @@ export function resetMatch(state: MatchState, commandId: string): MatchState {
     draft.currentGame = createGame(false);
     draft.winner = null;
     draft.cards = cloneMatchCards(DEFAULT_MATCH_CARDS);
+    draft.dataScene = null;
   });
 }
 
@@ -145,6 +159,7 @@ export function startNewMatch(
   draft.currentGame = createGame(false);
   draft.winner = null;
   draft.cards = cloneMatchCards(DEFAULT_MATCH_CARDS);
+  draft.dataScene = null;
 
   const after = getScoreSnapshot(draft);
   const now = new Date().toISOString();
@@ -252,6 +267,26 @@ export function useMatchCard(
         ...use,
         id: commandId,
       },
+    };
+  });
+}
+
+export function triggerOverlayDataScene(
+  state: MatchState,
+  kind: OverlayDataSceneKind,
+  target: OverlayDataSceneTarget,
+  commandId: string,
+): MatchState {
+  if (!isOverlayDataSceneKind(kind)) {
+    throw new ScoreEngineError('VALIDATION_ERROR', 'Escena de datos no valida.');
+  }
+
+  return mutateWithHistory(state, commandId, 'trigger_data_scene', null, dataSceneLabel(kind), (draft) => {
+    draft.dataScene = {
+      id: commandId,
+      kind,
+      target: normalizeDataSceneTarget(target),
+      triggeredAt: new Date().toISOString(),
     };
   });
 }
@@ -476,6 +511,7 @@ function cloneState(state: MatchState): MatchState {
     lineups: cloneLineups(state.lineups),
     overlaySettings: { ...normalizeOverlaySettings(state.overlaySettings) },
     cards: cloneMatchCards(state.cards),
+    dataScene: cloneDataScene(state.dataScene),
     sets: cloneSets(state.sets),
     currentGame: { ...state.currentGame },
     history: state.history.map((entry) => ({
@@ -498,6 +534,7 @@ function normalizeMatchState(state: MatchState, event: EventDefinition): MatchSt
     config: { ...DEFAULT_MATCH_CONFIG, ...state.config },
     overlaySettings: normalizeOverlaySettings(state.overlaySettings ?? event.overlaySettings),
     cards: normalizeMatchCards(state.cards ?? event.cards),
+    dataScene: cloneDataScene(state.dataScene),
     sets: cloneSets(state.sets),
     currentGame: { ...state.currentGame },
     history: state.history.map((entry) => ({
@@ -570,6 +607,10 @@ function normalizeOverlaySettings(settings: Partial<OverlaySettings> | undefined
     visible: typeof settings?.visible === 'boolean' ? settings.visible : DEFAULT_OVERLAY_SETTINGS.visible,
     size: isOverlaySize(settings?.size) ? settings.size : DEFAULT_OVERLAY_SETTINGS.size,
     position: isOverlayPosition(settings?.position) ? settings.position : DEFAULT_OVERLAY_SETTINGS.position,
+    dataScenesAuto:
+      typeof settings?.dataScenesAuto === 'boolean'
+        ? settings.dataScenesAuto
+        : DEFAULT_OVERLAY_SETTINGS.dataScenesAuto,
   };
 }
 
@@ -606,6 +647,37 @@ function cloneCardUse(cardUse: MatchCardUse | null | undefined): MatchCardUse | 
   };
 }
 
+function cloneDataScene(scene: OverlayDataSceneState | null | undefined): OverlayDataSceneState | null {
+  if (!scene || !isOverlayDataSceneKind(scene.kind)) {
+    return null;
+  }
+
+  return {
+    id: scene.id,
+    kind: scene.kind,
+    target: normalizeDataSceneTarget(scene.target),
+    triggeredAt: scene.triggeredAt,
+  };
+}
+
+function normalizeDataSceneTarget(target: unknown): OverlayDataSceneTarget {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) {
+    return { type: 'league' };
+  }
+
+  const record = target as Record<string, unknown>;
+
+  if (record.type === 'side') {
+    return { type: 'side', side: record.side === 'away' ? 'away' : 'home' };
+  }
+
+  if (record.type === 'team' && typeof record.teamId === 'string' && record.teamId.trim()) {
+    return { type: 'team', teamId: record.teamId.trim() };
+  }
+
+  return { type: 'league' };
+}
+
 function isOverlaySize(value: unknown): value is OverlaySettings['size'] {
   return value === 'compact' || value === 'standard' || value === 'large';
 }
@@ -618,12 +690,27 @@ function isMatchCardId(value: unknown): value is MatchCardId {
   return MATCH_CARD_IDS.includes(value as MatchCardId);
 }
 
+function isOverlayDataSceneKind(value: unknown): value is OverlayDataSceneKind {
+  return OVERLAY_DATA_SCENE_KINDS.includes(value as OverlayDataSceneKind);
+}
+
 function oppositeSide(side: Side): Side {
   return side === 'home' ? 'away' : 'home';
 }
 
 function sideLabel(side: Side): string {
   return side === 'home' ? 'local' : 'visitante';
+}
+
+function dataSceneLabel(kind: OverlayDataSceneKind): string {
+  return {
+    standings: 'Clasificacion OBS',
+    'player-ranking': 'Ranking jugadores OBS',
+    'team-roster': 'Plantilla OBS',
+    calendar: 'Calendario OBS',
+    'upcoming-matches': 'Proximos partidos OBS',
+    'latest-results': 'Ultimos resultados OBS',
+  }[kind];
 }
 
 function validateMatchShape(state: MatchState): void {

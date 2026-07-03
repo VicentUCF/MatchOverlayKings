@@ -6,6 +6,17 @@ export type DeuceMode = 'golden-point' | 'advantage';
 export type ClientRole = 'control' | 'overlay' | 'viewer';
 export type OverlaySize = 'compact' | 'standard' | 'large';
 export type OverlayPosition = 'top-left' | 'center' | 'bottom-center';
+export type OverlayDataSceneKind =
+  | 'standings'
+  | 'player-ranking'
+  | 'team-roster'
+  | 'calendar'
+  | 'upcoming-matches'
+  | 'latest-results';
+export type OverlayDataSceneTarget =
+  | { type: 'league' }
+  | { type: 'side'; side: Side }
+  | { type: 'team'; teamId: TeamId };
 export type MatchCardId =
   | '2vs1'
   | 'restas-tu'
@@ -67,6 +78,7 @@ export interface OverlaySettings {
   visible: boolean;
   size: OverlaySize;
   position: OverlayPosition;
+  dataScenesAuto: boolean;
 }
 
 export type OverlaySettingsPatch = Partial<OverlaySettings>;
@@ -89,6 +101,13 @@ export interface MatchCardsState {
   announcement: MatchCardAnnouncement | null;
 }
 
+export interface OverlayDataSceneState {
+  id: string;
+  kind: OverlayDataSceneKind;
+  target: OverlayDataSceneTarget;
+  triggeredAt: string;
+}
+
 export interface ScoreSnapshot {
   status: MatchStatus;
   sets: MatchSetScore[];
@@ -108,7 +127,8 @@ export interface MatchHistoryEntry {
     | 'set_status'
     | 'new_match'
     | 'update_overlay'
-    | 'use_card';
+    | 'use_card'
+    | 'trigger_data_scene';
   side: Side | null;
   label: string;
   before: ScoreSnapshot;
@@ -131,6 +151,7 @@ export interface MatchState {
   winner: Side | null;
   overlaySettings: OverlaySettings;
   cards: MatchCardsState;
+  dataScene: OverlayDataSceneState | null;
   history: MatchHistoryEntry[];
   version: number;
   updatedAt: string;
@@ -216,6 +237,11 @@ export interface UseMatchCardPayload extends VersionedCommandPayload {
   cardName: string;
 }
 
+export interface TriggerOverlayDataScenePayload extends VersionedCommandPayload {
+  kind: OverlayDataSceneKind;
+  target: OverlayDataSceneTarget;
+}
+
 export type CommandErrorCode =
   | 'BAD_REQUEST'
   | 'FORBIDDEN'
@@ -266,6 +292,10 @@ export interface ClientToServerEvents {
   ) => void;
   'match:useCard': (
     payload: UseMatchCardPayload,
+    ack: (response: Ack<MatchState>) => void,
+  ) => void;
+  'overlay:triggerDataScene': (
+    payload: TriggerOverlayDataScenePayload,
     ack: (response: Ack<MatchState>) => void,
   ) => void;
 }

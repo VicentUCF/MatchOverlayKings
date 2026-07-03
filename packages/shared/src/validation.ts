@@ -15,6 +15,7 @@ const DEFAULT_PARSED_OVERLAY_SETTINGS: OverlaySettings = {
   visible: true,
   size: 'standard',
   position: 'top-left',
+  dataScenesAuto: false,
 };
 const MATCH_CARD_IDS = ['2vs1', 'restas-tu', 'cambiate', 'robo-saque', 'solo-un-saque', 'comodin', 'robo-carta'] as const;
 
@@ -139,6 +140,8 @@ function parseOverlaySettings(value: unknown): OverlaySettings {
     visible: typeof value.visible === 'boolean' ? value.visible : DEFAULT_PARSED_OVERLAY_SETTINGS.visible,
     size,
     position,
+    dataScenesAuto:
+      typeof value.dataScenesAuto === 'boolean' ? value.dataScenesAuto : DEFAULT_PARSED_OVERLAY_SETTINGS.dataScenesAuto,
   };
 }
 

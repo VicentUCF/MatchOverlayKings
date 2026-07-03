@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  BarChart3,
+  CalendarDays,
   CreditCard,
   Eye,
   EyeOff,
@@ -16,6 +18,8 @@ import {
   Save,
   ShieldAlert,
   Square,
+  Trophy,
+  UsersRound,
   Wifi,
   WifiOff,
   X,
@@ -28,6 +32,8 @@ import type {
   MatchLineups,
   MatchState,
   MatchSetScore,
+  OverlayDataSceneKind,
+  OverlayDataSceneTarget,
   OverlayPosition,
   OverlaySettingsPatch,
   Side,
@@ -38,7 +44,7 @@ import { useMatchSocket } from '../hooks/useMatchSocket.js';
 import { MATCH_CARDS, type MatchCardDefinition } from '../lib/match-cards.js';
 
 type ControlPhase = 'setup' | 'score';
-type MobilePanel = 'cards' | 'edit' | 'menu';
+type MobilePanel = 'cards' | 'data' | 'edit' | 'menu';
 
 export function ControlPage({ eventId }: { eventId: string }) {
   const match = useMatchSocket(eventId, 'control', '');
@@ -179,6 +185,10 @@ export function ControlPage({ eventId }: { eventId: string }) {
     await match.updateOverlaySettings(patch);
   }
 
+  async function triggerDataScene(kind: OverlayDataSceneKind, target: OverlayDataSceneTarget) {
+    await match.triggerDataScene(kind, target);
+  }
+
   const overlaySettings = state?.overlaySettings ?? DEFAULT_OVERLAY_SETTINGS;
   const isSetupPhase = phase === 'setup';
   const homeTeam = state ? match.teams.find((team) => team.id === state.homeTeamId) : undefined;
@@ -297,6 +307,16 @@ export function ControlPage({ eventId }: { eventId: string }) {
         ]}
         onChange={(position) => void updateOverlaySettings({ position })}
       />
+
+      <button
+        type="button"
+        className={`switch-button ${overlaySettings.dataScenesAuto ? 'on' : ''}`}
+        onClick={() => void updateOverlaySettings({ dataScenesAuto: !overlaySettings.dataScenesAuto })}
+        disabled={!state || match.pending}
+      >
+        {overlaySettings.dataScenesAuto ? <Eye size={18} /> : <EyeOff size={18} />}
+        <span>{overlaySettings.dataScenesAuto ? 'Auto previa activo' : 'Auto previa apagado'}</span>
+      </button>
     </section>
   );
 
@@ -306,6 +326,15 @@ export function ControlPage({ eventId }: { eventId: string }) {
       teams={match.teams}
       pending={match.pending}
       onUse={(side, card) => void match.useMatchCard(side, card.id, card.name)}
+    />
+  ) : null;
+
+  const dataScenesPanel = state ? (
+    <DataScenesPanel
+      state={state}
+      teams={match.teams}
+      pending={match.pending}
+      onTrigger={(kind, target) => void triggerDataScene(kind, target)}
     />
   ) : null;
 
@@ -454,6 +483,10 @@ export function ControlPage({ eventId }: { eventId: string }) {
                 <CreditCard size={18} />
                 <span>Carta especial</span>
               </button>
+              <button type="button" onClick={() => setMobilePanel('data')} disabled={!state}>
+                <BarChart3 size={18} />
+                <span>OBS datos</span>
+              </button>
               <button type="button" onClick={() => setMobilePanel('edit')} disabled={!state}>
                 <Pencil size={18} />
                 <span>Editar marcador</span>
@@ -469,6 +502,9 @@ export function ControlPage({ eventId }: { eventId: string }) {
 
       <MobileControlModal title="Carta especial" open={mobilePanel === 'cards'} onClose={() => setMobilePanel(null)}>
         {cardsPanel}
+      </MobileControlModal>
+      <MobileControlModal title="OBS datos" open={mobilePanel === 'data'} onClose={() => setMobilePanel(null)}>
+        {dataScenesPanel}
       </MobileControlModal>
       <MobileControlModal title="Editar marcador" open={mobilePanel === 'edit'} onClose={() => setMobilePanel(null)}>
         {correctionPanel}
@@ -648,6 +684,100 @@ function MobileControlModal({
   );
 }
 
+function DataScenesPanel({
+  state,
+  teams,
+  pending,
+  onTrigger,
+}: {
+  state: MatchState;
+  teams: Team[];
+  pending: boolean;
+  onTrigger: (kind: OverlayDataSceneKind, target: OverlayDataSceneTarget) => void;
+}) {
+  const homeTeam = teams.find((team) => team.id === state.homeTeamId);
+  const awayTeam = teams.find((team) => team.id === state.awayTeamId);
+  const actions: Array<{
+    kind: OverlayDataSceneKind;
+    target: OverlayDataSceneTarget;
+    label: string;
+    detail: string;
+    icon: ReactNode;
+  }> = [
+    {
+      kind: 'standings',
+      target: { type: 'league' },
+      label: 'Clasificacion',
+      detail: 'Tabla completa',
+      icon: <Trophy size={18} />,
+    },
+    {
+      kind: 'player-ranking',
+      target: { type: 'league' },
+      label: 'Ranking jugadores',
+      detail: 'Top 10 por puntos',
+      icon: <BarChart3 size={18} />,
+    },
+    {
+      kind: 'team-roster',
+      target: { type: 'side', side: 'home' },
+      label: `Plantilla ${homeTeam?.shortName ?? 'local'}`,
+      detail: 'Equipo local',
+      icon: <UsersRound size={18} />,
+    },
+    {
+      kind: 'team-roster',
+      target: { type: 'side', side: 'away' },
+      label: `Plantilla ${awayTeam?.shortName ?? 'visitante'}`,
+      detail: 'Equipo visitante',
+      icon: <UsersRound size={18} />,
+    },
+    {
+      kind: 'calendar',
+      target: { type: 'league' },
+      label: 'Calendario',
+      detail: 'Jornadas y horarios',
+      icon: <CalendarDays size={18} />,
+    },
+    {
+      kind: 'upcoming-matches',
+      target: { type: 'league' },
+      label: 'Proximos partidos',
+      detail: 'Lo siguiente',
+      icon: <CalendarDays size={18} />,
+    },
+    {
+      kind: 'latest-results',
+      target: { type: 'league' },
+      label: 'Ultimos resultados',
+      detail: 'Marcadores recientes',
+      icon: <BarChart3 size={18} />,
+    },
+  ];
+
+  return (
+    <section className="operator-panel data-scenes-panel">
+      <h2>OBS datos</h2>
+      <div className="data-scene-grid">
+        {actions.map((action) => (
+          <button
+            key={`${action.kind}-${targetKey(action.target)}`}
+            type="button"
+            onClick={() => onTrigger(action.kind, action.target)}
+            disabled={pending}
+          >
+            {action.icon}
+            <span>
+              <strong>{action.label}</strong>
+              <small>{action.detail}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function MatchCardsPanel({
   state,
   teams,
@@ -707,6 +837,18 @@ function MatchCardsPanel({
       </div>
     </section>
   );
+}
+
+function targetKey(target: OverlayDataSceneTarget): string {
+  if (target.type === 'side') {
+    return target.side;
+  }
+
+  if (target.type === 'team') {
+    return target.teamId;
+  }
+
+  return 'league';
 }
 
 function SegmentedControl<TValue extends string>({

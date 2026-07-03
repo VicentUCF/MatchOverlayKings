@@ -93,6 +93,20 @@ exception
   when others then
     if sqlerrm <> 'AUTH_REQUIRED' then
       raise;
+  end if;
+end;
+$$;
+
+do $$
+begin
+  perform public.trigger_overlay_data_scene('pista-1', 1, 'sql-anon-data-scene', 'standings', jsonb_build_object('type', 'league'));
+  raise exception 'Anon data scene mutation should have failed.';
+exception
+  when insufficient_privilege then
+    null;
+  when others then
+    if sqlerrm <> 'AUTH_REQUIRED' then
+      raise;
     end if;
 end;
 $$;
@@ -242,6 +256,34 @@ begin
 
   v_state := public.reset_match('pista-1', (v_state ->> 'version')::int, 'sql-reset-after-card');
   perform pg_temp.assert_true(v_state #> '{cards,home}' = 'null'::jsonb, 'reset clears home card');
+
+  v_state := public.trigger_overlay_data_scene(
+    'pista-1',
+    (v_state ->> 'version')::int,
+    'sql-data-scene',
+    'team-roster',
+    jsonb_build_object('type', 'side', 'side', 'home')
+  );
+  perform pg_temp.assert_eq_text(v_state #>> '{dataScene,kind}', 'team-roster', 'data scene kind stored');
+  perform pg_temp.assert_eq_text(v_state #>> '{dataScene,target,side}', 'home', 'data scene target stored');
+  perform pg_temp.assert_eq_text(
+    v_state #>> array['history', (jsonb_array_length(v_state -> 'history') - 1)::text, 'type'],
+    'trigger_data_scene',
+    'data scene history stored'
+  );
+
+  v_duplicate := public.trigger_overlay_data_scene(
+    'pista-1',
+    ((v_state ->> 'version')::int - 1),
+    'sql-data-scene',
+    'standings',
+    jsonb_build_object('type', 'league')
+  );
+  perform pg_temp.assert_eq_int((v_duplicate ->> 'version')::int, (v_state ->> 'version')::int, 'duplicate data scene keeps version');
+  perform pg_temp.assert_eq_text(v_duplicate #>> '{dataScene,kind}', 'team-roster', 'duplicate data scene does not replace scene');
+
+  v_state := public.reset_match('pista-1', (v_state ->> 'version')::int, 'sql-reset-after-data-scene');
+  perform pg_temp.assert_true(v_state #> '{dataScene}' = 'null'::jsonb, 'reset clears data scene');
 
   begin
     perform public.add_point('pista-1', ((v_state ->> 'version')::int - 1), 'sql-version-conflict', 'home');

@@ -5,6 +5,7 @@ import {
   resetMatch,
   setMatchStatus,
   startNewMatch,
+  triggerOverlayDataScene,
   undoLastScoringCommand,
   updateMatchMeta,
   updateOverlaySettings,
@@ -120,6 +121,12 @@ export function registerSocketHandlers(options: SocketHandlerOptions): void {
     socket.on('match:useCard', (payload, ack) =>
       runControlCommand(options, socket, payload, ack, (state) =>
         useMatchCard(state, payload.side, payload.cardId, payload.cardName, payload.commandId),
+      ),
+    );
+
+    socket.on('overlay:triggerDataScene', (payload, ack) =>
+      runControlCommand(options, socket, payload, ack, (state) =>
+        triggerOverlayDataScene(state, payload.kind, payload.target, payload.commandId),
       ),
     );
   });

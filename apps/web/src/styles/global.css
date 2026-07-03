@@ -29,5 +29,6 @@
 @import './overlays/side-change-scene.css';
 @import './overlays/prematch-scene.css';
 @import './overlays/card-announcement-scene.css';
+@import './overlays/data-scene.css';
 
 @import './responsive/app.css';

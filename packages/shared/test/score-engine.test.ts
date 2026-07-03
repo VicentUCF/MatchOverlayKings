@@ -9,6 +9,7 @@ import {
   getPointContext,
   resetMatch,
   startNewMatch,
+  triggerOverlayDataScene,
   undoLastScoringCommand,
   useMatchCard,
 } from '../src/index.js';
@@ -176,6 +177,30 @@ describe('score engine', () => {
 
     expect(state.cards.home).toBeNull();
     expect(state.cards.announcement).toBeNull();
+  });
+
+  it('triggers overlay data scenes and clears them on reset', () => {
+    let state = createInitialMatchState(event);
+
+    expect(state.overlaySettings.dataScenesAuto).toBe(false);
+
+    state = triggerOverlayDataScene(
+      state,
+      'team-roster',
+      { type: 'side', side: 'home' },
+      'data-scene-1',
+    );
+
+    expect(state.dataScene).toMatchObject({
+      id: 'data-scene-1',
+      kind: 'team-roster',
+      target: { type: 'side', side: 'home' },
+    });
+    expect(state.history.at(-1)?.type).toBe('trigger_data_scene');
+
+    state = resetMatch(state, 'reset-after-data-scene');
+
+    expect(state.dataScene).toBeNull();
   });
 
   it('detects set point and match point', () => {

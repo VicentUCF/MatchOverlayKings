@@ -7,6 +7,8 @@ import type {
   MatchMetaPatch,
   MatchState,
   NewMatchSetup,
+  OverlayDataSceneKind,
+  OverlayDataSceneTarget,
   OverlaySettingsPatch,
   Side,
   Team,
@@ -41,6 +43,7 @@ export interface MatchSocketState {
   setStatus: (status: MatchState['status']) => Promise<boolean>;
   updateOverlaySettings: (patch: OverlaySettingsPatch) => Promise<boolean>;
   useMatchCard: (side: Side, cardId: MatchCardId, cardName: string) => Promise<boolean>;
+  triggerDataScene: (kind: OverlayDataSceneKind, target: OverlayDataSceneTarget) => Promise<boolean>;
   refreshEvents: () => Promise<void>;
 }
 
@@ -218,6 +221,8 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
       setStatus: (status: MatchState['status']) => send('match:setStatus', { status }),
       updateOverlaySettings: (patch: OverlaySettingsPatch) => send('overlay:updateSettings', { patch }),
       useMatchCard: (side: Side, cardId: MatchCardId, cardName: string) => send('match:useCard', { side, cardId, cardName }),
+      triggerDataScene: (kind: OverlayDataSceneKind, target: OverlayDataSceneTarget) =>
+        send('overlay:triggerDataScene', { kind, target }),
       refreshEvents,
     }),
     [connectionState, error, events, pending, refreshEvents, send, state, teams],
@@ -274,6 +279,17 @@ function toRpcCall(
         p_side: payload.side,
         p_card_id: payload.cardId,
         p_card_name: payload.cardName,
+      },
+    };
+  }
+
+  if (event === 'overlay:triggerDataScene') {
+    return {
+      rpcName: 'trigger_overlay_data_scene',
+      params: {
+        ...base,
+        p_kind: payload.kind,
+        p_target: payload.target,
       },
     };
   }

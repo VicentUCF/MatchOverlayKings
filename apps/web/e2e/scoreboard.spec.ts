@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 const hasSupabase = Boolean(process.env.VITE_SUPABASE_URL && process.env.VITE_SUPABASE_PUBLISHABLE_KEY);
 const hasAdminCredentials = Boolean(process.env.KPL_E2E_EMAIL && process.env.KPL_E2E_PASSWORD);
@@ -41,15 +42,46 @@ test('updates the OBS overlay when the control adds a point', async ({ browser }
   await overlay.goto(`/overlay/${eventId}/scoreboard`);
 
   await expect(control.getByText('KPL Live Control')).toBeVisible();
-  await control.getByRole('button', { name: /iniciar partido/i }).click();
-  await expect(control.getByRole('button', { name: /\+ punto local/i })).toBeVisible();
-  await control.getByRole('button', { name: /\+ punto local/i }).click();
+  const startButton = control.getByRole('button', { name: /iniciar partido/i });
+  const homePointButton = control.locator('.point-controls .point-button.home:visible, .mobile-point-actions button.home:visible').first();
+  let controlMode = await resolveControlMode(control);
+
+  if (controlMode === 'loading') {
+    await expect.poll(() => resolveControlMode(control), { timeout: 10_000 }).not.toBe('loading');
+    controlMode = await resolveControlMode(control);
+  }
+
+  if (controlMode === 'start') {
+    await startButton.click();
+  }
+
+  await expect(homePointButton).toBeVisible();
+  await homePointButton.click();
 
   await expect(overlay.locator('.point-number').first()).toContainText(/15|30|40|0/);
-  await control.getByRole('button', { name: /configurar siguiente/i }).click();
+  await control.getByRole('button', { name: /menu/i }).click();
+  await control.getByRole('dialog', { name: /menu/i }).getByRole('button', { name: /siguiente/i }).click();
   await control.getByRole('button', { name: /nueva partida/i }).click();
   await expect(overlay.locator('.overlay-loading')).toHaveText('KPL', { timeout: 15_000 });
 
   await control.close();
   await overlay.close();
 });
+
+async function resolveControlMode(page: Page): Promise<'loading' | 'score' | 'start'> {
+  const hasPointButton = await page
+    .locator('.point-controls .point-button.home:visible, .mobile-point-actions button.home:visible')
+    .count();
+
+  if (hasPointButton > 0) {
+    return 'score';
+  }
+
+  const startButton = page.getByRole('button', { name: /iniciar partido/i });
+
+  if (await startButton.isEnabled().catch(() => false)) {
+    return 'start';
+  }
+
+  return 'loading';
+}

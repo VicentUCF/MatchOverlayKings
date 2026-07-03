@@ -38,7 +38,7 @@
 
 .control-action-bar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
   gap: 10px;
   margin-top: 12px;
 }
@@ -142,4 +142,37 @@
 
 .mobile-score-control {
   display: none;
+}
+
+.data-scene-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.data-scene-grid button {
+  justify-content: flex-start;
+  min-height: 58px;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.data-scene-grid button > span {
+  display: grid;
+  min-width: 0;
+  text-align: left;
+}
+
+.data-scene-grid strong,
+.data-scene-grid small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-scene-grid small {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
 }
