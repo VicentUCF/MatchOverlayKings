@@ -258,7 +258,7 @@ export function OverlayPage({ eventId }: { eventId: string }) {
         duration: 540,
       })
       .add(
-        scoreboard.querySelectorAll('.scoreboard-header, .score-grid-head, .set-strip'),
+        scoreboard.querySelectorAll('.scoreboard-header, .score-grid-head'),
         {
           opacity: [0, 1],
           translateY: [20, 0],
