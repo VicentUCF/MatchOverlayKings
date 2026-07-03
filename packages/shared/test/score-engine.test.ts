@@ -216,13 +216,13 @@ describe('score engine', () => {
       },
       'sponsor-ticker-1',
     );
-    state = triggerSponsorFullscreen(state, 'kpl', 8, 'sponsor-fullscreen-1');
+    state = triggerSponsorFullscreen(state, ['kpl', 'magic-city'], 8, 'sponsor-fullscreen-1');
 
     expect(state.sponsorAds.ticker.visible).toBe(true);
     expect(state.sponsorAds.ticker.sponsorIds).toEqual(['kpl', 'magic-city']);
     expect(state.sponsorAds.fullscreen).toMatchObject({
       id: 'sponsor-fullscreen-1',
-      sponsorId: 'kpl',
+      sponsorIds: ['kpl', 'magic-city'],
       durationSeconds: 8,
     });
 

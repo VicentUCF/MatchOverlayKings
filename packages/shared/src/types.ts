@@ -93,7 +93,7 @@ export interface SponsorTickerState {
 
 export interface SponsorFullscreenState {
   id: string;
-  sponsorId: SponsorId;
+  sponsorIds: SponsorId[];
   triggeredAt: string;
   durationSeconds: number;
 }
@@ -273,7 +273,7 @@ export interface UpdateSponsorTickerPayload extends VersionedCommandPayload {
 }
 
 export interface TriggerSponsorFullscreenPayload extends VersionedCommandPayload {
-  sponsorId: SponsorId | null;
+  sponsorIds: SponsorId[] | null;
   durationSeconds?: number;
 }
 

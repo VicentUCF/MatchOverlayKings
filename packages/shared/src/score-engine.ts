@@ -328,13 +328,13 @@ export function updateSponsorTicker(
 
 export function triggerSponsorFullscreen(
   state: MatchState,
-  sponsorId: string | null,
+  sponsorIds: string[] | null,
   durationSeconds: number | undefined,
   commandId: string,
 ): MatchState {
-  const normalizedSponsorId = sponsorId?.trim() ?? '';
+  const normalizedSponsorIds = normalizeSponsorIds(sponsorIds);
 
-  if (sponsorId !== null && !normalizedSponsorId) {
+  if (sponsorIds !== null && normalizedSponsorIds.length === 0) {
     throw new ScoreEngineError('VALIDATION_ERROR', 'Patrocinador no valido.');
   }
 
@@ -343,10 +343,10 @@ export function triggerSponsorFullscreen(
 
     draft.sponsorAds = {
       ...current,
-      fullscreen: normalizedSponsorId
+      fullscreen: normalizedSponsorIds.length > 0
         ? {
             id: commandId,
-            sponsorId: normalizedSponsorId,
+            sponsorIds: normalizedSponsorIds,
             triggeredAt: new Date().toISOString(),
             durationSeconds: normalizeSponsorDuration(durationSeconds),
           }
@@ -742,14 +742,24 @@ function normalizeSponsorTicker(ticker: Partial<SponsorTickerState> | undefined)
   };
 }
 
-function normalizeSponsorFullscreen(fullscreen: SponsorFullscreenState | null | undefined): SponsorFullscreenState | null {
-  if (!fullscreen?.sponsorId?.trim()) {
+function normalizeSponsorFullscreen(
+  fullscreen: (SponsorFullscreenState & { sponsorId?: string }) | null | undefined,
+): SponsorFullscreenState | null {
+  if (!fullscreen) {
+    return null;
+  }
+
+  const sponsorIds = normalizeSponsorIds(fullscreen.sponsorIds);
+  const legacySponsorId = typeof fullscreen.sponsorId === 'string' ? fullscreen.sponsorId.trim() : '';
+  const normalizedSponsorIds = sponsorIds.length > 0 ? sponsorIds : legacySponsorId ? [legacySponsorId] : [];
+
+  if (normalizedSponsorIds.length === 0) {
     return null;
   }
 
   return {
-    id: fullscreen.id || fullscreen.sponsorId,
-    sponsorId: fullscreen.sponsorId.trim(),
+    id: fullscreen.id || normalizedSponsorIds.join('-'),
+    sponsorIds: normalizedSponsorIds,
     triggeredAt: fullscreen.triggeredAt,
     durationSeconds: normalizeSponsorDuration(fullscreen.durationSeconds),
   };

@@ -140,7 +140,7 @@ export function registerSocketHandlers(options: SocketHandlerOptions): void {
 
     socket.on('overlay:triggerSponsorFullscreen', (payload, ack) =>
       runControlCommand(options, socket, payload, ack, (state) =>
-        triggerSponsorFullscreen(state, payload.sponsorId, payload.durationSeconds, payload.commandId),
+        triggerSponsorFullscreen(state, payload.sponsorIds, payload.durationSeconds, payload.commandId),
       ),
     );
   });

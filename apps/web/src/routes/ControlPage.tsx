@@ -47,7 +47,7 @@ import type {
 import { Scoreboard } from '../components/Scoreboard.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
 import { MATCH_CARDS, type MatchCardDefinition } from '../lib/match-cards.js';
-import { SPONSORS, getSponsorById } from '../lib/sponsors.js';
+import { SPONSORS } from '../lib/sponsors.js';
 
 type ControlPhase = 'setup' | 'score';
 type MobilePanel = 'cards' | 'data' | 'ads' | 'edit' | 'menu';
@@ -199,8 +199,8 @@ export function ControlPage({ eventId }: { eventId: string }) {
     await match.updateSponsorTicker(patch);
   }
 
-  async function triggerSponsorFullscreen(sponsorId: string | null) {
-    await match.triggerSponsorFullscreen(sponsorId, 8);
+  async function triggerSponsorFullscreen(sponsorIds: string[] | null) {
+    await match.triggerSponsorFullscreen(sponsorIds, 8);
   }
 
   const overlaySettings = state?.overlaySettings ?? DEFAULT_OVERLAY_SETTINGS;
@@ -357,7 +357,7 @@ export function ControlPage({ eventId }: { eventId: string }) {
       sponsorAds={state.sponsorAds ?? DEFAULT_SPONSOR_ADS}
       pending={match.pending}
       onUpdateTicker={(patch) => void updateSponsorTicker(patch)}
-      onTriggerFullscreen={(sponsorId) => void triggerSponsorFullscreen(sponsorId)}
+      onTriggerFullscreen={(sponsorIds) => void triggerSponsorFullscreen(sponsorIds)}
     />
   ) : null;
 
@@ -890,12 +890,13 @@ function SponsorAdsPanel({
   sponsorAds: SponsorAdsState;
   pending: boolean;
   onUpdateTicker: (patch: SponsorTickerPatch) => void;
-  onTriggerFullscreen: (sponsorId: string | null) => void;
+  onTriggerFullscreen: (sponsorIds: string[] | null) => void;
 }) {
   const ads = sponsorAds ?? DEFAULT_SPONSOR_ADS;
   const ticker = ads.ticker ?? DEFAULT_SPONSOR_ADS.ticker;
   const selectedSet = new Set(ticker.sponsorIds);
-  const activeSponsor = ads.fullscreen ? getSponsorById(ads.fullscreen.sponsorId) : null;
+  const fullscreenSponsorIds = ticker.sponsorIds.length > 0 ? ticker.sponsorIds : SPONSORS.map((sponsor) => sponsor.id);
+  const activeSponsorCount = ads.fullscreen?.sponsorIds.length ?? 0;
 
   function toggleSponsor(sponsorId: string) {
     const nextIds = selectedSet.has(sponsorId)
@@ -967,27 +968,21 @@ function SponsorAdsPanel({
       <div className="sponsor-panel-heading">
         <Maximize2 size={18} />
         <strong>Pantalla grande</strong>
-        <span>{activeSponsor ? activeSponsor.name : 'Lista'}</span>
+        <span>{activeSponsorCount > 0 ? `${activeSponsorCount} logos` : 'Lista'}</span>
       </div>
 
-      <div className="sponsor-fullscreen-grid">
-        {SPONSORS.map((sponsor) => (
-          <button
-            key={sponsor.id}
-            type="button"
-            onClick={() => onTriggerFullscreen(sponsor.id)}
-            disabled={pending}
-          >
-            <span className="sponsor-panel-logo">
-              {sponsor.logoUrl ? <img src={sponsor.logoUrl} alt="" /> : sponsorInitials(sponsor.name)}
-            </span>
-            <span>
-              <strong>{sponsor.name}</strong>
-              <small>Lanzar</small>
-            </span>
-          </button>
-        ))}
-      </div>
+      <button
+        type="button"
+        className="sponsor-fullscreen-all-button"
+        onClick={() => onTriggerFullscreen(fullscreenSponsorIds)}
+        disabled={pending || fullscreenSponsorIds.length === 0}
+      >
+        <Maximize2 size={18} />
+        <span>
+          <strong>Mostrar todos</strong>
+          <small>{ticker.sponsorIds.length > 0 ? 'Sponsors de la barra' : 'Catalogo completo'}</small>
+        </span>
+      </button>
 
       {ads.fullscreen ? (
         <button type="button" className="sponsor-clear-button" onClick={() => onTriggerFullscreen(null)} disabled={pending}>

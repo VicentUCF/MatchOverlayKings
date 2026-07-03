@@ -46,7 +46,7 @@ export interface MatchSocketState {
   useMatchCard: (side: Side, cardId: MatchCardId, cardName: string) => Promise<boolean>;
   triggerDataScene: (kind: OverlayDataSceneKind, target: OverlayDataSceneTarget) => Promise<boolean>;
   updateSponsorTicker: (patch: SponsorTickerPatch) => Promise<boolean>;
-  triggerSponsorFullscreen: (sponsorId: string | null, durationSeconds?: number) => Promise<boolean>;
+  triggerSponsorFullscreen: (sponsorIds: string[] | null, durationSeconds?: number) => Promise<boolean>;
   refreshEvents: () => Promise<void>;
 }
 
@@ -227,9 +227,9 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
       triggerDataScene: (kind: OverlayDataSceneKind, target: OverlayDataSceneTarget) =>
         send('overlay:triggerDataScene', { kind, target }),
       updateSponsorTicker: (patch: SponsorTickerPatch) => send('overlay:updateSponsorTicker', { patch }),
-      triggerSponsorFullscreen: (sponsorId: string | null, durationSeconds?: number) =>
+      triggerSponsorFullscreen: (sponsorIds: string[] | null, durationSeconds?: number) =>
         send('overlay:triggerSponsorFullscreen', {
-          sponsorId,
+          sponsorIds,
           ...(durationSeconds !== undefined ? { durationSeconds } : {}),
         }),
       refreshEvents,
@@ -315,7 +315,7 @@ function toRpcCall(
       rpcName: 'trigger_sponsor_fullscreen',
       params: {
         ...base,
-        p_sponsor_id: payload.sponsorId,
+        p_sponsor_ids: payload.sponsorIds,
         p_duration_seconds: payload.durationSeconds ?? null,
       },
     };

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { animate, stagger } from 'animejs';
 import type { SponsorFullscreenState, SponsorTickerState } from '@kpl/shared';
-import { getSponsorById, resolveSponsors, type SponsorDefinition } from '../lib/sponsors.js';
+import { resolveSponsors, type SponsorDefinition } from '../lib/sponsors.js';
 
 export function SponsorAdScene({
   ticker,
@@ -82,9 +82,9 @@ function SponsorFullscreenAd({
   onDone: () => void;
 }) {
   const ref = useRef<HTMLElement>(null);
-  const sponsor = getSponsorById(ad.sponsorId);
+  const sponsors = useMemo(() => resolveSponsors(ad.sponsorIds), [ad.sponsorIds]);
   const sceneStyle = {
-    '--sponsor-color': sponsor.accentColor,
+    '--sponsor-color': sponsors[0]?.accentColor ?? '#c9a227',
   } as CSSProperties;
 
   useEffect(() => {
@@ -101,16 +101,17 @@ function SponsorFullscreenAd({
         duration: 220,
         ease: 'outCubic',
       }),
-      animate(scene.querySelectorAll('.sponsor-fullscreen-kicker, .sponsor-fullscreen-name, .sponsor-fullscreen-footer'), {
+      animate(scene.querySelectorAll('.sponsor-fullscreen-kicker, .sponsor-fullscreen-title, .sponsor-fullscreen-footer'), {
         opacity: [{ from: 0, to: 1 }],
         y: [{ from: 18, to: 0 }],
         delay: stagger(80, { start: 140 }),
         duration: 420,
         ease: 'outCubic',
       }),
-      animate(scene.querySelectorAll('.sponsor-fullscreen-logo'), {
+      animate(scene.querySelectorAll('.sponsor-fullscreen-card'), {
         opacity: [{ from: 0, to: 1 }],
         scale: [{ from: 0.82, to: 1 }],
+        delay: stagger(50, { start: 180, from: 'center' }),
         duration: 620,
         ease: 'outExpo',
       }),
@@ -128,14 +129,23 @@ function SponsorFullscreenAd({
       data-sponsor-fullscreen
       ref={ref}
       style={sceneStyle}
-      aria-label={`Anuncio ${sponsor.name}`}
+      aria-label="Anuncio patrocinadores"
     >
       <div className="sponsor-fullscreen-shell">
-        <span className="sponsor-fullscreen-kicker">Patrocinador oficial</span>
-        <div className="sponsor-fullscreen-logo">
-          <SponsorLogo sponsor={sponsor} />
+        <span className="sponsor-fullscreen-kicker">Patrocinadores oficiales</span>
+        <strong className="sponsor-fullscreen-title">Gracias por apoyar la KPL</strong>
+        <div className="sponsor-fullscreen-grid-large">
+          {sponsors.map((sponsor) => (
+            <article
+              className="sponsor-fullscreen-card"
+              key={sponsor.id}
+              style={{ '--sponsor-color': sponsor.accentColor } as CSSProperties}
+            >
+              <SponsorLogo sponsor={sponsor} />
+              <strong>{sponsor.name}</strong>
+            </article>
+          ))}
         </div>
-        <strong className="sponsor-fullscreen-name">{sponsor.name}</strong>
       </div>
 
       <div className="sponsor-fullscreen-footer">

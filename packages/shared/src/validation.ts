@@ -206,17 +206,19 @@ function parseSponsorFullscreen(value: unknown): SponsorFullscreenState | null {
     return null;
   }
 
-  const sponsorId = readOptionalString(value, 'sponsorId');
+  const sponsorIds = parseSponsorIds(value.sponsorIds);
+  const legacySponsorId = readOptionalString(value, 'sponsorId');
+  const nextSponsorIds = sponsorIds.length > 0 ? sponsorIds : legacySponsorId ? [legacySponsorId] : [];
 
-  if (!sponsorId) {
+  if (nextSponsorIds.length === 0) {
     return null;
   }
 
   const triggeredAt = readOptionalString(value, 'triggeredAt');
 
   return {
-    id: readOptionalString(value, 'id') || triggeredAt || sponsorId,
-    sponsorId,
+    id: readOptionalString(value, 'id') || triggeredAt || nextSponsorIds.join('-'),
+    sponsorIds: nextSponsorIds,
     triggeredAt,
     durationSeconds: clampNumber(value.durationSeconds, 4, 30, 8),
   };

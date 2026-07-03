@@ -1,7 +1,7 @@
 alter table public.score_events drop constraint if exists score_events_type_check;
 alter table public.score_events
   add constraint score_events_type_check
-  check (type in ('add_point', 'undo', 'reset', 'manual_patch', 'update_meta', 'set_status', 'new_match', 'update_overlay', 'use_card', 'trigger_data_scene'));
+  check (type in ('add_point', 'undo', 'reset', 'manual_patch', 'update_meta', 'set_status', 'new_match', 'update_overlay', 'use_card', 'trigger_data_scene', 'update_sponsor_ticker', 'trigger_sponsor_ad'));
 
 create or replace function public.kpl_default_cards()
 returns jsonb

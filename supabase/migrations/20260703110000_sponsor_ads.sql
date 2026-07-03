@@ -101,16 +101,22 @@ language plpgsql
 immutable
 as $$
 declare
-  v_sponsor_id text;
+  v_sponsor_ids jsonb;
+  v_legacy_sponsor_id text;
   v_duration int := 8;
 begin
   if coalesce(jsonb_typeof(p_fullscreen), '') <> 'object' then
     return 'null'::jsonb;
   end if;
 
-  v_sponsor_id := nullif(btrim(coalesce(p_fullscreen ->> 'sponsorId', '')), '');
+  v_sponsor_ids := public.kpl_normalize_sponsor_ids(p_fullscreen -> 'sponsorIds');
+  v_legacy_sponsor_id := nullif(btrim(coalesce(p_fullscreen ->> 'sponsorId', '')), '');
 
-  if v_sponsor_id is null then
+  if jsonb_array_length(v_sponsor_ids) = 0 and v_legacy_sponsor_id is not null then
+    v_sponsor_ids := jsonb_build_array(v_legacy_sponsor_id);
+  end if;
+
+  if jsonb_array_length(v_sponsor_ids) = 0 then
     return 'null'::jsonb;
   end if;
 
@@ -119,8 +125,8 @@ begin
   end if;
 
   return jsonb_build_object(
-    'id', coalesce(nullif(btrim(coalesce(p_fullscreen ->> 'id', '')), ''), v_sponsor_id),
-    'sponsorId', v_sponsor_id,
+    'id', coalesce(nullif(btrim(coalesce(p_fullscreen ->> 'id', '')), ''), v_sponsor_ids ->> 0),
+    'sponsorIds', v_sponsor_ids,
     'triggeredAt', coalesce(p_fullscreen ->> 'triggeredAt', ''),
     'durationSeconds', v_duration
   );
@@ -236,9 +242,11 @@ begin
 end;
 $$;
 
+drop function if exists public.kpl_trigger_sponsor_fullscreen_state(jsonb, text, int, text);
+
 create or replace function public.kpl_trigger_sponsor_fullscreen_state(
   p_state jsonb,
-  p_sponsor_id text,
+  p_sponsor_ids jsonb,
   p_duration_seconds int,
   p_command_id text
 )
@@ -249,16 +257,16 @@ as $$
 declare
   v_ads jsonb := public.kpl_normalize_sponsor_ads(p_state -> 'sponsorAds');
   v_now text := to_jsonb(now()) #>> '{}';
-  v_sponsor_id text := nullif(btrim(coalesce(p_sponsor_id, '')), '');
+  v_sponsor_ids jsonb := public.kpl_normalize_sponsor_ids(p_sponsor_ids);
   v_duration int := least(30, greatest(4, coalesce(p_duration_seconds, 8)));
   v_fullscreen jsonb;
 begin
-  if v_sponsor_id is null then
+  if jsonb_array_length(v_sponsor_ids) = 0 then
     v_fullscreen := 'null'::jsonb;
   else
     v_fullscreen := jsonb_build_object(
       'id', p_command_id,
-      'sponsorId', v_sponsor_id,
+      'sponsorIds', v_sponsor_ids,
       'triggeredAt', v_now,
       'durationSeconds', v_duration
     );
@@ -300,11 +308,13 @@ begin
 end;
 $$;
 
+drop function if exists public.trigger_sponsor_fullscreen(text, int, text, text, int);
+
 create or replace function public.trigger_sponsor_fullscreen(
   p_court_slug text,
   p_expected_version int,
   p_command_id text,
-  p_sponsor_id text,
+  p_sponsor_ids jsonb,
   p_duration_seconds int default null
 )
 returns jsonb
@@ -315,19 +325,22 @@ as $$
 declare
   v_ctx record;
   v_next jsonb;
-  v_label text := case when nullif(btrim(coalesce(p_sponsor_id, '')), '') is null then 'Limpiar sponsor OBS' else 'Anuncio sponsor OBS' end;
+  v_label text := case
+    when jsonb_array_length(public.kpl_normalize_sponsor_ids(p_sponsor_ids)) = 0 then 'Limpiar sponsor OBS'
+    else 'Anuncio sponsors OBS'
+  end;
 begin
   select * into v_ctx from public.kpl_load_command_context(p_court_slug, p_expected_version, p_command_id);
   if v_ctx.duplicate then
     return v_ctx.state;
   end if;
 
-  v_next := public.kpl_trigger_sponsor_fullscreen_state(v_ctx.state, p_sponsor_id, p_duration_seconds, p_command_id);
+  v_next := public.kpl_trigger_sponsor_fullscreen_state(v_ctx.state, p_sponsor_ids, p_duration_seconds, p_command_id);
   return public.kpl_store_state(v_ctx.court_id, v_ctx.actor_id, p_command_id, 'trigger_sponsor_ad', null, v_label, v_ctx.state, v_next);
 end;
 $$;
 
 revoke all on function public.update_sponsor_ticker(text, int, text, jsonb) from public, anon;
-revoke all on function public.trigger_sponsor_fullscreen(text, int, text, text, int) from public, anon;
+revoke all on function public.trigger_sponsor_fullscreen(text, int, text, jsonb, int) from public, anon;
 grant execute on function public.update_sponsor_ticker(text, int, text, jsonb) to authenticated;
-grant execute on function public.trigger_sponsor_fullscreen(text, int, text, text, int) to authenticated;
+grant execute on function public.trigger_sponsor_fullscreen(text, int, text, jsonb, int) to authenticated;

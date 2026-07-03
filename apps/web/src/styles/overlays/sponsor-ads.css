@@ -137,8 +137,8 @@
   z-index: 1;
   display: grid;
   justify-items: center;
-  gap: 26px;
-  width: min(1180px, calc(100vw - 96px));
+  gap: 22px;
+  width: min(1280px, calc(100vw - 96px));
   text-align: center;
 }
 
@@ -150,37 +150,70 @@
   text-transform: uppercase;
 }
 
-.sponsor-fullscreen-logo {
-  display: grid;
-  place-items: center;
-  width: min(760px, 64vw);
-  height: min(330px, 34vh);
-  padding: 22px;
-}
-
-.sponsor-fullscreen-logo img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  filter: drop-shadow(0 20px 32px rgb(0 0 0 / 44%));
-}
-
-.sponsor-fullscreen-logo .sponsor-logo-fallback {
-  width: min(520px, 48vw);
-  height: min(260px, 30vh);
-  font-size: clamp(72px, 11vw, 156px);
-}
-
-.sponsor-fullscreen-name {
+.sponsor-fullscreen-title {
   max-width: 100%;
   overflow-wrap: anywhere;
   color: #ffffff;
   font-family: var(--font-family-heading);
-  font-size: clamp(48px, 7.5vw, 120px);
+  font-size: clamp(34px, 4.2vw, 72px);
   font-weight: 900;
-  line-height: 0.94;
+  line-height: 0.98;
   text-transform: uppercase;
   text-shadow: 0 12px 34px rgb(0 0 0 / 48%);
+}
+
+.sponsor-fullscreen-grid-large {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 22px;
+  width: 100%;
+  max-height: min(560px, 54vh);
+  align-items: stretch;
+}
+
+.sponsor-fullscreen-card {
+  display: grid;
+  grid-template-rows: minmax(120px, 1fr) auto;
+  place-items: center;
+  gap: 16px;
+  min-height: 210px;
+  padding: 24px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--sponsor-color) 46%, rgb(255 255 255 / 22%));
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--sponsor-color) 22%, transparent), transparent 62%),
+    rgb(255 255 255 / 8%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 12%),
+    0 18px 38px rgb(0 0 0 / 30%);
+}
+
+.sponsor-fullscreen-card img {
+  width: 100%;
+  max-width: 220px;
+  height: 128px;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 28px rgb(0 0 0 / 38%));
+}
+
+.sponsor-fullscreen-card .sponsor-logo-fallback {
+  width: 150px;
+  height: 112px;
+  font-size: 48px;
+}
+
+.sponsor-fullscreen-card strong {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: #f8fbff;
+  font-family: var(--font-family-heading);
+  font-size: clamp(20px, 2.2vw, 32px);
+  font-weight: 900;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .sponsor-fullscreen-footer {
@@ -243,6 +276,25 @@
 
   .sponsor-fullscreen-shell {
     width: min(720px, calc(100vw - 40px));
+  }
+
+  .sponsor-fullscreen-grid-large {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  .sponsor-fullscreen-card {
+    min-height: 142px;
+    padding: 14px;
+  }
+
+  .sponsor-fullscreen-card img {
+    max-width: 140px;
+    height: 74px;
+  }
+
+  .sponsor-fullscreen-card strong {
+    font-size: 15px;
   }
 
   .sponsor-fullscreen-footer {
