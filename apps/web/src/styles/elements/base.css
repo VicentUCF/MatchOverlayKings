@@ -21,7 +21,7 @@ button {
 }
 
 ::selection {
-  background: rgb(201 162 39 / 28%);
+  background: rgb(201 162 39 / 0.28);
   color: var(--color-brand-contrast);
 }
 

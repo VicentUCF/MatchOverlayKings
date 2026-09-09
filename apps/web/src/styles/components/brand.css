@@ -9,7 +9,7 @@
   height: auto;
   max-height: 3.35rem;
   object-fit: contain;
-  filter: drop-shadow(0 0.75rem 1.5rem rgb(0 0 0 / 24%));
+  filter: drop-shadow(0 0.75rem 1.5rem rgb(0 0 0 / 0.24));
 }
 
 .brand strong,

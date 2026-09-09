@@ -15,7 +15,7 @@
   border: 1px solid var(--color-border-strong);
   border-radius: 8px;
   color: var(--color-brand-strong);
-  background: rgb(201 162 39 / 10%);
+  background: rgb(201 162 39 / 0.1);
   font-weight: 800;
 }
 

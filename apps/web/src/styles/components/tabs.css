@@ -5,7 +5,7 @@
   padding: 4px;
   border: 1px solid var(--color-border-subtle);
   border-radius: 8px;
-  background: rgb(17 17 17 / 92%);
+  background: rgb(17 17 17 / 0.92);
 }
 
 .phase-tabs button {
@@ -19,5 +19,9 @@
 
 .phase-tabs button.active {
   color: var(--color-brand-contrast);
-  background: linear-gradient(135deg, var(--color-brand), var(--color-brand-strong));
+  background: linear-gradient(
+    135deg,
+    var(--color-brand),
+    var(--color-brand-strong)
+  );
 }

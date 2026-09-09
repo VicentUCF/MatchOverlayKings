@@ -9,15 +9,15 @@
   padding: 0 14px;
   color: var(--color-text-default);
   background:
-    linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%)),
-    rgb(255 255 255 / 3%);
+    linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.02)),
+    rgb(255 255 255 / 0.03);
   border: 1px solid var(--color-border-subtle);
   font-weight: 800;
 }
 
 .switch-button.on {
   color: var(--color-brand-strong);
-  background: rgb(201 162 39 / 12%);
+  background: rgb(201 162 39 / 0.12);
   border-color: var(--color-border-strong);
 }
 
@@ -35,7 +35,7 @@
   min-width: 0;
   padding: 4px;
   border-radius: 8px;
-  background: rgb(255 255 255 / 3%);
+  background: rgb(255 255 255 / 0.03);
   border: 1px solid var(--color-border-subtle);
 }
 
@@ -55,5 +55,9 @@
 
 .segmented-control button.active {
   color: var(--color-brand-contrast);
-  background: linear-gradient(135deg, var(--color-brand), var(--color-brand-strong));
+  background: linear-gradient(
+    135deg,
+    var(--color-brand),
+    var(--color-brand-strong)
+  );
 }

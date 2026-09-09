@@ -23,7 +23,7 @@
   border-radius: 8px;
   padding: 8px;
   color: var(--color-text-default);
-  background: rgb(255 255 255 / 3%);
+  background: rgb(255 255 255 / 0.03);
   border: 1px solid var(--color-border-subtle);
   font-weight: 800;
 }
@@ -31,7 +31,7 @@
 .card-team-switch button.active {
   color: var(--color-brand-strong);
   border-color: var(--color-border-strong);
-  background: rgb(201 162 39 / 10%);
+  background: rgb(201 162 39 / 0.1);
 }
 
 .card-team-switch strong,
@@ -77,15 +77,15 @@
   border-radius: 8px;
   padding: 7px;
   color: var(--color-text-default);
-  background: rgb(255 255 255 / 3%);
+  background: rgb(255 255 255 / 0.03);
   border: 1px solid var(--color-border-subtle);
   font-weight: 800;
 }
 
 .card-action-grid button.used {
   color: var(--success);
-  border-color: rgb(16 185 129 / 30%);
-  background: rgb(16 185 129 / 10%);
+  border-color: rgb(16 185 129 / 0.3);
+  background: rgb(16 185 129 / 0.1);
 }
 
 .card-action-grid img {

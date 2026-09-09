@@ -1,36 +1,33 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;700&display=swap");
 
-/*
- * ITCSS entrypoint. Keep imports ordered from low-specificity foundations
- * to high-specificity feature surfaces.
- */
-@import './settings/tokens.css';
-@import './generic/reset.css';
-@import './elements/base.css';
-@import './objects/app-shell.css';
+@import "@kpl/design-system/tokens";
+@import "./patterns/broadcast.css";
+@import "./generic/reset.css";
+@import "./elements/base.css";
+@import "./objects/app-shell.css";
 
-@import './components/brand.css';
-@import './components/tabs.css';
-@import './components/match-list.css';
-@import './components/panels.css';
-@import './components/forms.css';
-@import './components/match-cards.css';
-@import './components/segmented-controls.css';
-@import './components/sponsor-ads.css';
-@import './components/scoreboard.css';
-@import './components/operator-actions.css';
-@import './components/mobile-modal.css';
-@import './components/toast.css';
+@import "./components/brand.css";
+@import "./components/tabs.css";
+@import "./components/match-list.css";
+@import "./components/panels.css";
+@import "./components/forms.css";
+@import "./components/match-cards.css";
+@import "./components/segmented-controls.css";
+@import "./components/sponsor-ads.css";
+@import "./components/scoreboard.css";
+@import "./components/operator-actions.css";
+@import "./components/mobile-modal.css";
+@import "./components/toast.css";
 
-@import './pages/home-admin.css';
-@import './pages/watch.css';
-@import './pages/control.css';
+@import "./pages/home-admin.css";
+@import "./pages/watch.css";
+@import "./pages/control.css";
 
-@import './overlays/scoreboard.css';
-@import './overlays/side-change-scene.css';
-@import './overlays/prematch-scene.css';
-@import './overlays/card-announcement-scene.css';
-@import './overlays/data-scene.css';
-@import './overlays/sponsor-ads.css';
+@import "./overlays/scoreboard.css";
+@import "./overlays/side-change-scene.css";
+@import "./overlays/prematch-scene.css";
+@import "./overlays/card-announcement-scene.css";
+@import "./overlays/data-scene.css";
+@import "./overlays/sponsor-ads.css";
 
-@import './responsive/app.css';
+@import "./responsive/app.css";
