@@ -220,9 +220,11 @@ de emision y los tokens no se devuelven al navegador ni se escriben en los logs.
 
 Cada pista conserva su propia configuración, fuente, estado, métricas y controles de inicio/parada.
 Los perfiles `production_admin` ven configuración y mandos; los perfiles `operator` acceden
-directamente a Mandos, sin campos editables. El
-piloto todavía no mezcla el overlay KPL, pero admite un único Android como cámara WebRTC para
-cualquiera de las tres pistas. Instala MediaMTX `1.21.0`, configura las variables `KPL_PILOT_MEDIAMTX_*`
+directamente a Mandos, sin campos editables. El piloto mezcla automáticamente el marcador KPL
+sobre la señal antes de enviarla a YouTube. La capa conserva transparencia real, refresca el
+estado público de la pista desde Supabase cada segundo y mantiene el último frame válido si la
+lectura falla, sin cortar el vídeo. Admite un único Android como cámara WebRTC para cualquiera de
+las tres pistas. Instala MediaMTX `1.21.0`, configura las variables `KPL_PILOT_MEDIAMTX_*`
 y `KPL_PILOT_LAN_*` del ejemplo y permite desde la LAN TCP `4310/8889` y UDP `8189`. RTSP `8554` y
 la API `9998` permanecen ligados a `127.0.0.1`.
 

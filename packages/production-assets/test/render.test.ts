@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProductionAssets } from '../src/index.js';
+import { createProductionAssets, renderLiveScoreboardRgba } from '../src/index.js';
 import { baseInput, onePixelPng } from './fixture.js';
 
 function readPngDimensions(bytes: Uint8Array): readonly [number, number] {
@@ -10,6 +10,28 @@ function readPngDimensions(bytes: Uint8Array): readonly [number, number] {
 }
 
 describe('livestream production assets', () => {
+  it('renders a cropped transparent RGBA scoreboard frame for FFmpeg composition', () => {
+    const frame = renderLiveScoreboardRgba({
+      width: 960, height: 270, title: 'Red Lions vs Kings', courtName: 'Pista 1',
+      homeName: 'Red Lions', awayName: 'Kings', homeSets: [3], awaySets: [2],
+      homePoint: '40', awayPoint: '30', servingSide: 'home', visible: true,
+    });
+
+    expect(frame).toHaveLength(960 * 270 * 4);
+    expect(frame[3]).toBe(0);
+    expect(frame.some((channel, index) => index % 4 === 3 && channel > 0)).toBe(true);
+  });
+
+  it('renders a fully transparent frame when the scoreboard is hidden', () => {
+    const frame = renderLiveScoreboardRgba({
+      width: 960, height: 270, title: 'Match', courtName: 'Pista 1',
+      homeName: 'Local', awayName: 'Visitante', homeSets: [], awaySets: [],
+      homePoint: '0', awayPoint: '0', servingSide: 'home', visible: false,
+    });
+
+    expect(frame.every((channel) => channel === 0)).toBe(true);
+  });
+
   it('builds the semantic YouTube title from match metadata', () => {
     // Given / When
     const assets = createProductionAssets(baseInput);

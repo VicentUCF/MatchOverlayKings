@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readdirSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { Readable } from 'node:stream';
+import type { Readable, Writable } from 'node:stream';
 import { createProductionAssets } from '@kpl/production-assets';
 import {
   PilotReadinessSchema,
@@ -22,6 +22,7 @@ import {
 import { PilotYouTubeError } from './pilot-youtube.js';
 import type { PilotYouTubeGateway } from './pilot-youtube.js';
 import type { PilotMobileCameraService } from './pilot-mobile-camera.js';
+import { startPilotOverlayPump, type PilotOverlayOptions } from './pilot-overlay.js';
 
 const MAX_ACTIVE_SESSIONS = 3;
 const MAX_DIAGNOSTIC_LENGTH = 2_000;
@@ -36,6 +37,8 @@ type InternalPilotSession = {
   retryAttempt: number;
   diagnostic: string;
   lastYouTubeCheckAt: number;
+  readonly overlay: Omit<PilotOverlayOptions, 'framesPerSecond'>;
+  overlayController: AbortController | null;
 };
 
 type PilotChildProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -200,6 +203,14 @@ export class PilotService {
       retryAttempt: 0,
       diagnostic: '',
       lastYouTubeCheckAt: 0,
+      overlay: {
+        courtSlug: input.courtSlug,
+        title: `${input.homeTeam} vs ${input.awayTeam}`,
+        courtName: `Pista ${Number(input.courtSlug.slice(-1))}`,
+        homeName: input.homeTeam,
+        awayName: input.awayTeam,
+      },
+      overlayController: null,
     });
     return session;
   }
@@ -238,22 +249,33 @@ export class PilotService {
 
   private spawnSessionProcess(session: InternalPilotSession): void {
     const usesMobileCamera = session.public.source.kind === 'mobile';
+    const framesPerSecond = usesMobileCamera
+      ? this.mobileCamera?.framesPerSecondForCourt(session.public.courtSlug) ?? 30
+      : 30;
     const command = ffmpegCommand(
       this.ffmpegPath,
       session.public.source,
       session.ingestUrl,
       usesMobileCamera ? this.mobileCamera?.rtspUrl() ?? null : null,
       usesMobileCamera ? this.mobileCamera?.audioAvailableForCourt(session.public.courtSlug) ?? false : false,
-      usesMobileCamera
-        ? this.mobileCamera?.framesPerSecondForCourt(session.public.courtSlug) ?? 30
-        : 30,
+      framesPerSecond,
     );
     const child = spawn(command.executable, command.argv, {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
       env: { PATH: process.env.PATH ?? '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C' },
       shell: false,
-    });
+    }) as unknown as PilotChildProcess;
     session.process = child;
+    session.overlayController?.abort();
+    session.overlayController = new AbortController();
+    const overlayInput = child.stdio[3] as Writable;
+    void startPilotOverlayPump(
+      overlayInput,
+      { ...session.overlay, framesPerSecond },
+      session.overlayController.signal,
+    ).catch(() => {
+      if (session.process === child) child.kill('SIGTERM');
+    });
     session.retryTimer = null;
     session.public = PilotSessionSchema.parse({
       ...session.public,
@@ -315,6 +337,8 @@ export class PilotService {
       session.retryTimer = null;
     }
     const child = session.process;
+    session.overlayController?.abort();
+    session.overlayController = null;
     child?.kill('SIGTERM');
     if (child !== null) {
       const forceStop = setTimeout(() => {
@@ -346,6 +370,7 @@ export class PilotService {
   public async shutdown(): Promise<void> {
     for (const session of this.sessions.values()) {
       if (session.retryTimer !== null) clearTimeout(session.retryTimer);
+      session.overlayController?.abort();
       session.process?.kill('SIGTERM');
     }
   }
@@ -450,6 +475,10 @@ function ffmpegCommand(
           ...(mobileAudioAvailable ? [] : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo']),
         ];
   const audioInput = source.kind === 'mobile' && mobileAudioAvailable ? '0:a:0' : '1:a:0';
+  const overlayInputIndex = source.kind === 'mobile' && mobileAudioAvailable ? 1 : 2;
+  const baseVideo = source.kind === 'mobile'
+    ? `[0:v]scale=1920:1080:flags=lanczos[base];[base][${overlayInputIndex}:v]overlay=0:0:format=auto[vout]`
+    : `[0:v][${overlayInputIndex}:v]overlay=0:0:format=auto[vout]`;
   const output = ingestUrl === null
     ? ['-f', 'null', '/dev/null']
     : ['-f', 'flv', ingestUrl];
@@ -459,9 +488,10 @@ function ffmpegCommand(
     argv: [
       '-nostdin', '-hide_banner', '-loglevel', 'warning', '-progress', 'pipe:1', '-stats_period', '1',
       ...input,
-      '-map', '0:v:0', '-map', audioInput,
-      ...(source.kind === 'mobile' ? ['-vf', 'scale=1920:1080:flags=lanczos'] : []),
-      '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+      '-thread_queue_size', '64', '-f', 'rawvideo', '-pixel_format', 'rgba',
+      '-video_size', '960x270', '-framerate', `${outputFramesPerSecond}`, '-i', 'pipe:3',
+      '-filter_complex', baseVideo, '-map', '[vout]', '-map', audioInput,
+      '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p',
       '-b:v', `${videoBitrateKbps}k`, '-maxrate', `${videoBitrateKbps}k`, '-bufsize', `${videoBitrateKbps * 2}k`,
       '-g', `${outputFramesPerSecond * 2}`, '-keyint_min', `${outputFramesPerSecond * 2}`, '-sc_threshold', '0',
       '-c:a', 'aac', '-b:a', '128k', '-ar', '48000',
@@ -512,6 +542,8 @@ function attachProgress(
   child.once('close', (code) => {
     const requested = session.public.status === 'stopping';
     session.process = null;
+    session.overlayController?.abort();
+    session.overlayController = null;
     if (requested) {
       session.public = PilotSessionSchema.parse({
         ...session.public,
