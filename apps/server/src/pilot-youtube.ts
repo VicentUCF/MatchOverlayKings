@@ -28,12 +28,15 @@ export type PilotYouTubeHealth = {
 };
 
 export class PilotYouTubeError extends Error {
-  public constructor(public readonly code: 'NOT_CONFIGURED' | 'NOT_AUTHORIZED' | 'API_ERROR') {
-    super(code === 'NOT_CONFIGURED'
+  public constructor(
+    public readonly code: 'NOT_CONFIGURED' | 'NOT_AUTHORIZED' | 'API_ERROR',
+    apiMessage?: string,
+  ) {
+    super(apiMessage ?? (code === 'NOT_CONFIGURED'
       ? 'La integración de YouTube no está configurada.'
       : code === 'NOT_AUTHORIZED'
         ? 'Conecta primero la cuenta de YouTube.'
-        : 'YouTube no pudo completar la operación.');
+        : 'YouTube no pudo completar la operación.'));
     this.name = 'PilotYouTubeError';
   }
 }
@@ -176,7 +179,7 @@ export class PilotYouTubeGateway {
       };
     } catch (error) {
       if (error instanceof PilotYouTubeError) throw error;
-      throw new PilotYouTubeError('API_ERROR');
+      throw new PilotYouTubeError('API_ERROR', youtubeApiErrorMessage(error));
     }
   }
 
@@ -238,6 +241,52 @@ export class PilotYouTubeGateway {
     await writeFile(temporary, `${JSON.stringify(this.oauth.credentials)}\n`, { mode: 0o600 });
     await rename(temporary, this.config.tokenPath);
   }
+}
+
+export function youtubeApiErrorMessage(error: unknown): string {
+  const reason = youtubeApiErrorReason(error);
+  switch (reason) {
+    case 'invalidScheduledStartTime':
+      return 'La fecha y hora no son válidas para YouTube. Programa la emisión para un momento futuro.';
+    case 'liveStreamingNotEnabled':
+      return 'El canal de YouTube todavía no tiene habilitadas las emisiones en directo.';
+    case 'livePermissionBlocked':
+      return 'YouTube ha bloqueado temporalmente las emisiones en directo de este canal.';
+    case 'insufficientLivePermissions':
+      return 'La cuenta conectada no tiene permisos para crear emisiones en este canal.';
+    case 'quotaExceeded':
+    case 'dailyLimitExceeded':
+      return 'Se ha agotado la cuota diaria de la API de YouTube.';
+    case 'userBroadcastsExceedLimit':
+      return 'El canal tiene demasiadas emisiones activas o programadas. Finaliza o elimina alguna en YouTube Studio.';
+    case 'userRequestsExceedRateLimit':
+      return 'YouTube ha limitado temporalmente las solicitudes. Espera un momento y vuelve a intentarlo.';
+    case 'invalidTitle':
+      return 'YouTube ha rechazado el título de la emisión.';
+    case 'invalidDescription':
+      return 'YouTube ha rechazado la descripción de la emisión.';
+    case 'authError':
+    case 'invalidCredentials':
+      return 'La autorización de YouTube ha caducado. Vuelve a conectar la cuenta.';
+    default:
+      return 'YouTube no pudo completar la operación.';
+  }
+}
+
+function youtubeApiErrorReason(error: unknown): string | null {
+  if (!isRecord(error)) return null;
+  const response = error.response;
+  if (!isRecord(response)) return null;
+  const data = response.data;
+  if (!isRecord(data)) return null;
+  const apiError = data.error;
+  if (!isRecord(apiError) || !Array.isArray(apiError.errors)) return null;
+  const first = apiError.errors[0];
+  return isRecord(first) && typeof first.reason === 'string' ? first.reason : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function isTokenRecord(value: unknown): value is Record<string, string | number> {

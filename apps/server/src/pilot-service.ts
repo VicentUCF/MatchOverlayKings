@@ -134,6 +134,13 @@ export class PilotService {
     if (this.ffmpegVersion === null) throw new PilotServiceError(503, 'NOT_READY', 'FFmpeg no está disponible.');
     const source = this.readiness().sources.find(({ id }) => id === input.sourceId);
     if (source === undefined) throw new PilotServiceError(409, 'NOT_READY', 'La fuente seleccionada ya no está disponible.');
+    if (input.mode === 'youtube' && Date.parse(input.scheduledAt) <= Date.now()) {
+      throw new PilotServiceError(
+        409,
+        'NOT_READY',
+        'Actualiza la fecha y hora: YouTube exige programar la emisión para un momento futuro.',
+      );
+    }
     if (source.kind === 'mobile' && !this.mobileCamera?.isReadyForCourt(input.courtSlug)) {
       throw new PilotServiceError(409, 'NOT_READY', 'Prepara primero la cámara móvil para esta pista.');
     }

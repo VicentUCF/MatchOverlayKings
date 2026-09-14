@@ -216,7 +216,7 @@ function PilotConfigurationPanel({
           <input id={`pilot-matchday-${court.slug}`} type="number" min="1" max="999" required value={matchdayNumber}
             onChange={(event) => setMatchdayNumber(event.currentTarget.valueAsNumber)} />
           <label htmlFor={`pilot-scheduled-${court.slug}`}>Fecha y hora</label>
-          <input id={`pilot-scheduled-${court.slug}`} type="datetime-local" required value={scheduledAt}
+          <input id={`pilot-scheduled-${court.slug}`} type="datetime-local" required min={toLocalDateTime()} value={scheduledAt}
             onChange={(event) => setScheduledAt(event.currentTarget.value)} />
           <label htmlFor={`pilot-privacy-${court.slug}`}>Visibilidad</label>
           <select id={`pilot-privacy-${court.slug}`} value={privacyStatus}

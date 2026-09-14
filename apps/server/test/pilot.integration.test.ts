@@ -115,6 +115,25 @@ describe('production pilot', () => {
     await waitForSession(app, prepared.id, (session) => session.status === 'stopped', 'stopped');
   }, 15_000);
 
+  it('explains that YouTube cannot prepare a broadcast scheduled in the past', async () => {
+    const app = await createPilotApp();
+    const response = await app.inject({
+      method: 'POST', url: '/api/pilot/sessions', payload: {
+        courtSlug: 'pista-1', mode: 'youtube', sourceId: 'synthetic',
+        homeTeam: 'Red Lions', awayTeam: 'Kings', matchdayNumber: 1, seasonLabel: 'T2',
+        scheduledAt: new Date(Date.now() - 60_000).toISOString(), privacyStatus: 'private',
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      error: {
+        code: 'NOT_READY',
+        message: 'Actualiza la fecha y hora: YouTube exige programar la emisión para un momento futuro.',
+      },
+    });
+  });
+
   it('keeps three independent 1080p30 sessions live and stops each one cleanly', async () => {
     const app = await createPilotApp();
     const ids: string[] = [];
