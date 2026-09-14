@@ -130,6 +130,23 @@ UDP `8189`. La API MediaMTX y RTSP no se publican al host: permanecen en loopbac
 contenedor. La carpeta `./data` conserva la configuración local y el token OAuth si se usa YouTube;
 `.env.pilot.docker` no se versiona.
 
+En este PC la interfaz LAN tiene la IP `192.168.68.55` y la red es `192.168.68.0/22`. El archivo
+local `.env.pilot.docker` ha quedado configurado con esos dos valores. Como UFW está activo,
+autoriza solamente esa red con una única orden (pedirá la contraseña de administrador):
+
+```bash
+./scripts/configure-pilot-firewall.sh 192.168.68.0/22
+```
+
+El script es idempotente y abre `4310/tcp`, `8889/tcp` y `8189/udp` únicamente para la LAN. No
+activa UFW si estaba apagado, para no poner en riesgo un acceso SSH. No se deben abrir `8554` ni
+`9998`, ni crear redirecciones de estos puertos en el router: el teléfono y el PC deben compartir
+la misma red privada. En otro PC, sustituye la IP y el CIDR por los que muestre `ip -4 address`.
+
+Después de levantar Compose, comprueba desde el PC `curl http://192.168.68.55:4310/health` y desde
+el Android abre `http://192.168.68.55:4310`. La página de cámara final seguirá llegando mediante
+el enlace HTTPS temporal generado por el panel.
+
 El Compose usa una red bridge privada fija (`172.30.0.0/24`): solo su gateway `172.30.0.1` puede
 usar las rutas administrativas, mientras que el teléfono sigue limitado a los endpoints móviles
 con token y origen HTTPS.

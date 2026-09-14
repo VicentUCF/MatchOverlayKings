@@ -48,7 +48,7 @@ All UUID inputs are references to externally pre-created Supabase Auth users. Ca
 
 ## 2. Tokens and Visual Language
 
-Use canonical tokens already exported by `@kpl/design-system`; do not add page-specific color, type, spacing, radius, shadow, or timing values. Historical aliases may remain in existing CSS but new overview rules use `--kpl-*` names. `global.css` currently imports only the shared `tokens` entry, so shared `c-*` and `o-*` classes are not runtime dependencies of this contract; keep using the app's loaded local components rather than pretending those classes are available.
+Use canonical tokens already exported by `@kpl/design-system`; do not add page-specific color, type, spacing, radius, shadow, or timing values. Historical aliases may remain in existing CSS but new overview rules use `--kpl-*` names. `global.css` currently imports only the shared source token stylesheet, so shared `c-*` and `o-*` classes are not runtime dependencies of this contract; keep using the app's loaded local components rather than pretending those classes are available.
 
 | Intent | Existing token(s) | Contract |
 | --- | --- | --- |
