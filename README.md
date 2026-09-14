@@ -120,6 +120,11 @@ la web contacta al agente en `http://127.0.0.1:4310` y el navegador solicita per
 a la red local. El panel local continúa disponible como alternativa. Vercel también sirve la
 página HTTPS que necesita el móvil para conceder acceso a la cámara.
 
+Cada directo abre internamente `/overlay/:courtSlug/scoreboard` en Chromium y mezcla esa página
+transparente sobre el vídeo de la cámara móvil antes de enviarlo a YouTube. Es la misma interfaz
+que se usa como Browser Source en OBS, incluidas sus cartas, escenas y animaciones, pero no hace
+falta instalar ni abrir OBS. El contenedor ya incluye el navegador requerido.
+
 La instalación soportada usa Docker Compose:
 
 ```bash

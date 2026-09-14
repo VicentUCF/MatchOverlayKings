@@ -296,6 +296,7 @@ export function OverlayPage({ eventId }: { eventId: string }) {
         <div
           className="overlay-score-wrap"
           data-position={settings?.position ?? 'top-left'}
+          data-size={settings?.size ?? 'standard'}
           ref={overlayRef}
         >
           <Scoreboard state={match.state} teams={match.teams} mode="overlay" />

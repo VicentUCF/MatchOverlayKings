@@ -12,6 +12,7 @@ import type { KplSocketServer, SocketData } from './socket-handlers.js';
 import { PilotService, PilotServiceError } from './pilot-service.js';
 import { PilotYouTubeGateway } from './pilot-youtube.js';
 import { PilotMobileCameraError, PilotMobileCameraService } from './pilot-mobile-camera.js';
+import { BrowserPilotOverlayRenderer, type PilotOverlayRenderer } from './pilot-overlay.js';
 
 export async function buildApp(
   config: ServerConfig,
@@ -19,6 +20,7 @@ export async function buildApp(
     readonly mobileCameraReadinessProbe?: ConstructorParameters<typeof PilotMobileCameraService>[3];
     readonly mobileCameraVersionProbe?: ConstructorParameters<typeof PilotMobileCameraService>[4];
     readonly mobileCameraNow?: ConstructorParameters<typeof PilotMobileCameraService>[5];
+    readonly pilotOverlayRenderer?: PilotOverlayRenderer;
   } = {},
 ) {
   const app = Fastify({
@@ -36,11 +38,16 @@ export async function buildApp(
     dependencies.mobileCameraNow,
   );
   mobileCamera.initialize();
+  const browserPath = chromiumExecutablePath();
   const pilot = new PilotService(
     config.pilot.ffmpegPath,
     new PilotYouTubeGateway(config.pilot.youtube),
     resolve(config.dataDir, 'pilot-configurations.json'),
     mobileCamera,
+    dependencies.pilotOverlayRenderer ?? new BrowserPilotOverlayRenderer({
+      baseUrl: `http://127.0.0.1:${config.port}`,
+      ...(browserPath ? { chromiumExecutablePath: browserPath } : {}),
+    }),
   );
   await pilot.initialize();
   const io: KplSocketServer = new SocketServer<
@@ -279,6 +286,13 @@ export async function buildApp(
   });
 
   return { app, io, store };
+}
+
+function chromiumExecutablePath(): string | undefined {
+  const configured = process.env.KPL_PILOT_CHROMIUM_PATH?.trim();
+  if (configured) return configured;
+  return ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']
+    .find((candidate) => existsSync(candidate));
 }
 
 function bearerToken(request: FastifyRequest): string {

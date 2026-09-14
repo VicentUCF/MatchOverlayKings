@@ -29,10 +29,11 @@ ENV NODE_ENV=production \
     KPL_DATA_DIR=/app/data \
     KPL_WEB_DIST=/app/apps/web/dist \
     KPL_PILOT_FFMPEG_PATH=/usr/bin/ffmpeg \
+    KPL_PILOT_CHROMIUM_PATH=/usr/bin/chromium \
     KPL_PILOT_MEDIAMTX_PATH=/usr/local/bin/mediamtx
 WORKDIR /app
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg \
+  && apt-get install -y --no-install-recommends ca-certificates chromium curl ffmpeg \
   && arch="${TARGETARCH:-$(dpkg --print-architecture)}" \
   && case "$arch" in amd64|arm64) ;; *) echo "Arquitectura no soportada: $arch" >&2; exit 1 ;; esac \
   && curl -fsSL "https://github.com/bluenviron/mediamtx/releases/download/v${MEDIAMTX_VERSION}/mediamtx_v${MEDIAMTX_VERSION}_linux_${arch}.tar.gz" \

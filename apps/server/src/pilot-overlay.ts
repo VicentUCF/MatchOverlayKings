@@ -1,88 +1,131 @@
 import { once } from 'node:events';
 import type { Writable } from 'node:stream';
-import { renderLiveScoreboardPng } from '@kpl/production-assets';
-import { formatPoint, type MatchState, type Team } from '@kpl/shared';
 import type { PilotCourtSlug } from '@kpl/production-contracts';
+import { chromium, type Browser, type Page } from 'playwright';
 
-const SCORE_REFRESH_MS = 1_000;
+const CAPTURE_FRAMES_PER_SECOND = 15;
+const OVERLAY_WIDTH = 1920;
+const OVERLAY_HEIGHT = 1080;
+const NAVIGATION_TIMEOUT_MS = 20_000;
 
 export interface PilotOverlayOptions {
   readonly courtSlug: PilotCourtSlug;
-  readonly title: string;
-  readonly courtName: string;
-  readonly homeName: string;
-  readonly awayName: string;
   readonly framesPerSecond: 30 | 60;
-  readonly supabaseUrl?: string;
-  readonly supabasePublishableKey?: string;
 }
 
-export function startPilotOverlayPump(
+export interface PilotOverlayRenderer {
+  readonly start: (
+    output: Writable,
+    options: PilotOverlayOptions,
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly close: () => Promise<void>;
+}
+
+export interface BrowserPilotOverlayRendererOptions {
+  readonly baseUrl: string;
+  readonly chromiumExecutablePath?: string;
+}
+
+/** Renders the same React route used by OBS and feeds its transparent frames to FFmpeg. */
+export class BrowserPilotOverlayRenderer implements PilotOverlayRenderer {
+  private browserPromise: Promise<Browser> | null = null;
+
+  public constructor(private readonly options: BrowserPilotOverlayRendererOptions) {}
+
+  public async start(
+    output: Writable,
+    options: PilotOverlayOptions,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const browser = await this.browser();
+    const context = await browser.newContext({
+      viewport: { width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT },
+      screen: { width: OVERLAY_WIDTH, height: OVERLAY_HEIGHT },
+      deviceScaleFactor: 1,
+      reducedMotion: 'no-preference',
+    });
+    const abort = () => { void context.close().catch(() => undefined); };
+    signal.addEventListener('abort', abort, { once: true });
+
+    try {
+      const page = await context.newPage();
+      await prepareOverlayPage(page, overlayUrl(this.options.baseUrl, options.courtSlug), signal);
+      await pumpBrowserFrames(output, page, options.framesPerSecond, signal);
+    } finally {
+      signal.removeEventListener('abort', abort);
+      await context.close().catch(() => undefined);
+      if (!output.destroyed) output.end();
+    }
+  }
+
+  public async close(): Promise<void> {
+    const pending = this.browserPromise;
+    this.browserPromise = null;
+    if (pending !== null) {
+      const browser = await pending.catch(() => null);
+      await browser?.close().catch(() => undefined);
+    }
+  }
+
+  private browser(): Promise<Browser> {
+    if (this.browserPromise === null) {
+      const launching = chromium.launch({
+        headless: true,
+        ...(this.options.chromiumExecutablePath
+          ? { executablePath: this.options.chromiumExecutablePath }
+          : {}),
+        args: [
+          '--autoplay-policy=no-user-gesture-required',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--no-sandbox',
+        ],
+      });
+      this.browserPromise = launching;
+      void launching.then((browser) => {
+        browser.once('disconnected', () => {
+          if (this.browserPromise === launching) this.browserPromise = null;
+        });
+      }).catch(() => {
+        if (this.browserPromise === launching) this.browserPromise = null;
+      });
+    }
+    return this.browserPromise;
+  }
+}
+
+export function overlayUrl(baseUrl: string, courtSlug: PilotCourtSlug): string {
+  return `${baseUrl.replace(/\/+$/, '')}/overlay/${encodeURIComponent(courtSlug)}/scoreboard`;
+}
+
+async function prepareOverlayPage(page: Page, url: string, signal: AbortSignal): Promise<void> {
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS });
+  if (signal.aborted) return;
+  await page.evaluate(`document.fonts.ready.then(() => new Promise(
+    (resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)),
+  ))`);
+}
+
+async function pumpBrowserFrames(
   output: Writable,
-  options: PilotOverlayOptions,
+  page: Page,
+  outputFramesPerSecond: number,
   signal: AbortSignal,
 ): Promise<void> {
-  return pumpFrames(output, options, signal);
-}
-
-export function pilotOverlayFrame(
-  options: PilotOverlayOptions,
-  state: MatchState | null,
-  teams: readonly Team[] = [],
-): Uint8Array {
-  const home = state ? teams.find((team) => team.id === state.homeTeamId) : undefined;
-  const away = state ? teams.find((team) => team.id === state.awayTeamId) : undefined;
-  const visible = state === null || (state.status === 'live' && state.overlaySettings.visible !== false);
-  const sets = state?.sets.slice(0, 3) ?? [];
-  return renderLiveScoreboardPng({
-    // The transparent source only covers the top-left scoreboard region. Keeping it cropped
-    // avoids decoding a mostly-empty 1080p PNG for every programme frame.
-    width: 960,
-    height: 270,
-    title: state?.title || options.title,
-    courtName: state?.courtName || options.courtName,
-    homeName: home?.shortName || home?.name || options.homeName,
-    awayName: away?.shortName || away?.name || options.awayName,
-    ...(home?.primaryColor ? { homeColor: home.primaryColor } : {}),
-    ...(away?.primaryColor ? { awayColor: away.primaryColor } : {}),
-    homeSets: sets.map((set) => set.homeGames),
-    awaySets: sets.map((set) => set.awayGames),
-    homePoint: state?.status === 'live' ? formatPoint(state, 'home') : '0',
-    awayPoint: state?.status === 'live' ? formatPoint(state, 'away') : '0',
-    servingSide: state?.servingSide ?? 'home',
-    visible,
-  });
-}
-
-async function pumpFrames(output: Writable, options: PilotOverlayOptions, signal: AbortSignal): Promise<void> {
-  let frame = pilotOverlayFrame(options, null);
-  let refreshInFlight = false;
-  const refresh = async () => {
-    if (refreshInFlight || signal.aborted) return;
-    refreshInFlight = true;
-    try {
-      const snapshot = await fetchOverlaySnapshot(options, signal);
-      if (snapshot !== null) frame = pilotOverlayFrame(options, snapshot.state, snapshot.teams);
-    } catch {
-      // Keep the last valid frame. A scoreboard refresh must never interrupt the programme output.
-    } finally {
-      refreshInFlight = false;
-    }
-  };
-  void refresh();
-  const refreshTimer = setInterval(() => void refresh(), SCORE_REFRESH_MS);
-  refreshTimer.unref();
+  let frame = await capture(page);
+  let captureError: unknown = null;
+  const captureController = new AbortController();
+  const capturePromise = refreshFrames(page, (next) => { frame = next; }, captureController.signal)
+    .catch((error: unknown) => { captureError = error; });
 
   try {
-    const frameDurationMs = 1_000 / options.framesPerSecond;
+    const frameDurationMs = 1_000 / outputFramesPerSecond;
     let nextFrameAt = performance.now();
     while (!signal.aborted && !output.destroyed) {
+      if (captureError !== null) throw captureError;
       const accepted = output.write(frame);
-      // A PNG is self-contained, so waiting here cannot shift the byte boundary between frames.
-      // It also prevents a slow encoder from accumulating seconds of stale scoreboard images.
-      if (!accepted) {
-        await Promise.race([once(output, 'drain'), aborted(signal)]);
-      }
+      if (!accepted) await Promise.race([once(output, 'drain'), aborted(signal)]);
       nextFrameAt = Math.max(nextFrameAt + frameDurationMs, performance.now());
       const waitMs = Math.max(0, nextFrameAt - performance.now());
       if (waitMs > 0) await Promise.race([delay(waitMs), aborted(signal)]);
@@ -90,44 +133,27 @@ async function pumpFrames(output: Writable, options: PilotOverlayOptions, signal
   } catch (error) {
     if (!signal.aborted && !isClosedPipe(error)) throw error;
   } finally {
-    clearInterval(refreshTimer);
-    if (!output.destroyed) output.end();
+    captureController.abort();
+    await capturePromise;
   }
 }
 
-async function fetchOverlaySnapshot(
-  options: PilotOverlayOptions,
+async function refreshFrames(
+  page: Page,
+  update: (frame: Uint8Array) => void,
   signal: AbortSignal,
-): Promise<{ readonly state: MatchState; readonly teams: readonly Team[] } | null> {
-  const supabaseUrl = options.supabaseUrl?.trim() || process.env.VITE_SUPABASE_URL?.trim();
-  const key = options.supabasePublishableKey?.trim() || process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim();
-  if (!supabaseUrl || !key) return null;
-  const baseUrl = supabaseUrl.replace(/\/+$/, '');
-  const headers = { apikey: key, authorization: `Bearer ${key}` };
-  const scoreUrl = `${baseUrl}/rest/v1/score_states?court_slug=eq.${encodeURIComponent(options.courtSlug)}&select=state&limit=1`;
-  const teamsUrl = `${baseUrl}/rest/v1/teams?select=id,name,short_name,logo_url,primary_color,secondary_color`;
-  const [scoreResponse, teamsResponse] = await Promise.all([
-    fetch(scoreUrl, { headers, signal }),
-    fetch(teamsUrl, { headers, signal }),
-  ]);
-  if (!scoreResponse.ok || !teamsResponse.ok) return null;
-  const scoreRows = await scoreResponse.json() as Array<{ state?: MatchState }>;
-  const state = scoreRows[0]?.state;
-  if (!state) return null;
-  const teamRows = await teamsResponse.json() as Array<{
-    id: string; name: string; short_name: string; logo_url: string; primary_color: string; secondary_color: string;
-  }>;
-  return {
-    state,
-    teams: teamRows.map((team) => ({
-      id: team.id,
-      name: team.name,
-      shortName: team.short_name,
-      logoUrl: team.logo_url,
-      primaryColor: team.primary_color,
-      secondaryColor: team.secondary_color,
-    })),
-  };
+): Promise<void> {
+  const intervalMs = 1_000 / CAPTURE_FRAMES_PER_SECOND;
+  while (!signal.aborted) {
+    const startedAt = performance.now();
+    update(await capture(page));
+    const waitMs = Math.max(0, intervalMs - (performance.now() - startedAt));
+    if (waitMs > 0) await Promise.race([delay(waitMs), aborted(signal)]);
+  }
+}
+
+async function capture(page: Page): Promise<Uint8Array> {
+  return page.screenshot({ type: 'png', omitBackground: true, animations: 'allow', caret: 'hide' });
 }
 
 function delay(milliseconds: number): Promise<void> {

@@ -22,7 +22,7 @@ import {
 import { PilotYouTubeError } from './pilot-youtube.js';
 import type { PilotYouTubeGateway } from './pilot-youtube.js';
 import type { PilotMobileCameraService } from './pilot-mobile-camera.js';
-import { startPilotOverlayPump, type PilotOverlayOptions } from './pilot-overlay.js';
+import type { PilotOverlayOptions, PilotOverlayRenderer } from './pilot-overlay.js';
 
 const MAX_ACTIVE_SESSIONS = 3;
 const MAX_DIAGNOSTIC_LENGTH = 2_000;
@@ -64,6 +64,7 @@ export class PilotService {
     private readonly youtube: PilotYouTubeGateway,
     private readonly configurationPath: string,
     private readonly mobileCamera?: PilotMobileCameraService,
+    private readonly overlayRenderer?: PilotOverlayRenderer,
   ) {}
 
   public async initialize(): Promise<void> {
@@ -205,10 +206,6 @@ export class PilotService {
       lastYouTubeCheckAt: 0,
       overlay: {
         courtSlug: input.courtSlug,
-        title: `${input.homeTeam} vs ${input.awayTeam}`,
-        courtName: `Pista ${Number(input.courtSlug.slice(-1))}`,
-        homeName: input.homeTeam,
-        awayName: input.awayTeam,
       },
       overlayController: null,
     });
@@ -269,7 +266,11 @@ export class PilotService {
     session.overlayController?.abort();
     session.overlayController = new AbortController();
     const overlayInput = child.stdio[3] as Writable;
-    void startPilotOverlayPump(
+    if (this.overlayRenderer === undefined) {
+      child.kill('SIGTERM');
+      throw new PilotServiceError(503, 'NOT_READY', 'El navegador del overlay no está disponible.');
+    }
+    void this.overlayRenderer.start(
       overlayInput,
       { ...session.overlay, framesPerSecond },
       session.overlayController.signal,
@@ -373,6 +374,7 @@ export class PilotService {
       session.overlayController?.abort();
       session.process?.kill('SIGTERM');
     }
+    await this.overlayRenderer?.close();
   }
 
   private async refreshYouTubeHealth(session: InternalPilotSession): Promise<void> {

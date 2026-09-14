@@ -1,7 +1,9 @@
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Writable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
+import { renderLiveScoreboardPng } from '@kpl/production-assets';
 import {
   ClaimPilotMobileCameraResponseSchema,
   PilotConfigurationSchema,
@@ -12,6 +14,7 @@ import {
 } from '@kpl/production-contracts';
 import { buildApp } from '../src/app.js';
 import { buildPilotMediaMtxConfiguration } from '../src/pilot-mobile-camera.js';
+import type { PilotOverlayRenderer } from '../src/pilot-overlay.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -365,9 +368,42 @@ async function createPilotApp() {
       controlOrigins: ['https://live.kingspadelleague.es'],
       youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
     },
-  });
+  }, { pilotOverlayRenderer: testOverlayRenderer() });
   cleanups.push(async () => { await app.close(); await rm(dataDir, { recursive: true, force: true }); });
   return app;
+}
+
+function testOverlayRenderer(): PilotOverlayRenderer {
+  const frame = renderLiveScoreboardPng({
+    width: 1920,
+    height: 1080,
+    title: '',
+    courtName: '',
+    homeName: '',
+    awayName: '',
+    homeSets: [],
+    awaySets: [],
+    homePoint: '0',
+    awayPoint: '0',
+    servingSide: 'home',
+    visible: false,
+  });
+  return {
+    close: async () => undefined,
+    start: async (output: Writable, options, signal) => {
+      output.on('error', () => undefined);
+      const intervalMs = 1_000 / options.framesPerSecond;
+      try {
+        while (!signal.aborted && !output.destroyed) {
+          output.write(frame);
+          await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        }
+      } catch (error) {
+        if (!(error instanceof Error && 'code' in error && error.code === 'ECONNRESET')) throw error;
+      }
+      if (!output.destroyed) output.end();
+    },
+  };
 }
 
 async function waitForSession(
