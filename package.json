@@ -16,7 +16,7 @@
     "preview:web": "npm run build:vercel && npm run preview -w @kpl/web -- --host 0.0.0.0 --port 4300",
     "start": "npm run preview:web",
     "start:server": "npm run start -w @kpl/server",
-    "build": "npm run build -w @kpl/shared && npm run build -w @kpl/server && npm run build -w @kpl/web",
+    "build": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/production-agent && npm run build -w @kpl/production-assets && npm run build -w @kpl/server && npm run build -w @kpl/web",
     "build:vercel": "npm run build -w @kpl/shared && npm run build -w @kpl/web",
     "lint": "eslint .",
     "test": "vitest run",
@@ -24,7 +24,7 @@
     "supabase:deploy": "node scripts/apply-supabase-migrations.mjs",
     "supabase:ensure-admin": "node scripts/ensure-supabase-admin.mjs",
     "supabase:check": "node scripts/check-supabase.mjs",
-    "verify": "npm run lint && npm run test && npm run build"
+    "verify": "npm run lint && npm run test && npm run build && npm run typecheck:test -w @kpl/production-agent"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

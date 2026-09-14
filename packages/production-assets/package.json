@@ -1,0 +1,23 @@
+{
+  "name": "@kpl/production-assets",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/production-assets/test"
+  },
+  "dependencies": {
+    "@expo-google-fonts/manrope": "0.4.1",
+    "@expo-google-fonts/space-grotesk": "0.4.1",
+    "@resvg/resvg-js": "2.6.2",
+    "zod": "4.0.1"
+  }
+}

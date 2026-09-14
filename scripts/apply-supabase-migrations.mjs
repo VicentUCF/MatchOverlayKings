@@ -1,8 +1,10 @@
 /* global console, process */
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { URL } from 'node:url';
+import { buildLedgerBootstrapSql, buildRecordMigrationSql, selectUnappliedMigrations } from './migration-ledger.mjs';
 
 const env = {
   ...loadEnvFile('.env'),
@@ -38,34 +40,69 @@ if (!databaseUrl) {
 const postgresEnv = resolvePostgresEnv(databaseUrl);
 
 const migrationsDir = resolve('supabase/migrations');
-const migrations = readdirSync(migrationsDir)
+const localMigrations = readdirSync(migrationsDir)
   .filter((file) => file.endsWith('.sql'))
-  .sort();
+  .sort()
+  .map((name) => ({
+    name,
+    hash: createHash('sha256').update(readFileSync(resolve(migrationsDir, name))).digest('hex'),
+  }));
 
-if (migrations.length === 0) {
+if (localMigrations.length === 0) {
   console.error('No migrations found in supabase/migrations.');
   process.exit(1);
 }
 
-for (const migration of migrations) {
-  console.log(`Applying ${migration}`);
+runPsql(['--command', buildLedgerBootstrapSql()]);
+const ledgerResult = runPsql([
+  '--tuples-only', '--no-align', '--field-separator', '|',
+  '--command', 'select filename, sha256 from public.kpl_schema_migrations order by filename',
+], true);
+const appliedMigrations = new Map(
+  ledgerResult.stdout.trim() === ''
+    ? []
+    : ledgerResult.stdout.trim().split('\n').map((line) => line.split('|')),
+);
+const hasExistingSchema = runPsql([
+  '--tuples-only', '--quiet', '--command', "select to_regclass('public.clubs') is not null",
+], true).stdout.trim() === 't';
 
-  const result = spawnSync(
-    'psql',
-    ['--no-psqlrc', '--set', 'ON_ERROR_STOP=1', '--file', resolve(migrationsDir, migration)],
-    {
-      stdio: 'inherit',
-      env: {
-        ...env,
-        ...postgresEnv,
-        PGSSLMODE: env.PGSSLMODE ?? postgresEnv.PGSSLMODE ?? 'require',
-      },
-    },
-  );
-
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+if (appliedMigrations.size === 0 && hasExistingSchema) {
+  const baselineThrough = env.KPL_MIGRATION_BASELINE_THROUGH;
+  if (!baselineThrough || !localMigrations.some((migration) => migration.name === baselineThrough)) {
+    console.error('MIGRATION_LEDGER_UNINITIALIZED');
+    console.error('Set KPL_MIGRATION_BASELINE_THROUGH to the last migration already applied remotely.');
+    process.exit(1);
   }
+  for (const migration of localMigrations.filter(({ name }) => name <= baselineThrough)) {
+    runPsql([
+      '--single-transaction',
+      '--set', `migration_name=${migration.name}`,
+      '--set', `migration_hash=${migration.hash}`,
+      '--command', buildRecordMigrationSql(),
+    ]);
+    appliedMigrations.set(migration.name, migration.hash);
+  }
+}
+let migrations;
+
+try {
+  migrations = selectUnappliedMigrations(localMigrations, appliedMigrations);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+}
+
+for (const migration of migrations) {
+  console.log(`Applying ${migration.name}`);
+
+  runPsql([
+    '--single-transaction',
+    '--set', `migration_name=${migration.name}`,
+    '--set', `migration_hash=${migration.hash}`,
+    '--file', resolve(migrationsDir, migration.name),
+    '--command', buildRecordMigrationSql(),
+  ]);
 }
 
 console.log('Supabase migrations applied.');
@@ -233,4 +270,18 @@ function canConnect(postgresEnv) {
   );
 
   return result.status === 0 && result.stdout.trim() === '1';
+}
+
+function runPsql(args, capture = false) {
+  const result = spawnSync('psql', ['--no-psqlrc', '--set', 'ON_ERROR_STOP=1', ...args], {
+    encoding: capture ? 'utf8' : undefined,
+    stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit',
+    env: {
+      ...env,
+      ...postgresEnv,
+      PGSSLMODE: env.PGSSLMODE ?? postgresEnv.PGSSLMODE ?? 'require',
+    },
+  });
+  if (result.status !== 0) process.exit(result.status ?? 1);
+  return result;
 }

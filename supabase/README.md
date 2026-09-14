@@ -26,6 +26,8 @@ SUPABASE_DB_URL='postgresql://...' npm run supabase:deploy
 npm run supabase:check
 ```
 
+El runner usa `public.kpl_schema_migrations`, verifica el SHA-256 y ejecuta cada archivo pendiente junto con su registro en una transaccion. Si el proyecto ya tiene esquema pero aun no tiene este registro, configura una sola vez `KPL_MIGRATION_BASELINE_THROUGH=<ultimo-archivo-ya-aplicado.sql>`; sin una base explicita el despliegue se detiene en lugar de repetir migraciones.
+
 Usa la connection string de Postgres desde Settings > Database. Las API keys nuevas (`sb_publishable_...` y `sb_secret_...`) no ejecutan DDL SQL.
 
 ## Variables Vercel

@@ -1,0 +1,20 @@
+{
+  "name": "@kpl/production-contracts",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist tsconfig.tsbuildinfo && tsc -p tsconfig.json",
+    "test": "vitest run --root ../.. packages/production-contracts/test"
+  },
+  "dependencies": {
+    "zod": "^4.0.1"
+  }
+}

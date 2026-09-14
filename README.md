@@ -80,6 +80,8 @@ SUPABASE_DB_URL='postgresql://...' npm run supabase:deploy
 npm run supabase:check
 ```
 
+El despliegue registra el hash de cada migracion y aplica solo archivos pendientes dentro de una transaccion. Para adoptar el registro en un proyecto existente, indica explicitamente la ultima migracion ya aplicada una sola vez, por ejemplo `KPL_MIGRATION_BASELINE_THROUGH=20260702120000_initial_kpl_schema.sql`; el script se niega a repetir un esquema existente sin esa referencia.
+
 `SUPABASE_DB_URL` es la connection string de Postgres del proyecto Supabase. No sirve la publishable key ni la secret API key para crear tablas, RLS o funciones SQL.
 
 ## Vercel

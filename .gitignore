@@ -9,3 +9,4 @@ test-results
 .env.local
 *.log
 data/events/*.tmp
+.omo
