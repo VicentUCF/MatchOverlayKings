@@ -1,0 +1,187 @@
+.mobile-camera-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: var(--kpl-space-3);
+  min-height: 100dvh;
+  padding: max(var(--kpl-space-3), env(safe-area-inset-top)) var(--kpl-space-3)
+    max(var(--kpl-space-3), env(safe-area-inset-bottom));
+  color: var(--kpl-color-text);
+  background: var(--kpl-color-background);
+}
+
+.mobile-camera-page--message {
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.mobile-camera-page--message > svg {
+  width: 3rem;
+  height: 3rem;
+  color: var(--kpl-color-danger);
+}
+
+.mobile-camera-page--message h1,
+.mobile-camera-page--message p {
+  margin: 0;
+}
+
+.mobile-camera-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kpl-space-3);
+}
+
+.mobile-camera-header img {
+  width: min(42vw, 10rem);
+  height: auto;
+}
+
+.mobile-camera-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--kpl-space-2);
+  min-height: 2.5rem;
+  border: 1px solid var(--kpl-color-border-subtle);
+  border-radius: var(--kpl-radius-pill);
+  padding-inline: var(--kpl-space-3);
+  font-size: var(--kpl-font-size-100);
+  font-weight: 800;
+}
+
+.mobile-camera-state svg,
+.mobile-camera-alert svg,
+.mobile-camera-telemetry svg {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+}
+
+.mobile-camera-state.success { color: var(--kpl-color-success); }
+.mobile-camera-state.warning { color: var(--kpl-color-warning); }
+.mobile-camera-state.danger { color: var(--kpl-color-danger); }
+
+.mobile-camera-stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--kpl-color-border-subtle);
+  border-radius: var(--kpl-radius-sm);
+  background: #050505;
+}
+
+.mobile-camera-stage video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 52dvh;
+  object-fit: contain;
+}
+
+.mobile-camera-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--kpl-space-3);
+  padding: var(--kpl-space-5);
+  text-align: center;
+  background: radial-gradient(circle, rgb(255 255 255 / 0.06), transparent 55%);
+}
+
+.mobile-camera-placeholder > svg {
+  width: 3rem;
+  height: 3rem;
+  color: var(--kpl-color-brand-strong);
+}
+
+.mobile-camera-placeholder h1,
+.mobile-camera-placeholder p {
+  margin: 0;
+}
+
+.mobile-camera-placeholder p,
+.mobile-camera-footnote {
+  color: var(--kpl-color-text-muted);
+  line-height: var(--kpl-line-height-body);
+}
+
+.mobile-camera-placeholder button {
+  min-height: 3rem;
+  border: 0;
+  border-radius: var(--kpl-radius-xs);
+  padding-inline: var(--kpl-space-5);
+  color: var(--kpl-color-background);
+  background: var(--kpl-color-brand-strong);
+  font: inherit;
+  font-weight: 900;
+}
+
+.mobile-camera-placeholder button:focus-visible {
+  outline: 2px solid var(--kpl-color-focus);
+  outline-offset: 3px;
+}
+
+.mobile-camera-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--kpl-space-2);
+  margin: 0;
+  border-left: 3px solid var(--kpl-color-warning);
+  padding: var(--kpl-space-3);
+  background: var(--kpl-color-surface-emphasis);
+}
+
+.mobile-camera-telemetry {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--kpl-space-2);
+}
+
+.mobile-camera-telemetry > div {
+  display: grid;
+  gap: var(--kpl-space-1);
+  min-width: 0;
+  border: 1px solid var(--kpl-color-border-subtle);
+  padding: var(--kpl-space-3);
+  background: var(--kpl-color-surface-raised);
+}
+
+.mobile-camera-telemetry span {
+  color: var(--kpl-color-text-muted);
+  font-size: var(--kpl-font-size-50);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.mobile-camera-telemetry strong {
+  display: flex;
+  align-items: center;
+  gap: var(--kpl-space-1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-camera-footnote {
+  margin: 0;
+  text-align: center;
+  font-size: var(--kpl-font-size-100);
+}
+
+@media (orientation: landscape) and (height <= 560px) {
+  .mobile-camera-page {
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.35fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .mobile-camera-header,
+  .mobile-camera-stage { grid-column: 1; }
+  .mobile-camera-stage { grid-row: 2 / 4; }
+  .mobile-camera-stage video { min-height: 0; }
+  .mobile-camera-telemetry { grid-column: 2; grid-row: 1 / 3; align-content: center; }
+  .mobile-camera-alert,
+  .mobile-camera-footnote { grid-column: 2; }
+}

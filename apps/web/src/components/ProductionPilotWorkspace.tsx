@@ -3,12 +3,21 @@ import {
   CircleCheck, CircleX, ExternalLink, MonitorPlay, Radio, RefreshCw,
   Settings2, SlidersHorizontal, TestTube2,
 } from 'lucide-react';
-import type {
-  PilotConfiguration, PilotCourtSlug, PilotMode, PilotPrivacy, PilotReadiness,
-  PilotSession, PreparePilotSessionInput,
+import {
+  PILOT_MOBILE_SOURCE_ID,
+  type PilotMobileCameraSession,
+  type UpdatePilotMobileCameraDesiredInput,
+  type PilotConfiguration,
+  type PilotCourtSlug,
+  type PilotMode,
+  type PilotPrivacy,
+  type PilotReadiness,
+  type PilotSession,
+  type PreparePilotSessionInput,
 } from '@kpl/production-contracts';
 import { useProductionPilot, type ProductionPilotController } from '../hooks/useProductionPilot.js';
 import { ProductionNavigation, type ProductionNavigationRole } from './ProductionNavigation.js';
+import { PilotMobileCameraMonitor, PilotMobileCameraPanel } from './PilotMobileCameraPanel.js';
 
 const COURTS: readonly {
   readonly slug: PilotCourtSlug;
@@ -64,7 +73,7 @@ export function ProductionPilotWorkspaceView({
 
   const ready = pilot.state;
   const sessions = COURTS.map(({ slug }) => latestSession(ready.sessions, slug));
-  const activeCount = sessions.filter((session) => session && ['starting', 'live', 'stopping'].includes(session.status)).length;
+  const activeCount = sessions.filter((session) => session && ['starting', 'live', 'reconnecting', 'stopping'].includes(session.status)).length;
   const configuredCount = COURTS.filter(({ slug }) => ready.configurations.some((item) => item.courtSlug === slug)).length;
   const unavailableSources = new Set(ready.sessions
     .filter((session) => session.source.kind === 'v4l2' && !['stopped', 'failed'].includes(session.status))
@@ -88,6 +97,9 @@ export function ProductionPilotWorkspaceView({
           readiness={ready.readiness} configuration={configurationFor(ready.configurations, court.slug)}
           session={latestSession(ready.sessions, court.slug)} pending={ready.pendingCourts.includes(court.slug)}
           error={ready.courtErrors[court.slug] ?? null} unavailableSources={unavailableSources}
+          mobileCamera={ready.mobileCamera} mobileConnectUrl={ready.mobileConnectUrl}
+          onCreateMobile={() => pilot.createMobileCamera(court.slug)}
+          onUpdateMobile={pilot.updateMobileCamera} onRevokeMobile={pilot.revokeMobileCamera}
           onSave={(input) => pilot.configure(input)} />)}
       </section>
       <HandoffPanel configuredCount={configuredCount} onOpenControls={onOpenControls} />
@@ -98,6 +110,7 @@ export function ProductionPilotWorkspaceView({
           session={latestSession(ready.sessions, court.slug)} pending={ready.pendingCourts.includes(court.slug)}
           error={ready.courtErrors[court.slug] ?? null} onPrepare={(input) => void pilot.prepare(input)}
           onStart={(session) => void pilot.start(session)} onStop={(session) => void pilot.stop(session)}
+          mobileCamera={ready.mobileCamera?.courtSlug === court.slug ? ready.mobileCamera : null}
           onElapsed={recordElapsed} />)}
       </section>
       <ValidationDecision readiness={ready.readiness} sessions={sessions} elapsedByCourt={elapsedByCourt} />
@@ -106,7 +119,8 @@ export function ProductionPilotWorkspaceView({
 }
 
 function PilotConfigurationPanel({
-  court, readiness, configuration, session, pending, error, unavailableSources, onSave,
+  court, readiness, configuration, session, pending, error, unavailableSources, mobileCamera,
+  mobileConnectUrl, onCreateMobile, onUpdateMobile, onRevokeMobile, onSave,
 }: {
   readonly court: (typeof COURTS)[number];
   readonly readiness: PilotReadiness;
@@ -115,6 +129,11 @@ function PilotConfigurationPanel({
   readonly pending: boolean;
   readonly error: string | null;
   readonly unavailableSources: ReadonlySet<string>;
+  readonly mobileCamera: PilotMobileCameraSession | null;
+  readonly mobileConnectUrl: string | null;
+  readonly onCreateMobile: () => Promise<unknown>;
+  readonly onUpdateMobile: (id: string, input: UpdatePilotMobileCameraDesiredInput) => Promise<boolean>;
+  readonly onRevokeMobile: (id: string) => Promise<boolean>;
   readonly onSave: (input: PreparePilotSessionInput) => Promise<boolean>;
 }) {
   const [mode, setMode] = useState<PilotMode>(configuration?.mode ?? 'simulation');
@@ -172,10 +191,14 @@ function PilotConfigurationPanel({
         <div className="production-pilot-fields">
           <label htmlFor={`pilot-source-${court.slug}`}>Fuente</label>
           <select id={`pilot-source-${court.slug}`} value={sourceId} onChange={(event) => setSourceId(event.currentTarget.value)}>
-            {readiness.sources.map((source) => <option value={source.id} key={source.id}
-              disabled={source.kind === 'v4l2' && unavailableSources.has(source.id) && session?.source.id !== source.id}>
-              {source.label}{source.kind === 'v4l2' && unavailableSources.has(source.id) && session?.source.id !== source.id ? ' · en uso' : ''}
-            </option>)}
+            {readiness.sources.map((source) => {
+              const inUse = source.kind === 'v4l2' && unavailableSources.has(source.id) && session?.source.id !== source.id;
+              const mobileElsewhere = source.kind === 'mobile' && mobileCamera !== null
+                && mobileCamera.state !== 'revoked' && mobileCamera.courtSlug !== court.slug;
+              return <option value={source.id} key={source.id} disabled={inUse || mobileElsewhere}>
+                {source.label}{inUse || mobileElsewhere ? ' · en uso' : ''}
+              </option>;
+            })}
           </select>
           <label htmlFor={`pilot-home-${court.slug}`}>Local</label>
           <input id={`pilot-home-${court.slug}`} required value={homeTeam} onChange={(event) => setHomeTeam(event.currentTarget.value)} />
@@ -204,17 +227,22 @@ function PilotConfigurationPanel({
       </fieldset>
       {error ? <p className="production-command-feedback danger" role="alert">{error}</p> : null}
     </form>
+    {sourceId === PILOT_MOBILE_SOURCE_ID || mobileCamera?.courtSlug === court.slug ? <div className="production-pilot-form">
+      <PilotMobileCameraPanel courtSlug={court.slug} mobileCamera={mobileCamera} connectUrl={mobileConnectUrl}
+        active={active} pending={pending} onCreate={onCreateMobile} onUpdate={onUpdateMobile} onRevoke={onRevokeMobile} />
+    </div> : null}
   </article>;
 }
 
 function PilotControlPanel({
-  court, configuration, session, pending, error, onPrepare, onStart, onStop, onElapsed,
+  court, configuration, session, pending, error, mobileCamera, onPrepare, onStart, onStop, onElapsed,
 }: {
   readonly court: (typeof COURTS)[number];
   readonly configuration: PilotConfiguration | null;
   readonly session: PilotSession | null;
   readonly pending: boolean;
   readonly error: string | null;
+  readonly mobileCamera: PilotMobileCameraSession | null;
   readonly onPrepare: (input: PreparePilotSessionInput) => void;
   readonly onStart: (session: PilotSession) => void;
   readonly onStop: (session: PilotSession) => void;
@@ -262,6 +290,8 @@ function PilotControlPanel({
           <h3>{configuration.homeTeam} vs {configuration.awayTeam}</h3>
           <p>Jornada {configuration.matchdayNumber} · {configuration.sourceId === 'synthetic' ? 'Señal de prueba' : configuration.sourceId}</p>
           <p>{privacyLabel(configuration.privacyStatus)} · <time dateTime={configuration.scheduledAt}>{formatDate(configuration.scheduledAt)}</time></p></div>
+        {configuration.sourceId === PILOT_MOBILE_SOURCE_ID && mobileCamera !== null
+          ? <PilotMobileCameraMonitor mobileCamera={mobileCamera} /> : null}
         {session !== null && !['stopped', 'failed'].includes(session.status)
           ? <PilotSessionCard session={session} pending={pending} elapsedSeconds={elapsedSeconds} onStart={start} onStop={stop} />
           : <div className="production-pilot-ready-action"><p>{session?.status === 'failed'
@@ -279,7 +309,7 @@ function PilotControlPanel({
 }
 
 function CourtStatus({ session }: { readonly session: PilotSession | null }) {
-  const active = session && ['starting', 'live'].includes(session.status);
+  const active = session && ['starting', 'live', 'reconnecting'].includes(session.status);
   const failed = session?.status === 'failed';
   return <span className={`production-status ${failed ? 'danger' : active ? 'success' : 'info'}`} aria-live="polite">
     {active ? <CircleCheck aria-hidden="true" /> : failed ? <CircleX aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
@@ -294,7 +324,7 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onStop }:
   readonly onStart: () => void;
   readonly onStop: () => void;
 }) {
-  const active = session.status === 'starting' || session.status === 'live';
+  const active = ['starting', 'live', 'reconnecting'].includes(session.status);
   return <div className="production-pilot-session">
     <div className="production-pilot-thumbnail"><img src={session.thumbnailUrl} alt={`Miniatura de ${session.title}`} /></div>
     <div className="production-pilot-session__copy"><h3>{session.title}</h3><p>{session.source.label} · {session.mode === 'youtube' ? 'YouTube' : 'Salida local'}</p>
@@ -418,6 +448,7 @@ function sessionStatus(status: PilotSession['status']): string {
     case 'prepared': return 'Preparado';
     case 'starting': return 'Iniciando señal';
     case 'live': return 'Emitiendo';
+    case 'reconnecting': return 'Reconectando cámara';
     case 'stopping': return 'Deteniendo';
     case 'stopped': return 'Finalizado';
     case 'failed': return 'Fallido';

@@ -21,6 +21,7 @@ import {
 } from '@kpl/production-contracts';
 import { PilotYouTubeError } from './pilot-youtube.js';
 import type { PilotYouTubeGateway } from './pilot-youtube.js';
+import type { PilotMobileCameraService } from './pilot-mobile-camera.js';
 
 const MAX_ACTIVE_SESSIONS = 3;
 const MAX_DIAGNOSTIC_LENGTH = 2_000;
@@ -31,6 +32,8 @@ type InternalPilotSession = {
   readonly streamId: string | null;
   readonly ingestUrl: string | null;
   process: PilotChildProcess | null;
+  retryTimer: NodeJS.Timeout | null;
+  retryAttempt: number;
   diagnostic: string;
   lastYouTubeCheckAt: number;
 };
@@ -57,6 +60,7 @@ export class PilotService {
     private readonly ffmpegPath: string,
     private readonly youtube: PilotYouTubeGateway,
     private readonly configurationPath: string,
+    private readonly mobileCamera?: PilotMobileCameraService,
   ) {}
 
   public async initialize(): Promise<void> {
@@ -91,11 +95,14 @@ export class PilotService {
   }
 
   public readiness(): PilotReadiness {
-    const sources = discoverSources();
+    const mobileSource = this.mobileCamera?.source() ?? null;
+    const sources = [...discoverSources(), ...(mobileSource === null ? [] : [mobileSource])];
     const limitations: string[] = [];
     if (sources.every(({ kind }) => kind !== 'v4l2')) limitations.push('No se detectan cámaras V4L2. Puedes validar con la señal sintética.');
     if (!this.youtube.configured) limitations.push('Faltan las credenciales OAuth de Google para probar YouTube.');
     else if (!this.youtube.isAuthorized) limitations.push('La cuenta de YouTube todavía no está conectada.');
+    const mobileLimitation = this.mobileCamera?.limitation() ?? 'La cámara móvil no está configurada.';
+    if (mobileLimitation !== null) limitations.push(mobileLimitation);
     return PilotReadinessSchema.parse({
       ffmpeg: { available: this.ffmpegVersion !== null, version: this.ffmpegVersion },
       youtube: {
@@ -127,7 +134,10 @@ export class PilotService {
     if (this.ffmpegVersion === null) throw new PilotServiceError(503, 'NOT_READY', 'FFmpeg no está disponible.');
     const source = this.readiness().sources.find(({ id }) => id === input.sourceId);
     if (source === undefined) throw new PilotServiceError(409, 'NOT_READY', 'La fuente seleccionada ya no está disponible.');
-    if (source.kind === 'v4l2') {
+    if (source.kind === 'mobile' && !this.mobileCamera?.isReadyForCourt(input.courtSlug)) {
+      throw new PilotServiceError(409, 'NOT_READY', 'Prepara primero la cámara móvil para esta pista.');
+    }
+    if (source.kind !== 'synthetic') {
       const sourceInUse = [...this.sessions.values()].some(({ public: session }) =>
         session.source.id === source.id && !['stopped', 'failed'].includes(session.status));
       if (sourceInUse) throw new PilotServiceError(409, 'CONFLICT', 'La cámara seleccionada ya está asignada a otra pista.');
@@ -146,6 +156,9 @@ export class PilotService {
           scheduledAt: input.scheduledAt,
           privacyStatus: input.privacyStatus,
           thumbnail: assets.pngBytes,
+          framesPerSecond: source.kind === 'mobile'
+            ? this.mobileCamera?.framesPerSecondForCourt(input.courtSlug) ?? 30
+            : 30,
         });
       } catch (error) {
         throw mapYouTubeError(error);
@@ -176,6 +189,8 @@ export class PilotService {
       streamId: youtubePrepared?.streamId ?? null,
       ingestUrl: youtubePrepared?.ingestUrl ?? null,
       process: null,
+      retryTimer: null,
+      retryAttempt: 0,
       diagnostic: '',
       lastYouTubeCheckAt: 0,
     });
@@ -199,19 +214,40 @@ export class PilotService {
       throw new PilotServiceError(409, 'CONFLICT', 'La sesión no está preparada para emitir.');
     }
     const active = [...this.sessions.values()].filter(({ public: current }) =>
-      ['starting', 'live', 'stopping'].includes(current.status)).length;
+      ['starting', 'live', 'reconnecting', 'stopping'].includes(current.status)).length;
     if (active >= MAX_ACTIVE_SESSIONS) throw new PilotServiceError(409, 'CONFLICT', 'Ya hay tres salidas activas.');
     if (session.public.mode === 'youtube' && session.ingestUrl === null) {
       throw new PilotServiceError(409, 'NOT_READY', 'La entrada de YouTube no está preparada.');
     }
 
-    const command = ffmpegCommand(this.ffmpegPath, session.public.source, session.ingestUrl);
+    this.spawnSessionProcess(session);
+    return session.public;
+  }
+
+  public isCourtActive(courtSlug: PilotCourtSlug): boolean {
+    return [...this.sessions.values()].some(({ public: session }) =>
+      session.courtSlug === courtSlug && ['starting', 'live', 'reconnecting', 'stopping'].includes(session.status));
+  }
+
+  private spawnSessionProcess(session: InternalPilotSession): void {
+    const usesMobileCamera = session.public.source.kind === 'mobile';
+    const command = ffmpegCommand(
+      this.ffmpegPath,
+      session.public.source,
+      session.ingestUrl,
+      usesMobileCamera ? this.mobileCamera?.rtspUrl() ?? null : null,
+      usesMobileCamera ? this.mobileCamera?.audioAvailableForCourt(session.public.courtSlug) ?? false : false,
+      usesMobileCamera
+        ? this.mobileCamera?.framesPerSecondForCourt(session.public.courtSlug) ?? 30
+        : 30,
+    );
     const child = spawn(command.executable, command.argv, {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { PATH: process.env.PATH ?? '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C' },
       shell: false,
     });
     session.process = child;
+    session.retryTimer = null;
     session.public = PilotSessionSchema.parse({
       ...session.public,
       status: 'starting',
@@ -219,16 +255,58 @@ export class PilotService {
       stoppedAt: null,
       error: null,
     });
-    attachProgress(session, child);
-    return session.public;
+    attachProgress(session, child, (code) => this.handleUnexpectedClose(session, code));
+  }
+
+  private handleUnexpectedClose(session: InternalPilotSession, code: number | null): void {
+    if (session.public.source.kind !== 'mobile') {
+      session.public = PilotSessionSchema.parse({
+        ...session.public,
+        status: code === 0 ? 'stopped' : 'failed',
+        stoppedAt: new Date().toISOString(),
+        error: code === 0 ? null : boundedDiagnostic(session.diagnostic, session.ingestUrl),
+      });
+      return;
+    }
+    session.public = PilotSessionSchema.parse({
+      ...session.public,
+      status: 'reconnecting',
+      error: 'La cámara móvil perdió la conexión. Reintentando automáticamente.',
+    });
+    this.scheduleMobileRetry(session);
+  }
+
+  private scheduleMobileRetry(session: InternalPilotSession): void {
+    if (session.retryTimer !== null || session.public.status !== 'reconnecting') return;
+    const delays = [1_000, 2_000, 4_000, 8_000] as const;
+    const delay = delays[Math.min(session.retryAttempt, delays.length - 1)];
+    session.retryAttempt += 1;
+    session.retryTimer = setTimeout(() => {
+      session.retryTimer = null;
+      if (session.public.status !== 'reconnecting') return;
+      if (!this.mobileCamera?.isReadyForCourt(session.public.courtSlug)) {
+        this.scheduleMobileRetry(session);
+        return;
+      }
+      try {
+        this.spawnSessionProcess(session);
+      } catch {
+        this.scheduleMobileRetry(session);
+      }
+    }, delay);
+    session.retryTimer.unref();
   }
 
   public async stop(id: string): Promise<PilotSession> {
     const session = this.get(id);
-    if (!['starting', 'live'].includes(session.public.status)) {
+    if (!['starting', 'live', 'reconnecting'].includes(session.public.status)) {
       throw new PilotServiceError(409, 'CONFLICT', 'La sesión no está emitiendo.');
     }
     session.public = PilotSessionSchema.parse({ ...session.public, status: 'stopping' });
+    if (session.retryTimer !== null) {
+      clearTimeout(session.retryTimer);
+      session.retryTimer = null;
+    }
     const child = session.process;
     child?.kill('SIGTERM');
     if (child !== null) {
@@ -244,6 +322,13 @@ export class PilotService {
         // The encoder is still stopped locally; the next status refresh exposes the remote discrepancy.
       }
     }
+    if (child === null) {
+      session.public = PilotSessionSchema.parse({
+        ...session.public,
+        status: 'stopped',
+        stoppedAt: new Date().toISOString(),
+      });
+    }
     return session.public;
   }
 
@@ -252,7 +337,10 @@ export class PilotService {
   }
 
   public async shutdown(): Promise<void> {
-    for (const session of this.sessions.values()) session.process?.kill('SIGTERM');
+    for (const session of this.sessions.values()) {
+      if (session.retryTimer !== null) clearTimeout(session.retryTimer);
+      session.process?.kill('SIGTERM');
+    }
   }
 
   private async refreshYouTubeHealth(session: InternalPilotSession): Promise<void> {
@@ -335,30 +423,51 @@ function productionAssets(input: PreparePilotSessionInput) {
   });
 }
 
-function ffmpegCommand(executable: string, source: PilotSource, ingestUrl: string | null) {
+function ffmpegCommand(
+  executable: string,
+  source: PilotSource,
+  ingestUrl: string | null,
+  mobileRtspUrl: string | null,
+  mobileAudioAvailable: boolean,
+  outputFramesPerSecond: 30 | 60,
+) {
   const input = source.kind === 'synthetic'
     ? ['-re', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo']
-    : ['-thread_queue_size', '512', '-f', 'v4l2', '-framerate', '30', '-video_size', '1920x1080', '-i', source.devicePath,
-      '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'];
+    : source.kind === 'v4l2'
+      ? ['-thread_queue_size', '512', '-f', 'v4l2', '-framerate', '30', '-video_size', '1920x1080', '-i', source.devicePath,
+        '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo']
+      : mobileRtspUrl === null
+        ? (() => { throw new PilotServiceError(503, 'NOT_READY', 'La entrada RTSP móvil no está disponible.'); })()
+        : [
+          '-rtsp_transport', 'tcp', '-thread_queue_size', '512', '-i', mobileRtspUrl,
+          ...(mobileAudioAvailable ? [] : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo']),
+        ];
+  const audioInput = source.kind === 'mobile' && mobileAudioAvailable ? '0:a:0' : '1:a:0';
   const output = ingestUrl === null
     ? ['-f', 'null', '/dev/null']
     : ['-f', 'flv', ingestUrl];
+  const videoBitrateKbps = outputFramesPerSecond === 60 ? 9_000 : 6_000;
   return {
     executable,
     argv: [
       '-nostdin', '-hide_banner', '-loglevel', 'warning', '-progress', 'pipe:1', '-stats_period', '1',
       ...input,
-      '-map', '0:v:0', '-map', '1:a:0',
+      '-map', '0:v:0', '-map', audioInput,
+      ...(source.kind === 'mobile' ? ['-vf', 'scale=1920:1080:flags=lanczos'] : []),
       '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
-      '-b:v', '6000k', '-maxrate', '6000k', '-bufsize', '12000k',
-      '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+      '-b:v', `${videoBitrateKbps}k`, '-maxrate', `${videoBitrateKbps}k`, '-bufsize', `${videoBitrateKbps * 2}k`,
+      '-g', `${outputFramesPerSecond * 2}`, '-keyint_min', `${outputFramesPerSecond * 2}`, '-sc_threshold', '0',
       '-c:a', 'aac', '-b:a', '128k', '-ar', '48000',
       ...output,
     ],
   } as const;
 }
 
-function attachProgress(session: InternalPilotSession, child: PilotChildProcess): void {
+function attachProgress(
+  session: InternalPilotSession,
+  child: PilotChildProcess,
+  onUnexpectedClose: (code: number | null) => void,
+): void {
   let progress: Record<string, string> = {};
   let pending = '';
   child.stdout.setEncoding('utf8');
@@ -372,6 +481,7 @@ function attachProgress(session: InternalPilotSession, child: PilotChildProcess)
       progress[line.slice(0, separator)] = line.slice(separator + 1);
       if (line === 'progress=continue' || line === 'progress=end') {
         const encoder = encoderHealth(progress);
+        if (encoder.frame > 0) session.retryAttempt = 0;
         const status = session.public.status === 'starting'
           && session.public.mode === 'simulation'
           && encoder.frame > 0
@@ -380,6 +490,7 @@ function attachProgress(session: InternalPilotSession, child: PilotChildProcess)
         session.public = PilotSessionSchema.parse({
           ...session.public,
           status,
+          error: null,
           encoder,
         });
         progress = {};
@@ -390,24 +501,20 @@ function attachProgress(session: InternalPilotSession, child: PilotChildProcess)
   child.stderr.on('data', (chunk: string) => {
     session.diagnostic = `${session.diagnostic}${chunk}`.slice(-MAX_DIAGNOSTIC_LENGTH);
   });
-  child.once('error', () => {
-    session.public = PilotSessionSchema.parse({
-      ...session.public,
-      status: 'failed',
-      stoppedAt: new Date().toISOString(),
-      error: 'No se pudo iniciar FFmpeg.',
-    });
-    session.process = null;
-  });
+  child.once('error', () => { session.diagnostic = `${session.diagnostic}\nNo se pudo iniciar FFmpeg.`; });
   child.once('close', (code) => {
     const requested = session.public.status === 'stopping';
-    session.public = PilotSessionSchema.parse({
-      ...session.public,
-      status: requested ? 'stopped' : code === 0 ? 'stopped' : 'failed',
-      stoppedAt: new Date().toISOString(),
-      error: requested || code === 0 ? null : boundedDiagnostic(session.diagnostic, session.ingestUrl),
-    });
     session.process = null;
+    if (requested) {
+      session.public = PilotSessionSchema.parse({
+        ...session.public,
+        status: 'stopped',
+        stoppedAt: new Date().toISOString(),
+        error: null,
+      });
+      return;
+    }
+    onUnexpectedClose(code);
   });
 }
 

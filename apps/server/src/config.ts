@@ -5,6 +5,18 @@ import type { PilotYouTubeConfig } from './pilot-youtube.js';
 export interface PilotServerConfig {
   ffmpegPath: string;
   youtube: PilotYouTubeConfig;
+  mobileCamera?: PilotMobileCameraRuntimeConfig;
+}
+
+export interface PilotMobileCameraRuntimeConfig {
+  mediaMtxPath: string | null;
+  lanHost: string | null;
+  lanCidr: string | null;
+  cameraPageOrigin: string;
+  webRtcPort: number;
+  webRtcUdpPort: number;
+  rtspPort: number;
+  apiPort: number;
 }
 
 export interface ServerConfig {
@@ -30,6 +42,16 @@ export function readConfig(): ServerConfig {
     controlPin: process.env.KPL_CONTROL_PIN?.trim() || null,
     pilot: {
       ffmpegPath: process.env.KPL_PILOT_FFMPEG_PATH?.trim() || '/bin/ffmpeg',
+      mobileCamera: {
+        mediaMtxPath: process.env.KPL_PILOT_MEDIAMTX_PATH?.trim() || null,
+        lanHost: process.env.KPL_PILOT_LAN_HOST?.trim() || null,
+        lanCidr: process.env.KPL_PILOT_LAN_CIDR?.trim() || null,
+        cameraPageOrigin: origin(process.env.KPL_PILOT_CAMERA_PAGE_ORIGIN),
+        webRtcPort: port(process.env.KPL_PILOT_WEBRTC_PORT, 8889),
+        webRtcUdpPort: port(process.env.KPL_PILOT_WEBRTC_UDP_PORT, 8189),
+        rtspPort: port(process.env.KPL_PILOT_RTSP_PORT, 8554),
+        apiPort: port(process.env.KPL_PILOT_MEDIAMTX_API_PORT, 9998),
+      },
       youtube: {
         clientId: process.env.KPL_PILOT_YOUTUBE_CLIENT_ID?.trim() || credentials?.clientId || null,
         clientSecret: process.env.KPL_PILOT_YOUTUBE_CLIENT_SECRET?.trim() || credentials?.clientSecret || null,
@@ -41,6 +63,21 @@ export function readConfig(): ServerConfig {
       },
     },
   };
+}
+
+function port(value: string | undefined, fallback: number): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isInteger(parsed) && parsed >= 1024 && parsed <= 65_535 ? parsed : fallback;
+}
+
+function origin(value: string | undefined): string {
+  const candidate = value?.trim() || 'https://live.kingspadelleague.com';
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === 'https:' ? parsed.origin : 'https://live.kingspadelleague.com';
+  } catch {
+    return 'https://live.kingspadelleague.com';
+  }
 }
 
 function readGoogleOAuthCredentials(path: string | undefined): { clientId: string; clientSecret: string } | null {

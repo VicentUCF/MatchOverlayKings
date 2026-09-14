@@ -3,12 +3,17 @@ import {
   PilotConfigurationSchema,
   PilotConfigurationsSchema,
   PilotReadinessSchema,
+  PilotMobileCameraLinkSchema,
+  PilotMobileCameraSessionSchema,
   PilotSessionSchema,
   PilotSessionsSchema,
   PreparePilotSessionInputSchema,
   type PilotConfiguration,
+  type PilotCourtSlug,
+  type PilotMobileCameraSession,
   type PilotSession,
   type PreparePilotSessionInput,
+  type UpdatePilotMobileCameraDesiredInput,
 } from '@kpl/production-contracts';
 
 const ErrorEnvelopeSchema = z.strictObject({
@@ -18,6 +23,7 @@ const SessionEnvelopeSchema = z.strictObject({ session: PilotSessionSchema });
 const SessionsEnvelopeSchema = z.strictObject({ sessions: PilotSessionsSchema });
 const ConfigurationEnvelopeSchema = z.strictObject({ configuration: PilotConfigurationSchema });
 const ConfigurationsEnvelopeSchema = z.strictObject({ configurations: PilotConfigurationsSchema });
+const MobileCameraEnvelopeSchema = z.strictObject({ mobileCamera: PilotMobileCameraSessionSchema.nullable() });
 
 export type PilotApiResult<Value> =
   | { readonly kind: 'success'; readonly value: Value }
@@ -56,6 +62,31 @@ export function createProductionPilotAdapter(fetcher: typeof fetch = fetch) {
     configurations: async (): Promise<PilotApiResult<readonly PilotConfiguration[]>> => {
       const result = await request('/api/pilot/configurations', ConfigurationsEnvelopeSchema);
       return result.kind === 'success' ? { kind: 'success', value: result.value.configurations } : result;
+    },
+    mobileCamera: async (): Promise<PilotApiResult<PilotMobileCameraSession | null>> => {
+      const result = await request('/api/pilot/mobile-camera', MobileCameraEnvelopeSchema);
+      return result.kind === 'success' ? { kind: 'success', value: result.value.mobileCamera } : result;
+    },
+    createMobileCamera: (courtSlug: PilotCourtSlug) => request('/api/pilot/mobile-camera', PilotMobileCameraLinkSchema, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ courtSlug }),
+    }),
+    updateMobileCamera: async (id: string, input: UpdatePilotMobileCameraDesiredInput) => {
+      const result = await request(`/api/pilot/mobile-camera/${encodeURIComponent(id)}/desired`, MobileCameraEnvelopeSchema, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      return result.kind === 'success' && result.value.mobileCamera !== null
+        ? { kind: 'success' as const, value: result.value.mobileCamera }
+        : result.kind === 'error' ? result : { kind: 'error' as const, message: 'La cámara móvil ya no está disponible.' };
+    },
+    revokeMobileCamera: async (id: string) => {
+      const result = await request(`/api/pilot/mobile-camera/${encodeURIComponent(id)}`, MobileCameraEnvelopeSchema, { method: 'DELETE' });
+      return result.kind === 'success' && result.value.mobileCamera !== null
+        ? { kind: 'success' as const, value: result.value.mobileCamera }
+        : result.kind === 'error' ? result : { kind: 'error' as const, message: 'La cámara móvil ya no está disponible.' };
     },
     configure: async (input: PreparePilotSessionInput): Promise<PilotApiResult<PilotConfiguration>> => {
       const parsed = PreparePilotSessionInputSchema.safeParse(input);

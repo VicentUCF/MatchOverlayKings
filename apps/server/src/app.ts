@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import fastifyStatic from '@fastify/static';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { resolve } from 'node:path';
 import { Server as SocketServer } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents } from '@kpl/shared';
@@ -11,18 +11,36 @@ import { registerSocketHandlers } from './socket-handlers.js';
 import type { KplSocketServer, SocketData } from './socket-handlers.js';
 import { PilotService, PilotServiceError } from './pilot-service.js';
 import { PilotYouTubeGateway } from './pilot-youtube.js';
+import { PilotMobileCameraError, PilotMobileCameraService } from './pilot-mobile-camera.js';
 
-export async function buildApp(config: ServerConfig) {
+export async function buildApp(
+  config: ServerConfig,
+  dependencies: {
+    readonly mobileCameraReadinessProbe?: ConstructorParameters<typeof PilotMobileCameraService>[3];
+    readonly mobileCameraVersionProbe?: ConstructorParameters<typeof PilotMobileCameraService>[4];
+    readonly mobileCameraNow?: ConstructorParameters<typeof PilotMobileCameraService>[5];
+  } = {},
+) {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
     },
   });
   const store = new FileStore(config.dataDir);
+  const mobileCamera = new PilotMobileCameraService(
+    config.pilot.mobileCamera,
+    resolve(config.dataDir, 'mobile-camera-runtime'),
+    config.port,
+    dependencies.mobileCameraReadinessProbe,
+    dependencies.mobileCameraVersionProbe,
+    dependencies.mobileCameraNow,
+  );
+  mobileCamera.initialize();
   const pilot = new PilotService(
     config.pilot.ffmpegPath,
     new PilotYouTubeGateway(config.pilot.youtube),
     resolve(config.dataDir, 'pilot-configurations.json'),
+    mobileCamera,
   );
   await pilot.initialize();
   const io: KplSocketServer = new SocketServer<
@@ -42,7 +60,7 @@ export async function buildApp(config: ServerConfig) {
   registerSocketHandlers({ io, store, controlPin: config.controlPin });
 
   app.setErrorHandler((error, _request, reply) => {
-    if (error instanceof PilotServiceError) {
+    if (error instanceof PilotServiceError || error instanceof PilotMobileCameraError) {
       reply.status(error.statusCode).send({ error: { code: error.code, message: error.message } });
       return;
     }
@@ -106,6 +124,65 @@ export async function buildApp(config: ServerConfig) {
     return { configurations: pilot.configurations() };
   });
 
+  app.get('/api/pilot/mobile-camera', async (request) => {
+    requireLocalPilot(request.ip);
+    return { mobileCamera: mobileCamera.current() };
+  });
+
+  app.post('/api/pilot/mobile-camera', async (request, reply) => {
+    requireLocalPilot(request.ip);
+    const link = await mobileCamera.create(request.body);
+    reply.status(201).send(link);
+  });
+
+  app.put<{ Params: { sessionId: string } }>('/api/pilot/mobile-camera/:sessionId/desired', async (request) => {
+    requireLocalPilot(request.ip);
+    const current = mobileCamera.current();
+    if (current !== null && current.id === request.params.sessionId && pilot.isCourtActive(current.courtSlug)) {
+      throw new PilotMobileCameraError(409, 'CONFLICT', 'Detén la emisión antes de cambiar cámara, FPS o audio.');
+    }
+    return { mobileCamera: mobileCamera.updateDesired(request.params.sessionId, request.body) };
+  });
+
+  app.delete<{ Params: { sessionId: string } }>('/api/pilot/mobile-camera/:sessionId', async (request) => {
+    requireLocalPilot(request.ip);
+    const current = mobileCamera.current();
+    if (current !== null && current.id === request.params.sessionId && pilot.isCourtActive(current.courtSlug)) {
+      throw new PilotMobileCameraError(409, 'CONFLICT', 'Detén la emisión antes de revocar la cámara.');
+    }
+    return { mobileCamera: await mobileCamera.revoke(request.params.sessionId) };
+  });
+
+  for (const path of [
+    '/api/pilot/mobile-camera/:sessionId/claim',
+    '/api/pilot/mobile-camera/:sessionId/desired',
+    '/api/pilot/mobile-camera/:sessionId/status',
+  ]) {
+    app.options(path, async (request, reply) => {
+      mobileCors(request, reply, config.pilot.mobileCamera?.cameraPageOrigin);
+      reply.status(204).send();
+    });
+  }
+
+  app.post<{ Params: { sessionId: string } }>('/api/pilot/mobile-camera/:sessionId/claim', async (request, reply) => {
+    mobileCors(request, reply, config.pilot.mobileCamera?.cameraPageOrigin);
+    return mobileCamera.claim(request.params.sessionId, bearerToken(request), request.body);
+  });
+
+  app.get<{ Params: { sessionId: string }; Querystring: { after?: string } }>(
+    '/api/pilot/mobile-camera/:sessionId/desired',
+    async (request, reply) => {
+      mobileCors(request, reply, config.pilot.mobileCamera?.cameraPageOrigin);
+      const after = Number(request.query.after ?? 0);
+      return { desired: await mobileCamera.waitForDesired(request.params.sessionId, bearerToken(request), after) };
+    },
+  );
+
+  app.post<{ Params: { sessionId: string } }>('/api/pilot/mobile-camera/:sessionId/status', async (request, reply) => {
+    mobileCors(request, reply, config.pilot.mobileCamera?.cameraPageOrigin);
+    return { mobileCamera: mobileCamera.report(request.params.sessionId, bearerToken(request), request.body) };
+  });
+
   app.put<{ Params: { courtSlug: string } }>('/api/pilot/configurations/:courtSlug', async (request) => {
     requireLocalPilot(request.ip);
     return { configuration: await pilot.configure(request.params.courtSlug, request.body) };
@@ -165,6 +242,7 @@ export async function buildApp(config: ServerConfig) {
     app.get('/admin/sistema', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/admin/sistema/configuracion', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/mandos', async (_request, reply) => reply.sendFile('index.html'));
+    app.get('/camera/pilot', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/live/:eventId', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/control/:eventId', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/overlay/:eventId/scoreboard', async (_request, reply) => reply.sendFile('index.html'));
@@ -174,10 +252,37 @@ export async function buildApp(config: ServerConfig) {
 
   app.addHook('onClose', async () => {
     await pilot.shutdown();
+    await mobileCamera.shutdown();
     await io.close();
   });
 
   return { app, io, store };
+}
+
+function bearerToken(request: FastifyRequest): string {
+  const authorization = request.headers.authorization;
+  if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ')) {
+    throw new PilotMobileCameraError(401, 'FORBIDDEN', 'Falta la autorización de la cámara.');
+  }
+  const token = authorization.slice('Bearer '.length).trim();
+  if (token.length < 32 || token.length > 128) {
+    throw new PilotMobileCameraError(401, 'FORBIDDEN', 'La autorización de la cámara no es válida.');
+  }
+  return token;
+}
+
+function mobileCors(request: FastifyRequest, reply: FastifyReply, allowedOrigin: string | undefined): void {
+  const origin = request.headers.origin;
+  if (allowedOrigin === undefined || origin !== allowedOrigin) {
+    throw new PilotMobileCameraError(403, 'FORBIDDEN', 'El origen de la cámara no está permitido.');
+  }
+  reply.header('Access-Control-Allow-Origin', allowedOrigin);
+  reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  reply.header('Access-Control-Allow-Private-Network', 'true');
+  reply.header('Private-Network-Access-Name', 'KPL Production Camera');
+  reply.header('Private-Network-Access-ID', '02:4b:50:4c:00:01');
+  reply.header('Vary', 'Origin');
 }
 
 function errorMessage(error: unknown): string {

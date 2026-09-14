@@ -17,7 +17,8 @@ const state: PilotState = {
     matchdayNumber: 2, seasonLabel: 'T2', scheduledAt: '2026-09-14T18:00:00.000Z', privacyStatus: 'private',
     updatedAt: '2026-09-14T16:00:00.000Z',
   }],
-  sessions: [], refreshing: false, pendingCourts: [], courtErrors: {}, error: null,
+  sessions: [], mobileCamera: null, mobileConnectUrl: null,
+  refreshing: false, pendingCourts: [], courtErrors: {}, error: null,
 };
 
 describe('unified production dashboard', () => {

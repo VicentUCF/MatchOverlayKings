@@ -111,6 +111,7 @@ export class PilotYouTubeGateway {
     readonly scheduledAt: string;
     readonly privacyStatus: PilotPrivacy;
     readonly thumbnail: Uint8Array;
+    readonly framesPerSecond: 30 | 60;
   }): Promise<PilotYouTubePreparedBroadcast> {
     const youtube = this.client();
     try {
@@ -142,7 +143,11 @@ export class PilotYouTubeGateway {
         part: ['snippet', 'cdn'],
         requestBody: {
           snippet: { title: `${input.title} · entrada` },
-          cdn: { frameRate: '30fps', ingestionType: 'rtmp', resolution: '1080p' },
+          cdn: {
+            frameRate: input.framesPerSecond === 60 ? '60fps' : '30fps',
+            ingestionType: 'rtmp',
+            resolution: '1080p',
+          },
         },
       });
       const streamId = streamResponse.data.id;

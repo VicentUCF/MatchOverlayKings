@@ -3,6 +3,7 @@ import { ControlPage } from './ControlPage.js';
 import { HomePage } from './HomePage.js';
 import { LivePage } from './LivePage.js';
 import { OverlayPage } from './OverlayPage.js';
+import { MobileCameraPage } from './MobileCameraPage.js';
 
 export function App() {
   const path = window.location.pathname;
@@ -29,6 +30,10 @@ export function App() {
 
   if (path === '/mandos') {
     return <AdminPage destination="controls" />;
+  }
+
+  if (path === '/camera/pilot') {
+    return <MobileCameraPage />;
   }
 
   if (controlMatch?.[1]) {

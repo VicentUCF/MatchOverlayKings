@@ -144,9 +144,23 @@ de emision y los tokens no se devuelven al navegador ni se escriben en los logs.
 Cada pista conserva su propia configuración, fuente, estado, métricas y controles de inicio/parada.
 Los perfiles `production_admin` ven configuración y mandos; los perfiles `operator` acceden
 directamente a Mandos, sin campos editables. El
-piloto todavia no mezcla el overlay KPL, no selecciona audio real y no implementa el movil. Su
-objetivo es reducir primero los riesgos de hardware, codificacion, OAuth, metadata, miniatura,
-ingesta y salud de YouTube antes de incorporar esas capas.
+piloto todavía no mezcla el overlay KPL, pero admite un único Android como cámara WebRTC para
+cualquiera de las tres pistas. Instala MediaMTX `1.21.0`, configura las variables `KPL_PILOT_MEDIAMTX_*`
+y `KPL_PILOT_LAN_*` del ejemplo y permite desde la LAN TCP `4310/8889` y UDP `8189`. RTSP `8554` y
+la API `9998` permanecen ligados a `127.0.0.1`.
+
+En **Emisiones**, selecciona **Móvil Android** y genera el enlace temporal. El enlace contiene el
+secreto únicamente en el fragmento de URL, caduca a las 12 horas y deja de funcionar al revocarlo
+o reiniciar el piloto. Ábrelo en Chrome Android actualizado, pulsa **Preparar cámara** y concede los
+permisos solicitados. El panel habilita solamente las cámaras y los perfiles `720p30`, `720p60`,
+`1080p30` o `1080p60` reportados por el dispositivo; también permite activar o silenciar su audio.
+La pantalla `/mandos` muestra el preview WHEP, el formato realmente aplicado, bitrate, pérdida,
+RTT y último heartbeat. La página del móvil debe permanecer visible y con la pantalla encendida.
+
+Si MediaMTX o la LAN no están configurados, la fuente móvil aparece deshabilitada sin afectar a
+V4L2 ni a la señal sintética. El objetivo del piloto sigue siendo reducir primero los riesgos de
+hardware, codificación, OAuth, metadatos, miniatura, ingesta y salud de YouTube antes de incorporar
+la solución al agente de producción.
 
 ## Vercel
 

@@ -1,9 +1,17 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { PilotConfigurationSchema, PilotReadinessSchema, PilotSessionSchema } from '@kpl/production-contracts';
+import {
+  ClaimPilotMobileCameraResponseSchema,
+  PilotConfigurationSchema,
+  PilotMobileCameraLinkSchema,
+  PilotMobileCameraSessionSchema,
+  PilotReadinessSchema,
+  PilotSessionSchema,
+} from '@kpl/production-contracts';
 import { buildApp } from '../src/app.js';
+import { buildPilotMediaMtxConfiguration } from '../src/pilot-mobile-camera.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -87,6 +95,202 @@ describe('production pilot', () => {
     await Promise.all(ids.map((id) => app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/stop` })));
     await waitForSessions(app, ids, (session) => session.status === 'stopped', 'three stopped sessions');
   }, 25_000);
+
+  it('pairs one authenticated Android client and revokes its secret without exposing it', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kpl-pilot-mobile-'));
+    const mediaMtxPath = join(dataDir, 'fake-mediamtx.mjs');
+    let now = Date.parse('2026-09-14T12:00:00.000Z');
+    await writeFile(mediaMtxPath, fakeMediaMtxSource(), { mode: 0o700 });
+    await chmod(mediaMtxPath, 0o700);
+    const { app } = await buildApp({
+      host: '127.0.0.1', port: 4310, dataDir, webDistDir: join(dataDir, 'missing-web'), controlPin: null,
+      pilot: {
+        ffmpegPath: '/bin/ffmpeg',
+        youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
+        mobileCamera: {
+          mediaMtxPath, lanHost: '192.168.1.20', lanCidr: '192.168.1.0/24',
+          cameraPageOrigin: 'https://live.kingspadelleague.com',
+          webRtcPort: 8889, webRtcUdpPort: 8189, rtspPort: 8554, apiPort: 9998,
+        },
+      },
+    }, {
+      mobileCameraReadinessProbe: async () => undefined,
+      mobileCameraVersionProbe: () => true,
+      mobileCameraNow: () => now,
+    });
+    cleanups.push(async () => { await app.close(); await rm(dataDir, { recursive: true, force: true }); });
+
+    const readiness = PilotReadinessSchema.parse((await app.inject({ method: 'GET', url: '/api/pilot/readiness' })).json());
+    expect(readiness.sources).toContainEqual({ id: 'mobile:pilot', kind: 'mobile', label: 'Móvil Android · WebRTC' });
+    const remoteAdmin = await app.inject({
+      method: 'GET', url: '/api/pilot/mobile-camera', remoteAddress: '192.168.1.45',
+    });
+    expect(remoteAdmin.statusCode).toBe(403);
+
+    const createdResponse = await app.inject({
+      method: 'POST', url: '/api/pilot/mobile-camera', payload: { courtSlug: 'pista-2' },
+    });
+    expect(createdResponse.statusCode).toBe(201);
+    const created = PilotMobileCameraLinkSchema.parse(createdResponse.json());
+    const connectUrl = new URL(created.connectUrl);
+    const fragment = new URLSearchParams(connectUrl.hash.slice(1));
+    const token = fragment.get('token');
+    expect(token).toHaveLength(43);
+    expect(connectUrl.search).toBe('');
+    expect(connectUrl.pathname).toBe('/camera/pilot');
+    expect(JSON.stringify(created.session)).not.toContain(token);
+
+    const clientId = '20000000-0000-4000-8000-000000000001';
+    const claimPayload = {
+      clientId,
+      capabilities: {
+        cameras: [{
+          id: 'rear', label: 'Cámara trasera', facingMode: 'environment', maxWidth: 1920, maxHeight: 1080,
+          maxFramesPerSecond: 60, supportedProfiles: ['720p30', '720p60', '1080p30', '1080p60'],
+        }],
+        audioAvailable: true,
+      },
+    } as const;
+    const mobileHeaders = { origin: 'https://live.kingspadelleague.com', authorization: `Bearer ${token}` };
+    const preflight = await app.inject({
+      method: 'OPTIONS', url: `/api/pilot/mobile-camera/${created.session.id}/claim`,
+      headers: { origin: mobileHeaders.origin, 'access-control-request-private-network': 'true' },
+    });
+    expect(preflight.statusCode).toBe(204);
+    expect(preflight.headers['access-control-allow-private-network']).toBe('true');
+
+    const claimResponse = await app.inject({
+      method: 'POST', url: `/api/pilot/mobile-camera/${created.session.id}/claim`, headers: mobileHeaders,
+      payload: claimPayload,
+    });
+    expect(claimResponse.statusCode).toBe(200);
+    const claim = ClaimPilotMobileCameraResponseSchema.parse(claimResponse.json());
+    expect(claim.desired).toMatchObject({ cameraId: 'rear', profile: '1080p30', audioEnabled: true });
+    expect(claim.whipUrl).toBe('http://192.168.1.20:8889/mobile-pilot/whip');
+
+    const secondClaim = await app.inject({
+      method: 'POST', url: `/api/pilot/mobile-camera/${created.session.id}/claim`, headers: mobileHeaders,
+      payload: { ...claimPayload, clientId: '30000000-0000-4000-8000-000000000001' },
+    });
+    expect(secondClaim.statusCode).toBe(409);
+    const wrongOrigin = await app.inject({
+      method: 'POST', url: `/api/pilot/mobile-camera/${created.session.id}/claim`,
+      headers: { ...mobileHeaders, origin: 'https://attacker.example' }, payload: claimPayload,
+    });
+    expect(wrongOrigin.statusCode).toBe(403);
+
+    const firstUpdate = await app.inject({
+      method: 'PUT', url: `/api/pilot/mobile-camera/${created.session.id}/desired`,
+      payload: { expectedRevision: claim.desired.revision, cameraId: 'rear', profile: '720p60', audioEnabled: false },
+    });
+    expect(firstUpdate.statusCode).toBe(200);
+    const updated = PilotMobileCameraSessionSchema.parse(firstUpdate.json().mobileCamera);
+    expect(updated.desired).toMatchObject({ revision: claim.desired.revision + 1, profile: '720p60', audioEnabled: false });
+    const staleUpdate = await app.inject({
+      method: 'PUT', url: `/api/pilot/mobile-camera/${created.session.id}/desired`,
+      payload: { expectedRevision: claim.desired.revision, cameraId: 'rear', profile: '720p30', audioEnabled: false },
+    });
+    expect(staleUpdate.statusCode).toBe(409);
+
+    const statusResponse = await app.inject({
+      method: 'POST', url: `/api/pilot/mobile-camera/${created.session.id}/status`, headers: mobileHeaders,
+      payload: {
+        clientId, state: 'ready', error: null,
+        applied: {
+          revision: updated.desired.revision, cameraId: 'rear', profile: '720p60', audioEnabled: false,
+          width: 1280, height: 720, framesPerSecond: 59.8,
+        },
+        metrics: { bitrateKbps: 8100, packetLossPercent: 0.4, roundTripTimeMs: 28 },
+      },
+    });
+    expect(statusResponse.statusCode).toBe(200);
+    expect(PilotMobileCameraSessionSchema.parse(statusResponse.json().mobileCamera).state).toBe('ready');
+
+    let degradedState = PilotMobileCameraSessionSchema.parse(statusResponse.json().mobileCamera);
+    for (let sample = 0; sample < 3; sample += 1) {
+      const degraded = await app.inject({
+        method: 'POST', url: `/api/pilot/mobile-camera/${created.session.id}/status`, headers: mobileHeaders,
+        payload: {
+          clientId, state: 'ready', error: null,
+          applied: {
+            revision: updated.desired.revision, cameraId: 'rear', profile: '720p60', audioEnabled: false,
+            width: 1280, height: 720, framesPerSecond: 40,
+          },
+          metrics: { bitrateKbps: 4000, packetLossPercent: 6, roundTripTimeMs: 600 },
+        },
+      });
+      degradedState = PilotMobileCameraSessionSchema.parse(degraded.json().mobileCamera);
+    }
+    expect(degradedState.state).toBe('degraded');
+    now += 6_001;
+    const reconnecting = PilotMobileCameraSessionSchema.parse((await app.inject({
+      method: 'GET', url: '/api/pilot/mobile-camera',
+    })).json().mobileCamera);
+    expect(reconnecting.state).toBe('reconnecting');
+    now += 14_000;
+    const offline = PilotMobileCameraSessionSchema.parse((await app.inject({
+      method: 'GET', url: '/api/pilot/mobile-camera',
+    })).json().mobileCamera);
+    expect(offline.state).toBe('offline');
+
+    const revokedResponse = await app.inject({
+      method: 'DELETE', url: `/api/pilot/mobile-camera/${created.session.id}`,
+    });
+    expect(PilotMobileCameraSessionSchema.parse(revokedResponse.json().mobileCamera).state).toBe('revoked');
+    const reused = await app.inject({
+      method: 'POST', url: `/api/pilot/mobile-camera/${created.session.id}/claim`, headers: mobileHeaders,
+      payload: claimPayload,
+    });
+    expect(reused.statusCode).toBe(410);
+
+    const replacementResponse = await app.inject({
+      method: 'POST', url: '/api/pilot/mobile-camera', payload: { courtSlug: 'pista-1' },
+    });
+    const replacement = PilotMobileCameraLinkSchema.parse(replacementResponse.json());
+    const replacementToken = new URLSearchParams(new URL(replacement.connectUrl).hash.slice(1)).get('token');
+    expect(Date.parse(replacement.session.expiresAt) - now).toBe(12 * 60 * 60_000);
+    now += 12 * 60 * 60_000 + 1;
+    const expired = await app.inject({
+      method: 'POST', url: `/api/pilot/mobile-camera/${replacement.session.id}/claim`,
+      headers: { origin: mobileHeaders.origin, authorization: `Bearer ${replacementToken}` }, payload: claimPayload,
+    });
+    expect(expired.statusCode).toBe(410);
+  });
+
+  it('keeps mobile disabled when MediaMTX or LAN settings are absent', async () => {
+    const app = await createPilotApp();
+    const readiness = PilotReadinessSchema.parse((await app.inject({ method: 'GET', url: '/api/pilot/readiness' })).json());
+    expect(readiness.sources.some(({ kind }) => kind === 'mobile')).toBe(false);
+    const response = await app.inject({
+      method: 'POST', url: '/api/pilot/mobile-camera', payload: { courtSlug: 'pista-1' },
+    });
+    expect(response.statusCode).toBe(503);
+  });
+
+  it('binds MediaMTX control protocols to loopback and WebRTC to the configured LAN ports', () => {
+    const configuration = buildPilotMediaMtxConfiguration({
+      mediaMtxPath: '/opt/mediamtx', lanHost: '192.168.50.10', lanCidr: '192.168.50.0/24',
+      cameraPageOrigin: 'https://live.kingspadelleague.com',
+      webRtcPort: 8889, webRtcUdpPort: 8189, rtspPort: 8554, apiPort: 9998,
+    }, Buffer.alloc(32, 7));
+
+    expect(configuration).toMatchObject({
+      apiAddress: '127.0.0.1:9998',
+      rtspAddress: '127.0.0.1:8554',
+      rtspTransports: ['tcp'],
+      webrtcAddress: ':8889',
+      webrtcLocalUDPAddress: ':8189',
+      webrtcAdditionalHosts: ['192.168.50.10'],
+      paths: { 'mobile-pilot': { source: 'publisher', overridePublisher: false } },
+    });
+    expect(configuration.authInternalUsers[0]).toMatchObject({
+      ips: ['127.0.0.1', '::1'], permissions: [{ action: 'api' }, { action: 'read', path: 'mobile-pilot' }],
+    });
+    expect(configuration.authInternalUsers[1]).toMatchObject({
+      user: 'camera', ips: ['192.168.50.0/24'], permissions: [{ action: 'publish', path: 'mobile-pilot' }],
+    });
+    expect(configuration.authInternalUsers[1]?.pass).toMatch(/^sha256:/);
+  });
 });
 
 async function createPilotApp() {
@@ -136,4 +340,15 @@ async function waitForSessions(
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   throw new Error(`Pilot sessions did not reach ${expected}`);
+}
+
+function fakeMediaMtxSource(): string {
+  return `#!/usr/bin/env node
+if (process.argv[2] === '--version') {
+  process.stdout.write('v1.21.0\\n');
+  process.exit(0);
+}
+const keepAlive = setInterval(() => undefined, 1000);
+process.on('SIGINT', () => { clearInterval(keepAlive); process.exit(0); });
+`;
 }
