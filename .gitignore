@@ -13,5 +13,6 @@ secrets/
 data/events/*.tmp
 data/pilot-configurations.json
 data/mobile-camera-runtime/
+data/youtube-oauth.json
 .omo
 .playwright-mcp

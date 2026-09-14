@@ -38,7 +38,7 @@ describe('production pilot', () => {
 
   it('allows the configured production web origin to reach the loopback agent', async () => {
     const app = await createPilotApp();
-    const origin = 'https://live.kingspadelleague.com';
+    const origin = 'https://live.kingspadelleague.es';
 
     const preflight = await app.inject({
       method: 'OPTIONS',
@@ -153,7 +153,7 @@ describe('production pilot', () => {
         youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
         mobileCamera: {
           mediaMtxPath, lanHost: '192.168.1.20', lanCidr: '192.168.1.0/24',
-          cameraPageOrigin: 'https://live.kingspadelleague.com',
+          cameraPageOrigin: 'https://live.kingspadelleague.es',
           webRtcPort: 8889, webRtcUdpPort: 8189, rtspPort: 8554, apiPort: 9998,
         },
       },
@@ -195,7 +195,7 @@ describe('production pilot', () => {
         audioAvailable: true,
       },
     } as const;
-    const mobileHeaders = { origin: 'https://live.kingspadelleague.com', authorization: `Bearer ${token}` };
+    const mobileHeaders = { origin: 'https://live.kingspadelleague.es', authorization: `Bearer ${token}` };
     const preflight = await app.inject({
       method: 'OPTIONS', url: `/api/pilot/mobile-camera/${created.session.id}/claim`,
       headers: { origin: mobileHeaders.origin, 'access-control-request-private-network': 'true' },
@@ -314,7 +314,7 @@ describe('production pilot', () => {
   it('binds MediaMTX control protocols to loopback and WebRTC to the configured LAN ports', () => {
     const configuration = buildPilotMediaMtxConfiguration({
       mediaMtxPath: '/opt/mediamtx', lanHost: '192.168.50.10', lanCidr: '192.168.50.0/24',
-      cameraPageOrigin: 'https://live.kingspadelleague.com',
+      cameraPageOrigin: 'https://live.kingspadelleague.es',
       webRtcPort: 8889, webRtcUdpPort: 8189, rtspPort: 8554, apiPort: 9998,
     }, Buffer.alloc(32, 7));
 
@@ -343,7 +343,7 @@ async function createPilotApp() {
     host: '127.0.0.1', port: 0, dataDir, webDistDir: join(dataDir, 'missing-web'), controlPin: null,
     pilot: {
       ffmpegPath: '/bin/ffmpeg',
-      controlOrigins: ['https://live.kingspadelleague.com'],
+      controlOrigins: ['https://live.kingspadelleague.es'],
       youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
     },
   });

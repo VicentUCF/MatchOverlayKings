@@ -45,10 +45,10 @@ URLs locales con Vite:
 
 URLs de produccion previstas:
 
-- Selector publico: `https://live.kingspadelleague.com/`
-- Admin: `https://live.kingspadelleague.com/admin`
-- Control pista 1: `https://live.kingspadelleague.com/control/pista-1`
-- Overlay pista 1: `https://live.kingspadelleague.com/overlay/pista-1/scoreboard`
+- Selector publico: `https://live.kingspadelleague.es/`
+- Admin: `https://live.kingspadelleague.es/admin`
+- Control pista 1: `https://live.kingspadelleague.es/control/pista-1`
+- Overlay pista 1: `https://live.kingspadelleague.es/overlay/pista-1/scoreboard`
 
 ## Supabase
 
@@ -130,7 +130,7 @@ npm run production:local:up
 ```
 
 Configura `KPL_PILOT_CONTROL_ORIGINS` con el origen exacto del panel, sin ruta; por ejemplo,
-`https://live.kingspadelleague.com` o la URL `https://<proyecto>.vercel.app`. Se pueden autorizar
+`https://live.kingspadelleague.es` o la URL `https://<proyecto>.vercel.app`. Se pueden autorizar
 varios orígenes separándolos con comas. No uses `*`: estas rutas pueden iniciar y detener
 emisiones.
 

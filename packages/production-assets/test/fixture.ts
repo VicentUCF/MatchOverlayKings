@@ -17,7 +17,7 @@ export const baseInput = {
   scheduledAt: '2026-09-09T17:30:00.000Z',
   timeZone: 'Europe/Madrid',
   locale: 'es-ES',
-  publicUrl: 'https://live.kingspadelleague.com/live/pista-1',
+  publicUrl: 'https://live.kingspadelleague.es/live/pista-1',
   templateRevision: 'thumbnail-v1',
 } as const;
 

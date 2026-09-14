@@ -87,12 +87,12 @@ function port(value: string | undefined, fallback: number): number {
 }
 
 function origin(value: string | undefined): string {
-  const candidate = value?.trim() || 'https://live.kingspadelleague.com';
+  const candidate = value?.trim() || 'https://live.kingspadelleague.es';
   try {
     const parsed = new URL(candidate);
-    return parsed.protocol === 'https:' ? parsed.origin : 'https://live.kingspadelleague.com';
+    return parsed.protocol === 'https:' ? parsed.origin : 'https://live.kingspadelleague.es';
   } catch {
-    return 'https://live.kingspadelleague.com';
+    return 'https://live.kingspadelleague.es';
   }
 }
 

@@ -418,7 +418,7 @@ function productionAssets(input: PreparePilotSessionInput) {
     scheduledAt: input.scheduledAt,
     timeZone: 'Europe/Madrid',
     locale: 'es-ES',
-    publicUrl: `https://live.kingspadelleague.com/live/${input.courtSlug}`,
+    publicUrl: `https://live.kingspadelleague.es/live/${input.courtSlug}`,
     templateRevision: 'pilot-v1',
   });
 }
