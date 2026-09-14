@@ -290,7 +290,10 @@ function errorMessage(error: unknown): string {
 }
 
 function requireLocalPilot(ip: string): void {
-  if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
+  // Docker Compose may deliver a host-browser request through its dedicated gateway.
+  // The value is intentionally an exact IP, never a broad LAN range.
+  const dockerAdminHost = process.env.KPL_PILOT_ADMIN_HOST;
+  if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1' && ip !== dockerAdminHost) {
     throw new PilotServiceError(403, 'FORBIDDEN', 'El control del piloto solo está disponible desde este PC.');
   }
 }

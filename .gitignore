@@ -7,6 +7,8 @@ test-results
 *.tsbuildinfo
 .env
 .env.local
+.env.pilot.docker
+secrets/
 *.log
 data/events/*.tmp
 data/pilot-configurations.json

@@ -1,0 +1,16 @@
+.git
+.github
+.agents
+.codex
+.omo
+node_modules
+**/node_modules
+**/dist
+coverage
+test-results
+playwright-report
+.env
+.env.local
+.env.pilot.docker
+data
+*.log

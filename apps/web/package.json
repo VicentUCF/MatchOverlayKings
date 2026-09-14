@@ -9,7 +9,7 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "@kpl/design-system": "file:../../../Documents/Projects/kpl-design-system",
+    "@kpl/design-system": "https://github.com/VicentUCF/KPL-Design-System/archive/74871a429cbca165dc3c7070e1d8c4195b8c6b2a.tar.gz",
     "@kpl/production-contracts": "0.1.0",
     "@kpl/shared": "0.1.0",
     "@supabase/supabase-js": "^2.110.0",

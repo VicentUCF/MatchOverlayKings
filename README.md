@@ -113,6 +113,30 @@ de una service-role key.
 
 ## Piloto de viabilidad
 
+### Arranque reproducible con Docker
+
+En un equipo nuevo con Docker Compose y acceso a Internet:
+
+```bash
+cp .env.pilot.docker.example .env.pilot.docker
+# Edita KPL_PILOT_LAN_HOST y KPL_PILOT_LAN_CIDR con la red local real.
+docker compose up -d --build
+docker compose logs -f kpl-pilot
+```
+
+Compose levanta un único contenedor con Node, FFmpeg, el frontend del piloto y MediaMTX `1.21.0`.
+Publica el panel en `http://<IP-DEL-PC>:4310`, WHIP/WHEP en TCP `8889` y los candidatos ICE en
+UDP `8189`. La API MediaMTX y RTSP no se publican al host: permanecen en loopback dentro del
+contenedor. La carpeta `./data` conserva la configuración local y el token OAuth si se usa YouTube;
+`.env.pilot.docker` no se versiona.
+
+El Compose usa una red bridge privada fija (`172.30.0.0/24`): solo su gateway `172.30.0.1` puede
+usar las rutas administrativas, mientras que el teléfono sigue limitado a los endpoints móviles
+con token y origen HTTPS.
+
+Para apagarlo sin borrar datos: `docker compose down`. Para actualizar la imagen, repite
+`docker compose up -d --build`.
+
 El piloto separa la preparación y la operación de tres pistas independientes. La navegación del
 administrador mantiene cargadas tres pestañas: Inicio en `/admin`, preparación en
 `/admin/emisiones` y Mandos en `/mandos`. Cambiar entre ellas no recarga la página ni reinicia su
