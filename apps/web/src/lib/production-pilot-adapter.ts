@@ -31,14 +31,26 @@ export type PilotApiResult<Value> =
 
 export type ProductionPilotAdapter = ReturnType<typeof createProductionPilotAdapter>;
 
-export function createProductionPilotAdapter(fetcher: typeof fetch = fetch) {
+type LocalNetworkRequestInit = RequestInit & {
+  readonly targetAddressSpace?: 'loopback';
+};
+
+export function createProductionPilotAdapter(
+  fetcher: typeof fetch = fetch,
+  localAgentBaseUrl = defaultLocalAgentBaseUrl(),
+) {
+  const baseUrl = normalizeBaseUrl(localAgentBaseUrl);
   const request = async <Value>(
     path: string,
     schema: z.ZodType<Value>,
     init?: RequestInit,
   ): Promise<PilotApiResult<Value>> => {
     try {
-      const response = await fetcher(path, init);
+      const endpoint = `${baseUrl}${path}`;
+      const requestInit: LocalNetworkRequestInit | undefined = isLoopbackHttp(baseUrl)
+        ? { ...init, targetAddressSpace: 'loopback' }
+        : init;
+      const response = await fetcher(endpoint, requestInit);
       const payload: unknown = await response.json();
       if (!response.ok) {
         const error = ErrorEnvelopeSchema.safeParse(payload);
@@ -49,11 +61,15 @@ export function createProductionPilotAdapter(fetcher: typeof fetch = fetch) {
         ? { kind: 'success', value: parsed.data }
         : { kind: 'error', message: 'La respuesta del agente local no es válida.' };
     } catch {
-      return { kind: 'error', message: 'No se puede contactar con el agente local. Abre el piloto desde el servidor KPL del PC.' };
+      return {
+        kind: 'error',
+        message: 'No se puede contactar con el agente local. Comprueba que está arrancado en este PC y permite a esta web acceder a la red local.',
+      };
     }
   };
 
   return Object.freeze({
+    localAdminUrl: baseUrl === '' ? '/admin' : `${baseUrl}/admin`,
     readiness: () => request('/api/pilot/readiness', PilotReadinessSchema),
     sessions: async (): Promise<PilotApiResult<readonly PilotSession[]>> => {
       const result = await request('/api/pilot/sessions', SessionsEnvelopeSchema);
@@ -118,4 +134,30 @@ export function createProductionPilotAdapter(fetcher: typeof fetch = fetch) {
     });
     return result.kind === 'success' ? { kind: 'success', value: result.value.session } : result;
   }
+}
+
+function defaultLocalAgentBaseUrl(): string {
+  const configured = import.meta.env.VITE_LOCAL_AGENT_URL?.trim();
+  if (configured) return configured;
+  if (typeof window === 'undefined') return '';
+  if (window.location.protocol === 'http:' && window.location.port === '4310') return '';
+  return 'http://127.0.0.1:4310';
+}
+
+function normalizeBaseUrl(value: string): string {
+  const candidate = value.trim();
+  if (candidate === '') return '';
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return 'http://127.0.0.1:4310';
+    return url.origin;
+  } catch {
+    return 'http://127.0.0.1:4310';
+  }
+}
+
+function isLoopbackHttp(baseUrl: string): boolean {
+  if (!baseUrl.startsWith('http://')) return false;
+  const hostname = new URL(baseUrl).hostname;
+  return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]';
 }

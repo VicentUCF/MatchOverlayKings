@@ -79,6 +79,15 @@ export async function buildApp(
     reply.status(500).send({ error: { code: 'SERVER_ERROR', message: errorMessage(error) } });
   });
 
+  const pilotControlOrigins = new Set(config.pilot.controlOrigins
+    ?? (config.pilot.mobileCamera === undefined ? [] : [config.pilot.mobileCamera.cameraPageOrigin]));
+  app.addHook('onRequest', async (request, reply) => {
+    if (request.url.startsWith('/api/pilot/')) {
+      pilotControlCors(request, reply, pilotControlOrigins);
+    }
+  });
+  app.options('/api/pilot/*', async (_request, reply) => reply.status(204).send());
+
   app.get('/health', async () => ({
     ok: true,
     service: 'kpl-live-overlays',
@@ -293,8 +302,31 @@ function mobileCors(request: FastifyRequest, reply: FastifyReply, allowedOrigin:
   reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   reply.header('Access-Control-Allow-Private-Network', 'true');
-  reply.header('Private-Network-Access-Name', 'KPL Production Camera');
+  reply.header('Private-Network-Access-Name', 'kpl-production-agent');
   reply.header('Private-Network-Access-ID', '02:4b:50:4c:00:01');
+  reply.header('Vary', 'Origin');
+}
+
+function pilotControlCors(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  allowedOrigins: ReadonlySet<string>,
+): void {
+  const requestOrigin = request.headers.origin;
+  if (requestOrigin === undefined) return;
+  const host = request.headers.host;
+  const isSameServer = host !== undefined
+    && (requestOrigin === `http://${host}` || requestOrigin === `https://${host}`);
+  if (!isSameServer && !allowedOrigins.has(requestOrigin)) {
+    throw new PilotServiceError(403, 'FORBIDDEN', 'El origen del control no está autorizado para usar el agente local.');
+  }
+  reply.header('Access-Control-Allow-Origin', requestOrigin);
+  reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  reply.header('Access-Control-Allow-Private-Network', 'true');
+  reply.header('Private-Network-Access-Name', 'kpl-production-agent');
+  reply.header('Private-Network-Access-ID', '02:4b:50:4c:00:01');
+  reply.header('Access-Control-Max-Age', '600');
   reply.header('Vary', 'Origin');
 }
 

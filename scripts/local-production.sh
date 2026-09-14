@@ -6,6 +6,10 @@ env_file="${KPL_LOCAL_PRODUCTION_ENV:-$repo_dir/.env.pilot.docker}"
 web_env_file="$repo_dir/apps/web/.env"
 action="${1:-check}"
 
+# Ejecuta el contenedor sin privilegios con el propietario real del bind mount.
+export KPL_PILOT_UID="${KPL_PILOT_UID:-$(id -u)}"
+export KPL_PILOT_GID="${KPL_PILOT_GID:-$(id -g)}"
+
 fail() {
   printf 'Error: %s\n' "$1" >&2
   exit 1

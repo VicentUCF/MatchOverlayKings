@@ -183,6 +183,7 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
 
   return useMemo(() => ({
     state,
+    localAdminUrl: adapter.localAdminUrl,
     refresh: () => refresh(false),
     configure,
     createMobileCamera,

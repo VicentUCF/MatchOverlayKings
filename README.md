@@ -115,19 +115,28 @@ de una service-role key.
 
 La rama mantiene Supabase como fuente de verdad para autenticación, marcador y Realtime, pero
 ejecuta en el PC de emisión todo el trabajo pesado: servidor web local, FFmpeg, MediaMTX y la
-integración con YouTube. El navegador del operador debe abrir la instalación local; Vercel sigue
-sirviendo la página HTTPS que necesita el móvil para conceder acceso a la cámara.
+integración con YouTube. El operador puede abrir el panel publicado en Vercel desde ese mismo PC:
+la web contacta al agente en `http://127.0.0.1:4310` y el navegador solicita permiso para acceder
+a la red local. El panel local continúa disponible como alternativa. Vercel también sirve la
+página HTTPS que necesita el móvil para conceder acceso a la cámara.
 
 La instalación soportada usa Docker Compose:
 
 ```bash
 cp .env.pilot.docker.example .env.pilot.docker
-# Completa Supabase, la IP/CIDR de la LAN y, si procede, YouTube.
+# Completa Supabase, la IP/CIDR de la LAN, el origen HTTPS del panel y, si procede, YouTube.
 npm run production:local:check
 npm run production:local:up
 ```
 
-Abre `http://localhost:4310/admin` en el PC de emisión. Los valores
+Configura `KPL_PILOT_CONTROL_ORIGINS` con el origen exacto del panel, sin ruta; por ejemplo,
+`https://live.kingspadelleague.com` o la URL `https://<proyecto>.vercel.app`. Se pueden autorizar
+varios orígenes separándolos con comas. No uses `*`: estas rutas pueden iniciar y detener
+emisiones.
+
+Abre el panel de Vercel en el PC de emisión y acepta el permiso de red local cuando Chrome lo
+solicite. Si el permiso se deniega o el navegador no implementa esta conexión, usa el botón
+**Abrir panel local** o entra en `http://localhost:4310/admin`. Los valores
 `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` se incorporan a la web al construir la
 imagen; cambiar cualquiera de ellos exige repetir `npm run production:local:up`. Para seguir el
 servicio usa `npm run production:local:logs`, y para apagarlo sin borrar la configuración usa
@@ -237,7 +246,14 @@ Configura estas variables en Vercel:
 ```bash
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_PUBLISHABLE_KEY=...
+# Opcional; este es el valor predeterminado:
+VITE_LOCAL_AGENT_URL=http://127.0.0.1:4310
 ```
+
+El agente debe estar arrancado en el mismo PC desde el que se abre el panel. Añade el origen
+exacto del despliegue a `KPL_PILOT_CONTROL_ORIGINS` en `.env.pilot.docker` y reconstruye el
+contenedor. Para previews de Vercel con URL cambiante, autoriza explícitamente cada origen que se
+vaya a utilizar; no se aceptan comodines.
 
 El build de Vercel usa:
 

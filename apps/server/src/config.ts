@@ -6,6 +6,7 @@ export interface PilotServerConfig {
   ffmpegPath: string;
   youtube: PilotYouTubeConfig;
   mobileCamera?: PilotMobileCameraRuntimeConfig;
+  controlOrigins?: readonly string[];
 }
 
 export interface PilotMobileCameraRuntimeConfig {
@@ -30,6 +31,7 @@ export interface ServerConfig {
 
 export function readConfig(): ServerConfig {
   const credentials = readGoogleOAuthCredentials(process.env.KPL_PILOT_YOUTUBE_CREDENTIALS_PATH);
+  const cameraPageOrigin = origin(process.env.KPL_PILOT_CAMERA_PAGE_ORIGIN);
   return {
     host: process.env.HOST ?? '0.0.0.0',
     port: Number(process.env.PORT ?? 4300),
@@ -42,11 +44,12 @@ export function readConfig(): ServerConfig {
     controlPin: process.env.KPL_CONTROL_PIN?.trim() || null,
     pilot: {
       ffmpegPath: process.env.KPL_PILOT_FFMPEG_PATH?.trim() || '/bin/ffmpeg',
+      controlOrigins: origins(process.env.KPL_PILOT_CONTROL_ORIGINS, cameraPageOrigin),
       mobileCamera: {
         mediaMtxPath: process.env.KPL_PILOT_MEDIAMTX_PATH?.trim() || null,
         lanHost: process.env.KPL_PILOT_LAN_HOST?.trim() || null,
         lanCidr: process.env.KPL_PILOT_LAN_CIDR?.trim() || null,
-        cameraPageOrigin: origin(process.env.KPL_PILOT_CAMERA_PAGE_ORIGIN),
+        cameraPageOrigin,
         webRtcPort: port(process.env.KPL_PILOT_WEBRTC_PORT, 8889),
         webRtcUdpPort: port(process.env.KPL_PILOT_WEBRTC_UDP_PORT, 8189),
         rtspPort: port(process.env.KPL_PILOT_RTSP_PORT, 8554),
@@ -63,6 +66,19 @@ export function readConfig(): ServerConfig {
       },
     },
   };
+}
+
+function origins(value: string | undefined, fallback: string): readonly string[] {
+  const candidates = value?.split(',').map((candidate) => candidate.trim()).filter(Boolean) ?? [];
+  const valid = candidates.flatMap((candidate) => {
+    try {
+      const parsed = new URL(candidate);
+      return parsed.protocol === 'https:' ? [parsed.origin] : [];
+    } catch {
+      return [];
+    }
+  });
+  return [...new Set(valid.length > 0 ? valid : [fallback])];
 }
 
 function port(value: string | undefined, fallback: number): number {

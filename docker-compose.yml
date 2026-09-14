@@ -9,6 +9,7 @@ services:
     image: kpl-live-pilot:1.21.0
     restart: unless-stopped
     init: true
+    user: "${KPL_PILOT_UID:-1000}:${KPL_PILOT_GID:-1000}"
     stop_grace_period: 20s
     security_opt:
       - no-new-privileges:true

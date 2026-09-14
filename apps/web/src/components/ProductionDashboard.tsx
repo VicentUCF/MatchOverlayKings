@@ -23,7 +23,8 @@ type ProductionDashboardProps = {
 
 export function ProductionDashboard(props: ProductionDashboardProps) {
   const pilot = useProductionPilot();
-  return <ProductionDashboardView state={pilot.state} refresh={pilot.refresh} {...props} />;
+  return <ProductionDashboardView state={pilot.state} refresh={pilot.refresh}
+    localAdminUrl={pilot.localAdminUrl} {...props} />;
 }
 
 export function ProductionDashboardView({
@@ -32,6 +33,7 @@ export function ProductionDashboardView({
   signOut = async () => undefined,
   onOpenConfiguration = () => undefined,
   onOpenControls = () => undefined,
+  localAdminUrl,
   embedded = false,
 }: {
   readonly state: PilotState;
@@ -39,6 +41,7 @@ export function ProductionDashboardView({
   readonly signOut?: () => Promise<void>;
   readonly onOpenConfiguration?: () => void;
   readonly onOpenControls?: () => void;
+  readonly localAdminUrl?: string;
   readonly embedded?: boolean;
 }) {
   const configurations = state.kind === 'ready' ? state.configurations : [];
@@ -62,7 +65,9 @@ export function ProductionDashboardView({
       </header>
 
       {state.kind === 'error' ? <div className="production-page-feedback danger" role="alert">
-        <span>{state.message}</span><button type="button" className="refresh-button" onClick={() => void refresh()}>Reintentar</button>
+        <span>{state.message}</span>
+        {localAdminUrl ? <a className="refresh-button" href={localAdminUrl}>Abrir panel local</a> : null}
+        <button type="button" className="refresh-button" onClick={() => void refresh()}>Reintentar</button>
       </div> : null}
       {state.kind === 'ready' && state.error ? <div className="production-page-feedback danger" role="alert">{state.error}</div> : null}
 

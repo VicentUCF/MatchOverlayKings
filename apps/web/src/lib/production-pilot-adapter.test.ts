@@ -19,6 +19,20 @@ describe('production pilot adapter', () => {
     expect(fetcher).toHaveBeenCalledWith('/api/pilot/readiness', undefined);
   });
 
+  it('targets the loopback agent from a deployed web and requests local-network access', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(readiness), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    const adapter = createProductionPilotAdapter(fetcher as typeof fetch, 'http://127.0.0.1:4310/');
+
+    await expect(adapter.readiness()).resolves.toEqual({ kind: 'success', value: readiness });
+    expect(adapter.localAdminUrl).toBe('http://127.0.0.1:4310/admin');
+    expect(fetcher).toHaveBeenCalledWith(
+      'http://127.0.0.1:4310/api/pilot/readiness',
+      expect.objectContaining({ targetAddressSpace: 'loopback' }),
+    );
+  });
+
   it('preserves the bounded server error for an operator recovery path', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       error: { code: 'NOT_READY', message: 'Conecta primero YouTube.' },

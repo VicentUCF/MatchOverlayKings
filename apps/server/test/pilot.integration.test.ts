@@ -36,6 +36,34 @@ describe('production pilot', () => {
     });
   });
 
+  it('allows the configured production web origin to reach the loopback agent', async () => {
+    const app = await createPilotApp();
+    const origin = 'https://live.kingspadelleague.com';
+
+    const preflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/pilot/readiness',
+      headers: {
+        origin,
+        'access-control-request-method': 'GET',
+        'access-control-request-private-network': 'true',
+      },
+    });
+    expect(preflight.statusCode).toBe(204);
+    expect(preflight.headers['access-control-allow-origin']).toBe(origin);
+    expect(preflight.headers['access-control-allow-private-network']).toBe('true');
+    expect(preflight.headers['private-network-access-name']).toBe('kpl-production-agent');
+
+    const allowed = await app.inject({ method: 'GET', url: '/api/pilot/readiness', headers: { origin } });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.headers['access-control-allow-origin']).toBe(origin);
+
+    const denied = await app.inject({
+      method: 'GET', url: '/api/pilot/readiness', headers: { origin: 'https://attacker.example' },
+    });
+    expect(denied.statusCode).toBe(403);
+  });
+
   it('runs a real synthetic FFmpeg session without creating a YouTube broadcast', async () => {
     const app = await createPilotApp();
 
@@ -315,6 +343,7 @@ async function createPilotApp() {
     host: '127.0.0.1', port: 0, dataDir, webDistDir: join(dataDir, 'missing-web'), controlPin: null,
     pilot: {
       ffmpegPath: '/bin/ffmpeg',
+      controlOrigins: ['https://live.kingspadelleague.com'],
       youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
     },
   });

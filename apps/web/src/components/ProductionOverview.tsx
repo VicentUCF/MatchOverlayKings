@@ -86,7 +86,7 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut }: {
       onSignOut={() => void signOut()} />
     <section id="production-panel-dashboard" className="production-workspace-panel" role="tabpanel"
       aria-labelledby="production-tab-dashboard" hidden={activeArea !== 'dashboard'} tabIndex={0}>
-      <ProductionDashboardView state={pilot.state} refresh={pilot.refresh} embedded
+      <ProductionDashboardView state={pilot.state} refresh={pilot.refresh} localAdminUrl={pilot.localAdminUrl} embedded
         onOpenConfiguration={() => openArea('emissions')} onOpenControls={() => openArea('controls')} />
     </section>
     <section id="production-panel-emissions" className="production-workspace-panel" role="tabpanel"

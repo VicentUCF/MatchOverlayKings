@@ -67,6 +67,7 @@ export function ProductionPilotWorkspaceView({
   if (pilot.state.kind === 'error') return shell(
     <div className="production-page-feedback danger" role="alert">
       <p>{pilot.state.message}</p>
+      <a className="refresh-button" href={pilot.localAdminUrl}>Abrir panel local</a>
       <button type="button" className="refresh-button" onClick={() => void pilot.refresh()}>Reintentar</button>
     </div>,
   );

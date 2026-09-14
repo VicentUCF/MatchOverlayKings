@@ -38,9 +38,12 @@ describe('unified production dashboard', () => {
   it('keeps visual control available when the local streaming agent fails', () => {
     const html = renderToStaticMarkup(createElement(ProductionDashboardView, {
       state: { kind: 'error', message: 'Agente desconectado' },
+      localAdminUrl: 'http://127.0.0.1:4310/admin',
     }));
 
     expect(html).toContain('Agente desconectado');
+    expect(html).toContain('Abrir panel local');
+    expect(html).toContain('http://127.0.0.1:4310/admin');
     expect(html).toContain('/control/pista-1');
     expect((html.match(/Control visual/g) ?? [])).toHaveLength(3);
   });

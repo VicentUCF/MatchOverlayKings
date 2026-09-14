@@ -6,6 +6,7 @@ import { ProductionTabbedWorkspace } from './ProductionOverview.js';
 
 const pilot: ProductionPilotController = {
   state: { kind: 'loading' },
+  localAdminUrl: 'http://127.0.0.1:4310/admin',
   refresh: async () => undefined,
   configure: async () => false,
   createMobileCamera: async () => null,
