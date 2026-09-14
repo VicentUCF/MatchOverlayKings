@@ -147,18 +147,22 @@ function PilotConfigurationPanel({
   const [privacyStatus, setPrivacyStatus] = useState<PilotPrivacy>(configuration?.privacyStatus ?? 'private');
   const [sourceId, setSourceId] = useState(configuration?.sourceId ?? 'synthetic');
   const [saved, setSaved] = useState(false);
+  const configurationRef = useRef(configuration);
+  configurationRef.current = configuration;
+  const configurationRevision = configuration?.updatedAt ?? null;
 
   useEffect(() => {
-    if (configuration === null) return;
-    setMode(configuration.mode);
-    setHomeTeam(configuration.homeTeam);
-    setAwayTeam(configuration.awayTeam);
-    setSeasonLabel(configuration.seasonLabel);
-    setMatchdayNumber(configuration.matchdayNumber);
-    setScheduledAt(toLocalDateTime(configuration.scheduledAt));
-    setPrivacyStatus(configuration.privacyStatus);
-    setSourceId(configuration.sourceId);
-  }, [configuration]);
+    const savedConfiguration = configurationRef.current;
+    if (savedConfiguration === null) return;
+    setMode(savedConfiguration.mode);
+    setHomeTeam(savedConfiguration.homeTeam);
+    setAwayTeam(savedConfiguration.awayTeam);
+    setSeasonLabel(savedConfiguration.seasonLabel);
+    setMatchdayNumber(savedConfiguration.matchdayNumber);
+    setScheduledAt(toLocalDateTime(savedConfiguration.scheduledAt));
+    setPrivacyStatus(savedConfiguration.privacyStatus);
+    setSourceId(savedConfiguration.sourceId);
+  }, [configurationRevision]);
 
   const youtubeUnavailable = mode === 'youtube' && !readiness.youtube.authorized;
   const active = session !== null && !['stopped', 'failed'].includes(session.status);
