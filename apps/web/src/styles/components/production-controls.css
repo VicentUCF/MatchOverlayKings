@@ -38,6 +38,92 @@
   color: var(--kpl-color-info);
 }
 
+.production-setup-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: var(--kpl-space-2) var(--kpl-space-3);
+}
+
+.production-setup-fields label,
+.production-setup-fields small {
+  color: var(--kpl-color-text-muted);
+  font-size: var(--kpl-font-size-100);
+  font-weight: 700;
+  line-height: var(--kpl-line-height-body);
+}
+
+.production-setup-fields input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--kpl-control-size-md);
+  border: var(--kpl-border-width) solid var(--kpl-color-border-subtle);
+  border-radius: var(--kpl-radius-xs);
+  padding-inline: var(--kpl-space-3);
+  color: var(--kpl-color-text);
+  background: var(--kpl-color-surface);
+  font: inherit;
+}
+
+.production-setup-fields input:focus-visible {
+  border-color: var(--kpl-color-brand-strong);
+  outline: var(--kpl-border-width) solid var(--kpl-color-brand-strong);
+  outline-offset: var(--kpl-border-width);
+}
+
+.production-setup-fields input[readonly] {
+  color: var(--kpl-color-text-muted);
+  background: var(--kpl-color-surface-emphasis);
+}
+
+.production-setup-fields small {
+  grid-column: 2;
+  font-weight: 500;
+}
+
+.production-setup-feedback {
+  margin: 0;
+  color: var(--kpl-color-text-muted);
+  font-size: var(--kpl-font-size-100);
+  line-height: var(--kpl-line-height-body);
+}
+
+.production-setup-submit {
+  flex: 0 0 auto;
+  min-height: var(--kpl-control-size-md);
+  border: var(--kpl-border-width) solid var(--kpl-color-brand-strong);
+  border-radius: var(--kpl-radius-xs);
+  padding-inline: var(--kpl-space-4);
+  color: var(--kpl-color-brand-contrast);
+  background: var(--kpl-color-brand-strong);
+  font-weight: 800;
+}
+
+.production-setup-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.production-setup-submit:focus-visible {
+  outline: var(--kpl-border-width) solid var(--kpl-color-focus);
+  outline-offset: var(--kpl-space-1);
+}
+
+@media (width <= 560px) {
+  .production-setup-fields,
+  .production-setup-fields--shared {
+    grid-template-columns: 1fr;
+  }
+
+  .production-setup-fields small {
+    grid-column: 1;
+  }
+
+  .production-setup-submit {
+    width: 100%;
+  }
+}
+
 .production-controls {
   min-width: 0;
   margin: 0 0 var(--kpl-space-4);

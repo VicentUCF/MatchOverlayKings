@@ -77,9 +77,7 @@ if (appliedMigrations.size === 0 && hasExistingSchema) {
   for (const migration of localMigrations.filter(({ name }) => name <= baselineThrough)) {
     runPsql([
       '--single-transaction',
-      '--set', `migration_name=${migration.name}`,
-      '--set', `migration_hash=${migration.hash}`,
-      '--command', buildRecordMigrationSql(),
+      '--command', buildRecordMigrationSql(migration.name, migration.hash),
     ]);
     appliedMigrations.set(migration.name, migration.hash);
   }
@@ -98,10 +96,8 @@ for (const migration of migrations) {
 
   runPsql([
     '--single-transaction',
-    '--set', `migration_name=${migration.name}`,
-    '--set', `migration_hash=${migration.hash}`,
     '--file', resolve(migrationsDir, migration.name),
-    '--command', buildRecordMigrationSql(),
+    '--command', buildRecordMigrationSql(migration.name, migration.hash),
   ]);
 }
 

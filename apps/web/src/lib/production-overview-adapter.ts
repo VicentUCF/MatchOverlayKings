@@ -55,7 +55,7 @@ export type ProductionBackend = {
 
 const ErrorSchema = z.object({ code: z.string().optional(), message: z.string() });
 const ResponseSchema = z.object({ data: z.unknown(), error: ErrorSchema.nullable() });
-const UserResponseDataSchema = z.strictObject({ user: z.strictObject({ id: z.uuid() }).nullable() });
+const UserResponseDataSchema = z.strictObject({ user: z.object({ id: z.uuid() }).nullable() });
 const DATA_TABLES = PRODUCTION_TABLES.filter((table) => table !== 'production_principals');
 
 export function createProductionOverviewAdapter(

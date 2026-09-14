@@ -4,6 +4,7 @@ export * from './common.js';
 export * from './identities.js';
 export * from './operations.js';
 export * from './outputs.js';
+export * from './pilot.js';
 export * from './provisioning.js';
 export * from './scheduling.js';
 export * from './supabase.js';

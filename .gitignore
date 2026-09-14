@@ -10,3 +10,4 @@ test-results
 *.log
 data/events/*.tmp
 .omo
+.playwright-mcp

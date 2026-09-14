@@ -111,6 +111,35 @@ operacion solicitada.
 Quedan fuera del MVP: Android, YouTube, camaras de red, una interfaz de aprovisionamiento y el uso
 de una service-role key.
 
+## Piloto de viabilidad
+
+El piloto de `/admin` controla tres pistas independientes desde una sola pantalla. Su modo
+`Simulacion local` genera titulo, descripcion y miniatura y ejecuta una codificacion FFmpeg 1080p30
+real contra una salida nula: no crea recursos externos ni publica contenido.
+
+```bash
+npm run pilot
+```
+
+Abre `http://localhost:4310/admin`, inicia sesion y pulsa `Validar piloto`. El panel detecta las
+camaras Linux `/dev/video*`; si no hay ninguna conectada ofrece una señal sintetica. La validacion
+considera estable el encoder cuando mantiene al menos `0.95x` de velocidad.
+
+Para validar YouTube de verdad, crea un cliente OAuth de tipo aplicacion web, habilita YouTube Data
+API v3 y registra exactamente
+`http://localhost:4310/api/pilot/youtube/auth/callback` como URI de redireccion. Copia las variables
+de [`apps/server/.env.pilot.example`](apps/server/.env.pilot.example) al `.env` de la raiz. El token
+OAuth se guarda en la ruta absoluta configurada, fuera del repositorio y con modo `0600`.
+
+El modo `YouTube real` crea un broadcast, una entrada RTMP, los vincula, sube la miniatura y entrega
+la URL RTMPS exclusivamente al proceso FFmpeg. Empieza siempre con visibilidad `Privado`. La clave
+de emision y los tokens no se devuelven al navegador ni se escriben en los logs.
+
+Cada pista conserva su propio formulario, fuente, estado, metricas y controles de inicio/parada. El
+piloto todavia no mezcla el overlay KPL, no selecciona audio real y no implementa el movil. Su
+objetivo es reducir primero los riesgos de hardware, codificacion, OAuth, metadata, miniatura,
+ingesta y salud de YouTube antes de incorporar esas capas.
+
 ## Vercel
 
 Configura estas variables en Vercel:

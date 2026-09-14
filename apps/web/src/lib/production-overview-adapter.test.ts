@@ -39,6 +39,31 @@ describe('production overview adapter', () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
+  it('loads production access when the Supabase user includes ordinary fields', async () => {
+    const { backend, select } = backendFor();
+    const backendWithSupabaseUser: ProductionBackend = {
+      ...backend,
+      currentUser: async () => ({
+        data: {
+          user: {
+            id: USER_ID,
+            email: 'operator@example.invalid',
+            role: 'authenticated',
+          },
+        },
+        error: null,
+      }),
+    };
+
+    const result = await createProductionOverviewAdapter(backendWithSupabaseUser).load();
+
+    expect(result.kind).toBe('success');
+    expect(select).toHaveBeenCalledWith('production_principals', {
+      column: 'auth_user_id',
+      value: USER_ID,
+    });
+  });
+
   it('keeps unresolved production capability forbidden and non-mutating', async () => {
     const { backend, dataset, rpc } = backendFor('viewer');
     dataset.production_principal_roles = [];

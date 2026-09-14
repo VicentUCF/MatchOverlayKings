@@ -12,9 +12,10 @@ alter default privileges in schema public revoke execute on functions from publi
 commit;`;
 }
 
-export function buildRecordMigrationSql() {
+export function buildRecordMigrationSql(filename, hash) {
+  const quoteSqlLiteral = (value) => `'${value.replaceAll("'", "''")}'`;
   return String.raw`insert into public.kpl_schema_migrations (filename, sha256)
-values (:'migration_name', :'migration_hash');`;
+values (${quoteSqlLiteral(filename)}, ${quoteSqlLiteral(hash)});`;
 }
 
 export function selectUnappliedMigrations(localMigrations, appliedMigrations) {

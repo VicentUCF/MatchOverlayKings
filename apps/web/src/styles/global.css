@@ -23,6 +23,8 @@
 
 @import "./pages/home-admin.css";
 @import "./pages/production-overview.css";
+@import "./pages/production-setup.css";
+@import "./pages/production-pilot.css";
 @import "./pages/watch.css";
 @import "./pages/control.css";
 

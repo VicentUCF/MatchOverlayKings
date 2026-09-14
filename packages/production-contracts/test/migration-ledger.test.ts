@@ -17,9 +17,20 @@ describe('migration ledger', () => {
     expect(selectUnappliedMigrations(local, new Map(local.map(({ name, hash }) => [name, hash])))).toEqual([]);
   });
 
+  it('renders migration values as safely quoted SQL literals', () => {
+    const filename = "20260702120000_owner's_schema.sql";
+    const hash = 'abc123def456';
+    const sql = buildRecordMigrationSql(filename, hash);
+
+    expect(sql).toContain("'20260702120000_owner''s_schema.sql'");
+    expect(sql).toContain("'abc123def456'");
+    expect(sql).not.toContain(":'migration_name'");
+    expect(sql).not.toContain(":'migration_hash'");
+  });
+
   it('bootstraps safe function privileges and records inside the transaction', () => {
     expect(buildLedgerBootstrapSql()).toContain('alter default privileges in schema public revoke execute on functions from public');
-    expect(buildRecordMigrationSql()).toContain('insert into public.kpl_schema_migrations');
+    expect(buildRecordMigrationSql('001.sql', 'aaa')).toContain('insert into public.kpl_schema_migrations');
     expect(readFileSync('scripts/apply-supabase-migrations.mjs', 'utf8')).toContain("'--single-transaction'");
   });
 });

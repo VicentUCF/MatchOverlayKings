@@ -1,7 +1,10 @@
 import { Eye, LogOut, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 import { useProductionOverview, type ProductionOverviewState } from '../hooks/useProductionOverview.js';
 import { PRODUCTION_COURT_SLUGS, type ProductionOverviewAccess } from '../lib/production-overview-types.js';
 import { ProductionCourtCard } from './ProductionCourtCard.js';
+import { ProductionPilotWorkspace } from './ProductionPilotWorkspace.js';
+import { ProductionSetupWorkspace } from './ProductionSetupWorkspace.js';
 
 type ProductionOverviewProps = {
   readonly signOut: () => Promise<void>;
@@ -9,16 +12,37 @@ type ProductionOverviewProps = {
 
 type ProductionOverviewViewProps = {
   readonly state: ProductionOverviewState;
-  readonly refresh: () => Promise<void>;
-  readonly signOut: () => Promise<void>;
+  readonly refresh?: () => Promise<void>;
+  readonly signOut?: () => Promise<void>;
+  readonly onOpenSetup?: () => void;
+  readonly onOpenPilot?: () => void;
 };
 
 export function ProductionOverview({ signOut }: ProductionOverviewProps) {
   const overview = useProductionOverview();
-  return <ProductionOverviewView state={overview.state} refresh={overview.refresh} signOut={signOut} />;
+  const [view, setView] = useState<'overview' | 'setup' | 'pilot'>(() =>
+    new URLSearchParams(window.location.search).get('pilot') === '1' ? 'pilot' : 'overview');
+  const setupClubId = operatorClubId(overview.state);
+  if (view === 'pilot' && setupClubId !== null) {
+    return <ProductionPilotWorkspace onBack={() => setView('overview')} />;
+  }
+  if (view === 'setup' && setupClubId !== null) {
+    return <ProductionSetupWorkspace clubId={setupClubId} signOut={signOut} onBack={() => {
+      setView('overview');
+      void overview.refresh();
+    }} />;
+  }
+  return <ProductionOverviewView state={overview.state} refresh={overview.refresh} signOut={signOut}
+    onOpenSetup={() => setView('setup')} onOpenPilot={() => setView('pilot')} />;
 }
 
-export function ProductionOverviewView({ state, refresh, signOut }: ProductionOverviewViewProps) {
+export function ProductionOverviewView({
+  state,
+  refresh = async () => undefined,
+  signOut = async () => undefined,
+  onOpenSetup,
+  onOpenPilot,
+}: ProductionOverviewViewProps) {
   const capability = stateCapability(state);
   const refreshing = state.kind === 'refreshing';
   return (
@@ -30,6 +54,16 @@ export function ProductionOverviewView({ state, refresh, signOut }: ProductionOv
         </div>
         <span className="production-role"><Eye aria-hidden="true" />{roleLabel(capability)}</span>
         <div className="production-topbar-actions">
+          {capability === 'operator' && onOpenPilot !== undefined ? (
+            <button type="button" className="refresh-button" onClick={onOpenPilot}>
+              Validar piloto
+            </button>
+          ) : null}
+          {capability === 'operator' && onOpenSetup !== undefined ? (
+            <button type="button" className="refresh-button production-setup-entry" onClick={onOpenSetup}>
+              Configurar producción
+            </button>
+          ) : null}
           <button type="button" className="refresh-button" onClick={() => void refresh()} disabled={refreshing}>
             <RefreshCw aria-hidden="true" />{refreshing ? 'Actualizando' : 'Actualizar'}
           </button>
@@ -50,6 +84,18 @@ export function ProductionOverviewView({ state, refresh, signOut }: ProductionOv
       </section>
     </main>
   );
+}
+
+function operatorClubId(state: ProductionOverviewState): string | null {
+  switch (state.kind) {
+    case 'ready':
+    case 'refreshing':
+    case 'stale': return state.access.kind === 'operator' ? state.access.snapshot.clubId : null;
+    case 'loading':
+    case 'forbidden':
+    case 'error': return null;
+    default: return assertNever(state);
+  }
 }
 
 function renderOverviewState(state: ProductionOverviewState, refresh: () => Promise<void>) {

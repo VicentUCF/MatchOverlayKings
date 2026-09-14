@@ -21,6 +21,10 @@ describe('socket integration', () => {
       dataDir,
       webDistDir: join(dataDir, 'missing-web'),
       controlPin: null,
+      pilot: {
+        ffmpegPath: '/bin/ffmpeg',
+        youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
+      },
     });
     await app.listen({ host: '127.0.0.1', port: 0 });
 

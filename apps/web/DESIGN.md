@@ -19,6 +19,7 @@ Roles follow the production contracts:
 
 - **Viewer:** read-only overview, status detail, score summary, and authorized navigation links. Render no desired-state controls and expose no mutation through hidden shortcuts.
 - **Operator:** all viewer information plus desired-state controls. Controls request `off`, `preflight`, `running`, or `stopped`, and may request reconciliation; they never claim direct process control.
+- **Manager:** an authorized operator who may open the scoped production setup workspace before using the same overview. Setup creates the minimum production records described below; it does not grant Auth administration, secret handling, or direct runtime control.
 - A forbidden response is an authorization state, not an empty overview. Do not infer a role from UI state or expose operator controls while permissions are unresolved.
 
 Information order is fixed:
@@ -29,6 +30,21 @@ Information order is fixed:
 4. Per-card order: court identity and assignment; score/event context; observed health; desired versus observed lifecycle; pending/conflict/deferred feedback; role-appropriate controls; existing route links; observation metadata.
 
 Never sort, hide, collapse, or replace court slots based on assignment or health. A missing assignment is represented inside its court card so operators retain spatial memory.
+
+### Manager Setup Workspace
+
+The manager-facing setup workspace is a bounded preparation view inside the authenticated `/admin` production area, not a replacement for the lifecycle overview or a new application route. A manager enters it from the overview when setup is incomplete, completes or resumes the shared four-court configuration, then returns to the existing overview in the same authenticated shell.
+
+The runnable MVP represents one active event day with this exact shape:
+
+1. One shared local agent principal, linked to one externally pre-created Supabase Auth UUID, is assigned to all four events.
+2. Each fixed court, `pista-1` through `pista-4`, has one local capture device.
+3. Each court has one fixed schedule for the active event day, one capture assignment to its local device, one agent assignment to the shared principal, and one enabled program output for its event.
+4. Each enabled output uses local loopback SRT. The current local agent executes this transport through its local MediaMTX composition.
+
+The database may accept `rtmp`, `hls`, and `local` transport values, but they are not selectable runnable outputs in this MVP. The setup workspace presents only the fixed local loopback SRT choice and must not imply support for YouTube, network cameras, remote ingest, or another transport.
+
+All UUID inputs are references to externally pre-created Supabase Auth users. Capture-device references and local media references accept only a `local://` value. Secret values, credentials, tokens, and media passwords never enter browser fields, client state, browser storage, telemetry, or logs. The workspace stores only the accepted redacted `local://` references through the existing manager RPCs.
 
 ## 2. Tokens and Visual Language
 
@@ -58,6 +74,13 @@ Surface recipe: use the current mixed strategy of tonal shift, subtle border, to
 - Long event titles wrap; IDs and timestamps may truncate only when their full value is available by accessible name or adjacent detail. Primary state text never truncates.
 - The document owns vertical scrolling. Cards do not create nested scroll regions. Preserve safe-area padding and prevent horizontal overflow at the existing 320px minimum.
 
+### Setup Layout
+
+- At wide widths, show a compact setup progress summary followed by a fixed-order four-court setup grid. Each court remains `pista-1` through `pista-4` in source and visual order.
+- Each court setup card groups its fixed schedule, capture device assignment, shared agent assignment, and enabled program output. The active event-day and shared-principal fields appear once in a preceding shared-details panel, never repeated as four independent principals.
+- On narrow widths, shared details stack before the four cards and each card becomes a single vertical form. Labels, selected values, validation messages, and status remain visible. Do not use a stepper that hides unfinished courts or a mobile court selector.
+- Saving one valid unit must not reset completed units. A manager can leave and return to the overview, then re-enter setup to continue an incomplete configuration.
+
 ## 4. Primitives and Composition
 
 The named overview pieces below are app-owned implementation units. They compose CSS that is already loaded by `global.css`; they are not claims that new shared components already exist and must not be promoted to `@kpl/design-system` as part of this work.
@@ -70,6 +93,11 @@ The named overview pieces below are app-owned implementation units. They compose
 - **OperatorControls:** existing `.primary-action`, `.refresh-button`, button, and segmented-control patterns. The principal mutation is visually primary; reconcile is secondary; dangerous stopping/off actions use the existing danger treatment and confirmation when required. The selected lifecycle is the desired value, never the observed value.
 - **CourtLinks:** retain `Mandos`/score-control at `/control/:courtSlug`, `OBS` at `/overlay/:courtSlug/scoreboard`, and `Publico` at `/live/:courtSlug`, using `.match-action`. Operators see all three; viewers see the read-only `OBS` and `Publico` destinations but not `Mandos`. Use the current Lucide `SlidersHorizontal`, `MonitorPlay`, and `Eye` vocabulary. Do not create a standalone `/score` route; the score/control surface remains the existing control route.
 - **InlineFeedback:** extend the loaded `.loading-panel`, `.empty-panel`, and `.toast-error` anatomy with canonical status tokens. Initial loading preserves four card slots; persistent production truth stays in the card, never only in transient feedback.
+- **SetupWorkspace:** an app-local manager-only composition within `/admin`, using the existing panel, form, action, status, modal, and toast anatomy. It has a shared-details panel for the active event day and agent principal, plus a `SetupCourtGrid` with exactly four fixed children.
+- **SetupCourtCard:** one `article` per fixed court. It composes `FixedScheduleFields`, `CaptureAssignmentFields`, `AgentAssignmentSummary`, and `ProgramOutputFields`. The agent summary is read-only after selection because one principal serves every court.
+- **LocalReferenceField:** a labelled text field for an externally supplied Auth UUID or redacted `local://` reference. It shows format guidance and inline validation without ever rendering a secret-value field, reveal control, clipboard history, or persisted draft containing secret material.
+- **SetupProgress:** text-labelled count of complete and incomplete court records, plus the active event-day state. It is informative, not a substitute for each card's field-level error and recovery message.
+- **SetupCompletion:** persistent success feedback after all four court configurations are accepted, with an explicit `Volver al resumen de producción` action. Returning reloads the authoritative overview and does not claim that a local agent, FFmpeg pipeline, or capture transport is already running.
 
 Viewer cards omit `OperatorControls` and the `Mandos` link entirely. Their authorized `OBS` and `Publico` navigation is read-only and never implies a production mutation.
 
@@ -84,12 +112,26 @@ Page-level states:
 | Transport error | Keep last good data if present, label it stale, show `No se pudo actualizar producción`, disable mutations, and provide retry. Without prior data, show page-level error feedback, not four fabricated failures. |
 | Malformed-data error | Treat as an integrity error distinct from offline: `La respuesta de producción no es válida.` Preserve any last validated snapshot, disable mutations, and provide retry. Never partially trust an invalid payload. |
 
+Setup states:
+
+| State | Required presentation and behavior |
+| --- | --- |
+| Validation | Validate before each manager RPC: an active event day is present, the shared agent UUID is a UUID for an externally created Auth user, every court has its fixed schedule and one `local://` capture reference, and each event has one enabled local loopback SRT program output. Keep invalid values in their field, name the correction, and do not submit that unit. |
+| Pending | Disable only the submitting shared panel or court card, retain all other accepted and editable setup data, show `Guardando configuración`, and prevent duplicate submission for that unit. Never clear a locally visible redacted reference while a request is pending. |
+| Accepted | After an RPC accepts a created or updated event day, principal, device, schedule, assignment, output, or event status, mark that unit accepted and refresh its server version. Acceptance means the control-plane record was saved, not that media is active. |
+| Malformed | For a malformed response, preserve the last validated accepted setup snapshot, label the affected unit `La respuesta de configuración no es válida`, block further submission for it, and offer refresh. Never infer which partial fields were saved. |
+| Forbidden | Replace the workspace body with `No tienes permiso para configurar producción.` Preserve the top bar and return-to-overview action. Do not show setup fields, cached mutable values, or mutation controls. |
+| Transport | On a network or RPC transport failure, retain unsaved non-secret field values only in the current page memory, retain accepted records, label the affected unit, and offer retry. Do not write setup drafts to browser storage. |
+| Version conflict | When an expected-version conflict occurs, show `La configuración cambió en otro control`, preserve the entered non-secret values for comparison, block resubmission, refresh the authoritative unit, then require the manager to review and submit again. Never auto-replay. |
+| Partial and resumable | An active event day with fewer than four accepted court configurations is incomplete. Show which fixed courts are incomplete, keep accepted courts intact, and let a manager resume only the missing or failed units later. The overview continues to show its ordinary no-assignment or current-assignment cards. |
+| Complete and return | Completion requires the active event day, one shared agent principal assigned across all four courts, four local capture devices, four fixed schedules, four capture assignments, four agent assignments, four enabled local loopback SRT outputs, and the event records in their requested active state. Then offer return to the lifecycle overview and reload its authoritative data. |
+
 Per-court states may coexist. Render exactly one primary observed-health badge (`Sin observación`, `Sin diagnóstico`, `Saludable`, `Degradado`, `Fallido`, or `Sin conexión`) and independent secondary badges/callouts for pending, mismatch, stale, conflict, and capacity deferral. This avoids collapsing runtime health and control-plane state into one ambiguous severity.
 
 | State | Meaning | Card treatment |
 | --- | --- | --- |
 | No assignment | The fixed court has no active production assignment/output. | Neutral card, `Sin asignación`, no desired controls, no fabricated observed state; keep any route links that remain valid for that court. |
-| No observation | No `ObservedOutputState` exists. This is not `offline`. | Neutral/info badge `Sin observación`; observed value is `—`; show desired value and when it was requested. |
+| No observation | No `ObservedOutputState` exists. This is not `offline`. | Neutral/info badge `Sin observación`; observed value is `No disponible`; show desired value and when it was requested. |
 | Unknown | Observation exists with `health: unknown`. | Neutral badge `Sin diagnóstico`; show report time and observed lifecycle if supplied. |
 | Healthy | `health: healthy`. | Success badge `Saludable`; when desired and observed agree, no warning treatment. |
 | Degraded | `health: degraded`. | Warning badge `Degradado`; retain controls only when the operation policy permits recovery. |
@@ -105,6 +147,10 @@ Mutation policy is deterministic: disable all lifecycle/reconcile controls for f
 
 Acknowledgement is precise: after a successful command response, announce exactly `Solicitud de reconciliación aceptada` and enter pending. It means reconciliation was requested, not that FFmpeg, transport, overlay, or runtime startup succeeded. Announce success only when a subsequent authoritative operation result and/or observed state confirms the requested outcome. A failed operation exits pending and surfaces its supplied retryability and summary.
 
+Setup save ordering is explicit and resumable: create or select the active event day, create the shared principal from the pre-created Auth UUID, create one local device per fixed court, save the four fixed schedules, save capture and shared-agent assignments, create one enabled local loopback SRT output per event, then request the active event status. The implementation uses the existing manager RPCs for those records, supplies their expected versions for updates, and refreshes authoritative data after every accepted operation. It must not fabricate a client-side transaction, infer runtime readiness, or bypass server validation.
+
+Capacity remains a runtime concern after setup. One local agent serves exactly four courts, while at most three FFmpeg pipelines may run concurrently. The fourth active request may become `capacity-deferred`; setup completion does not reserve, start, or guarantee four concurrent pipelines.
+
 ## 6. Interaction, Keyboard, and Accessibility
 
 - Target WCAG 2.2 AA: at least 4.5:1 for body text and 3:1 for large text and meaningful UI boundaries. Validate semantic status combinations against the dark surfaces.
@@ -116,6 +162,9 @@ Acknowledgement is precise: after a successful command response, announce exactl
 - Command acknowledgement and terminal failure are announced once. Focus remains on the invoking control unless a confirmation dialog opened; dialogs follow the shipped modal focus trap, Escape, return-focus, and labelled-title behavior.
 - Motion is limited to existing fast/normal opacity or transform feedback. Under `prefers-reduced-motion: reduce`, remove card entrance, lift, shimmer, pulse, and status-transition motion; state changes remain immediate and textual.
 - Support 200% zoom, reflow without primary horizontal scrolling, long Spanish labels, and browser text enlargement. Icons are decorative when adjacent text names the action.
+- Setup fields use visible labels, required-state text, format examples that contain no credentials, and field-level errors linked with `aria-describedby`. The shared agent UUID and each `local://` reference must be readable and editable by keyboard without relying on placeholder text.
+- Saving a setup unit announces its accepted, failed, malformed, or conflict outcome once. Focus stays on the invoking save action for inline outcomes; after completion, focus moves to the labelled completion heading and the return-to-overview action is next in order.
+- A manager may return to the overview at any time. The return action never discards accepted records, and if current-page unsaved non-secret changes exist it uses the shipped confirmation dialog before leaving.
 
 ## 7. Acceptance Criteria
 
@@ -127,9 +176,13 @@ Acknowledgement is precise: after a successful command response, announce exactl
 - New visual rules use only the tokens and primitives listed here, preserve global ITCSS ordering, and keep app-specific composition in the app layer rather than the shared package.
 - Keyboard-only review can reach every enabled action in logical order, identify focus, operate lifecycle choices, close confirmations, and understand pending/error outcomes without color or motion.
 - At 320px and at wide production-monitor widths, the intrinsic grid reflows without card reordering, content loss, overlap, or primary horizontal scrolling.
+- A manager can configure and resume the exact MVP shape: one active event day, one externally provisioned shared agent UUID assigned across four events, one `local://` capture device per court, four fixed schedules, capture and agent assignments, and one enabled local loopback SRT output per event.
+- Invalid UUIDs and non-`local://` references never reach a setup RPC. Secrets never appear in setup fields, browser state, storage, telemetry, or logs.
+- Setup explicitly distinguishes validation, pending, accepted, malformed, forbidden, transport, version-conflict, partial/resumable, and complete-return states, with server refresh before retry after a conflict or malformed response.
+- Returning from setup restores the existing lifecycle overview and its fixed four-card semantics. Setup completion never represents media transport or all four pipelines as running.
 
 ## 8. Explicit Non-Goals and Debt
 
-Excluded from this work: Android applications; YouTube integration; provisioning flows; device management; role or principal management; network-camera expansion; changes to score, control, live, overlay, admin-login, or application routing; new design-system tokens/components; copied brand assets; and dependency changes.
+Excluded from this work: Auth-user creation; credential, token, or secret entry and handling; thumbnail or upload flows; asset generation; `media-config.json` generation or download; Android applications; YouTube integration; network-camera expansion; changes to score, control, live, overlay, admin-login, or application routing; new design-system tokens/components; copied brand assets; and dependency changes. The scoped manager workspace may create the stated production records only. It does not become general device, principal, Auth, asset, or media-runtime administration.
 
 No visual or accessibility debt is pre-accepted by this contract. Any implementation exception must be recorded here with affected users, reason, owner, and exit condition before acceptance.
