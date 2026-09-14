@@ -13,6 +13,7 @@ export interface PilotMobileCameraRuntimeConfig {
   mediaMtxPath: string | null;
   lanHost: string | null;
   lanCidr: string | null;
+  adminHost?: string | null;
   cameraPageOrigin: string;
   webRtcPort: number;
   webRtcUdpPort: number;
@@ -49,6 +50,7 @@ export function readConfig(): ServerConfig {
         mediaMtxPath: process.env.KPL_PILOT_MEDIAMTX_PATH?.trim() || null,
         lanHost: process.env.KPL_PILOT_LAN_HOST?.trim() || null,
         lanCidr: process.env.KPL_PILOT_LAN_CIDR?.trim() || null,
+        adminHost: process.env.KPL_PILOT_ADMIN_HOST?.trim() || null,
         cameraPageOrigin,
         webRtcPort: port(process.env.KPL_PILOT_WEBRTC_PORT, 8889),
         webRtcUdpPort: port(process.env.KPL_PILOT_WEBRTC_UDP_PORT, 8189),

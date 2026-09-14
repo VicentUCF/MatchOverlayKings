@@ -336,6 +336,7 @@ describe('production pilot', () => {
   it('binds MediaMTX control protocols to loopback and WebRTC to the configured LAN ports', () => {
     const configuration = buildPilotMediaMtxConfiguration({
       mediaMtxPath: '/opt/mediamtx', lanHost: '192.168.50.10', lanCidr: '192.168.50.0/24',
+      adminHost: '172.30.0.1',
       cameraPageOrigin: 'https://live.kingspadelleague.es',
       webRtcPort: 8889, webRtcUdpPort: 8189, rtspPort: 8554, apiPort: 9998,
     }, Buffer.alloc(32, 7));
@@ -350,7 +351,8 @@ describe('production pilot', () => {
       paths: { 'mobile-pilot': { source: 'publisher', overridePublisher: false } },
     });
     expect(configuration.authInternalUsers[0]).toMatchObject({
-      ips: ['127.0.0.1', '::1'], permissions: [{ action: 'api' }, { action: 'read', path: 'mobile-pilot' }],
+      ips: ['127.0.0.1', '::1', '172.30.0.1'],
+      permissions: [{ action: 'api' }, { action: 'read', path: 'mobile-pilot' }],
     });
     expect(configuration.authInternalUsers[1]).toMatchObject({
       user: 'camera', ips: ['192.168.50.0/24'], permissions: [{ action: 'publish', path: 'mobile-pilot' }],

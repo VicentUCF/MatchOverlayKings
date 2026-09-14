@@ -494,6 +494,13 @@ function profileDimensions(profile: PilotMobileCameraDesired['profile']) {
 }
 
 export function buildPilotMediaMtxConfiguration(config: PilotMobileCameraRuntimeConfig, tokenDigest: Buffer) {
+  const previewReaderIps = [...new Set([
+    '127.0.0.1',
+    '::1',
+    ...(config.adminHost !== null && config.adminHost !== undefined && isIP(config.adminHost) !== 0
+      ? [config.adminHost]
+      : []),
+  ])];
   return {
     logDestinations: ['stdout'],
     logStructured: true,
@@ -518,7 +525,7 @@ export function buildPilotMediaMtxConfiguration(config: PilotMobileCameraRuntime
     authInternalUsers: [{
       user: 'any',
       pass: '',
-      ips: ['127.0.0.1', '::1'],
+      ips: previewReaderIps,
       permissions: [{ action: 'api' }, { action: 'read', path: MOBILE_PATH }],
     }, {
       user: WHIP_USER,
