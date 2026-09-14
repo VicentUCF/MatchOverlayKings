@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import type { Writable } from 'node:stream';
-import { renderLiveScoreboardRgba } from '@kpl/production-assets';
+import { renderLiveScoreboardPng } from '@kpl/production-assets';
 import { formatPoint, type MatchState, type Team } from '@kpl/shared';
 import type { PilotCourtSlug } from '@kpl/production-contracts';
 
@@ -34,7 +34,7 @@ export function pilotOverlayFrame(
   const away = state ? teams.find((team) => team.id === state.awayTeamId) : undefined;
   const visible = state === null || (state.status === 'live' && state.overlaySettings.visible !== false);
   const sets = state?.sets.slice(0, 3) ?? [];
-  return renderLiveScoreboardRgba({
+  return renderLiveScoreboardPng({
     // The transparent source only covers the top-left scoreboard region. Keeping it cropped
     // avoids decoding a mostly-empty 1080p PNG for every programme frame.
     width: 960,
@@ -78,12 +78,12 @@ async function pumpFrames(output: Writable, options: PilotOverlayOptions, signal
     let nextFrameAt = performance.now();
     while (!signal.aborted && !output.destroyed) {
       const accepted = output.write(frame);
-      // FFmpeg opens all inputs before consuming the graph. Seed enough raw frames to avoid
-      // a startup deadlock caused by Node's much smaller default stream high-water mark.
-      if (!accepted && output.writableLength >= frame.byteLength * 16) {
+      // A PNG is self-contained, so waiting here cannot shift the byte boundary between frames.
+      // It also prevents a slow encoder from accumulating seconds of stale scoreboard images.
+      if (!accepted) {
         await Promise.race([once(output, 'drain'), aborted(signal)]);
       }
-      nextFrameAt += frameDurationMs;
+      nextFrameAt = Math.max(nextFrameAt + frameDurationMs, performance.now());
       const waitMs = Math.max(0, nextFrameAt - performance.now());
       if (waitMs > 0) await Promise.race([delay(waitMs), aborted(signal)]);
     }

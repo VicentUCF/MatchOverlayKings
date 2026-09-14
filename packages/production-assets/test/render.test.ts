@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProductionAssets, renderLiveScoreboardRgba } from '../src/index.js';
+import { createProductionAssets, renderLiveScoreboardPng, renderLiveScoreboardRgba } from '../src/index.js';
 import { baseInput, onePixelPng } from './fixture.js';
 
 function readPngDimensions(bytes: Uint8Array): readonly [number, number] {
@@ -10,6 +10,17 @@ function readPngDimensions(bytes: Uint8Array): readonly [number, number] {
 }
 
 describe('livestream production assets', () => {
+  it('renders a self-contained PNG scoreboard frame for streamed composition', () => {
+    const frame = renderLiveScoreboardPng({
+      width: 960, height: 270, title: 'Red Lions vs Kings', courtName: 'Pista 1',
+      homeName: 'Red Lions', awayName: 'Kings', homeSets: [3], awaySets: [2],
+      homePoint: '40', awayPoint: '30', servingSide: 'home', visible: true,
+    });
+
+    expect([...frame.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    expect(readPngDimensions(frame)).toEqual([960, 270]);
+  });
+
   it('renders a cropped transparent RGBA scoreboard frame for FFmpeg composition', () => {
     const frame = renderLiveScoreboardRgba({
       width: 960, height: 270, title: 'Red Lions vs Kings', courtName: 'Pista 1',

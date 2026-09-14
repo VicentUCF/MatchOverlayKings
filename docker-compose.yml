@@ -16,6 +16,7 @@ services:
     cap_drop:
       - ALL
     env_file:
+      - apps/web/.env
       - .env.pilot.docker
     environment:
       HOST: 0.0.0.0
