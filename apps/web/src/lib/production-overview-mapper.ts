@@ -108,7 +108,7 @@ export function resolveProductionIdentity(userId: string, input: unknown): Produ
 }
 
 export type ProductionMappingResult =
-  | { readonly kind: 'success'; readonly capability: 'operator' | 'viewer'; readonly snapshot: ProductionOverviewSnapshot }
+  | { readonly kind: 'success'; readonly capability: 'admin' | 'operator' | 'viewer'; readonly snapshot: ProductionOverviewSnapshot }
   | { readonly kind: 'forbidden' }
   | { readonly kind: 'malformed' };
 
@@ -125,8 +125,10 @@ export function mapProductionOverviewData(userId: string, input: unknown): Produ
     .map((row) => row.role);
   const ownAssignments = parsed.data.production_assignments
     .filter((row) => row.principal_id === principal.id && row.active);
-  const capability = ownRoles.some((role) => role === 'production_admin' || role === 'operator')
-    ? 'operator'
+  const capability = ownRoles.includes('production_admin')
+    ? 'admin'
+    : ownRoles.includes('operator')
+      ? 'operator'
     : ownRoles.includes('viewer') || ownAssignments.some((row) => row.role === 'operator' || row.role === 'viewer')
       ? 'viewer'
       : null;

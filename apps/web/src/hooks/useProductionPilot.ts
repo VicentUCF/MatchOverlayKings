@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { PilotCourtSlug, PilotReadiness, PilotSession, PreparePilotSessionInput } from '@kpl/production-contracts';
+import type {
+  PilotConfiguration,
+  PilotCourtSlug,
+  PilotReadiness,
+  PilotSession,
+  PreparePilotSessionInput,
+} from '@kpl/production-contracts';
 import { createProductionPilotAdapter, type ProductionPilotAdapter } from '../lib/production-pilot-adapter.js';
 
-type ReadyPilotState = {
+export type ReadyPilotState = {
   readonly kind: 'ready';
   readonly readiness: PilotReadiness;
+  readonly configurations: readonly PilotConfiguration[];
   readonly sessions: readonly PilotSession[];
   readonly refreshing: boolean;
   readonly pendingCourts: readonly PilotCourtSlug[];
@@ -12,10 +19,12 @@ type ReadyPilotState = {
   readonly error: string | null;
 };
 
-type PilotState =
+export type PilotState =
   | { readonly kind: 'loading' }
   | ReadyPilotState
   | { readonly kind: 'error'; readonly message: string };
+
+export type ProductionPilotController = ReturnType<typeof useProductionPilot>;
 
 const defaultAdapter = createProductionPilotAdapter();
 
@@ -26,20 +35,30 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
   const refresh = useCallback(async (quiet = false) => {
     const requestId = ++refreshSequence.current;
     if (!quiet) setState((current) => current.kind === 'ready' ? { ...current, refreshing: true, error: null } : current);
-    const [readiness, sessions] = await Promise.all([adapter.readiness(), adapter.sessions()]);
+    const [readiness, sessions, configurations] = await Promise.all([
+      adapter.readiness(), adapter.sessions(), adapter.configurations(),
+    ]);
     if (requestId !== refreshSequence.current) return;
-    const failure = readiness.kind === 'error' ? readiness.message : sessions.kind === 'error' ? sessions.message : null;
+    const failure = readiness.kind === 'error'
+      ? readiness.message
+      : sessions.kind === 'error'
+        ? sessions.message
+        : configurations.kind === 'error' ? configurations.message : null;
     if (failure !== null) {
       setState((current) => current.kind === 'ready'
         ? { ...current, refreshing: false, error: failure }
         : { kind: 'error', message: failure });
       return;
     }
-    if (readiness.kind !== 'success' || sessions.kind !== 'success') return;
+    if (readiness.kind !== 'success' || sessions.kind !== 'success' || configurations.kind !== 'success') return;
     setState((current): PilotState => current.kind === 'ready'
-      ? { ...current, readiness: readiness.value, sessions: sessions.value, refreshing: false, error: null }
+      ? {
+        ...current, readiness: readiness.value, sessions: sessions.value,
+        configurations: configurations.value, refreshing: false, error: null,
+      }
       : {
-        kind: 'ready', readiness: readiness.value, sessions: sessions.value, refreshing: false,
+        kind: 'ready', readiness: readiness.value, sessions: sessions.value,
+        configurations: configurations.value, refreshing: false,
         pendingCourts: [], courtErrors: {}, error: null,
       });
   }, [adapter]);
@@ -48,8 +67,7 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
   const hasActiveSessions = state.kind === 'ready'
     && state.sessions.some(({ status }) => ['starting', 'live', 'stopping'].includes(status));
   useEffect(() => {
-    if (!hasActiveSessions) return undefined;
-    const interval = window.setInterval(() => { void refresh(true); }, 2_000);
+    const interval = window.setInterval(() => { void refresh(true); }, hasActiveSessions ? 2_000 : 10_000);
     return () => window.clearInterval(interval);
   }, [hasActiveSessions, refresh]);
 
@@ -79,13 +97,46 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
     } : current);
   }, [refresh]);
 
+  const configure = useCallback(async (input: PreparePilotSessionInput) => {
+    const courtSlug = input.courtSlug;
+    setState((current) => current.kind === 'ready' ? {
+      ...current,
+      pendingCourts: addCourt(current.pendingCourts, courtSlug),
+      courtErrors: { ...current.courtErrors, [courtSlug]: undefined },
+    } : current);
+    const result = await adapter.configure(input);
+    if (result.kind === 'error') {
+      setState((current) => current.kind === 'ready' ? {
+        ...current,
+        pendingCourts: removeCourt(current.pendingCourts, courtSlug),
+        courtErrors: { ...current.courtErrors, [courtSlug]: result.message },
+      } : current);
+      return false;
+    }
+    setState((current) => current.kind === 'ready' ? {
+      ...current,
+      configurations: replaceConfiguration(current.configurations, result.value),
+      pendingCourts: removeCourt(current.pendingCourts, courtSlug),
+      courtErrors: { ...current.courtErrors, [courtSlug]: undefined },
+    } : current);
+    return true;
+  }, [adapter]);
+
   return useMemo(() => ({
     state,
     refresh: () => refresh(false),
+    configure,
     prepare: (input: PreparePilotSessionInput) => mutate(input.courtSlug, () => adapter.prepare(input)),
     start: (session: PilotSession) => mutate(session.courtSlug, () => adapter.start(session.id)),
     stop: (session: PilotSession) => mutate(session.courtSlug, () => adapter.stop(session.id)),
-  }), [adapter, mutate, refresh, state]);
+  }), [adapter, configure, mutate, refresh, state]);
+}
+
+function replaceConfiguration(
+  configurations: readonly PilotConfiguration[],
+  configuration: PilotConfiguration,
+): readonly PilotConfiguration[] {
+  return [...configurations.filter(({ courtSlug }) => courtSlug !== configuration.courtSlug), configuration];
 }
 
 function addCourt(courts: readonly PilotCourtSlug[], court: PilotCourtSlug): readonly PilotCourtSlug[] {

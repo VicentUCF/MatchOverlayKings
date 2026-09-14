@@ -1,13 +1,19 @@
 import { spawn, spawnSync, type ChildProcessByStdio } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readdirSync } from 'node:fs';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import type { Readable } from 'node:stream';
 import { createProductionAssets } from '@kpl/production-assets';
 import {
   PilotReadinessSchema,
+  PilotConfigurationSchema,
+  PilotConfigurationsSchema,
   PilotSessionSchema,
   PreparePilotSessionInputSchema,
   type PilotEncoderHealth,
+  type PilotConfiguration,
+  type PilotCourtSlug,
   type PilotReadiness,
   type PilotSession,
   type PilotSource,
@@ -44,19 +50,44 @@ export class PilotServiceError extends Error {
 
 export class PilotService {
   private readonly sessions = new Map<string, InternalPilotSession>();
+  private readonly configurationByCourt = new Map<PilotCourtSlug, PilotConfiguration>();
   private ffmpegVersion: string | null = null;
 
   public constructor(
     private readonly ffmpegPath: string,
     private readonly youtube: PilotYouTubeGateway,
+    private readonly configurationPath: string,
   ) {}
 
   public async initialize(): Promise<void> {
     await this.youtube.initialize();
+    await this.loadConfigurations();
     const probe = spawnSync(this.ffmpegPath, ['-version'], { encoding: 'utf8', timeout: 5_000 });
     this.ffmpegVersion = probe.status === 0
       ? probe.stdout.split(/\r?\n/, 1)[0]?.trim() || null
       : null;
+  }
+
+  public configurations(): readonly PilotConfiguration[] {
+    return PilotConfigurationsSchema.parse([...this.configurationByCourt.values()]);
+  }
+
+  public async configure(rawCourtSlug: unknown, rawInput: unknown): Promise<PilotConfiguration> {
+    const input = PreparePilotSessionInputSchema.safeParse(rawInput);
+    if (!input.success || input.data.courtSlug !== rawCourtSlug) {
+      throw new PilotServiceError(400, 'INVALID_INPUT', 'Revisa la configuración de la pista.');
+    }
+    const source = this.readiness().sources.find(({ id }) => id === input.data.sourceId);
+    if (source === undefined) {
+      throw new PilotServiceError(409, 'NOT_READY', 'La fuente seleccionada ya no está disponible.');
+    }
+    const configuration = PilotConfigurationSchema.parse({
+      ...input.data,
+      updatedAt: new Date().toISOString(),
+    });
+    this.configurationByCourt.set(configuration.courtSlug, configuration);
+    await this.persistConfigurations();
+    return configuration;
   }
 
   public readiness(): PilotReadiness {
@@ -243,6 +274,32 @@ export class PilotService {
       });
     }
   }
+
+  private async loadConfigurations(): Promise<void> {
+    try {
+      const parsed = PilotConfigurationsSchema.parse(JSON.parse(await readFile(this.configurationPath, 'utf8')));
+      for (const configuration of parsed) this.configurationByCourt.set(configuration.courtSlug, configuration);
+    } catch (error) {
+      if (isMissingFile(error)) return;
+      throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo leer la configuración guardada de las pistas.');
+    }
+  }
+
+  private async persistConfigurations(): Promise<void> {
+    const directory = dirname(this.configurationPath);
+    const temporaryPath = `${this.configurationPath}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await mkdir(directory, { recursive: true, mode: 0o700 });
+      await writeFile(temporaryPath, `${JSON.stringify(this.configurations(), null, 2)}\n`, { mode: 0o600 });
+      await rename(temporaryPath, this.configurationPath);
+    } catch {
+      throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo guardar la configuración de las pistas.');
+    }
+  }
+}
+
+function isMissingFile(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 function discoverSources(): readonly PilotSource[] {

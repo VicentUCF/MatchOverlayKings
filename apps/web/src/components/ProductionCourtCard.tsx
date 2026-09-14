@@ -57,7 +57,7 @@ export function ProductionCourtCard({ court, access, capability, stale, refresh 
   }, [desiredVersion]);
 
   const reconcile = async (lifecycle: DesiredLifecycle): Promise<void> => {
-    if (access?.kind !== 'operator' || court.assignment === null) return;
+    if (access?.kind === 'viewer' || access === null || court.assignment === null) return;
     const assignment = court.assignment;
     setCommandState({ kind: 'pending', baseVersion: assignment.desired.version });
     setCommandState(await executeReconciliation({ access, assignment, lifecycle, refresh }));
@@ -105,7 +105,7 @@ export function ProductionCourtCardView({
         <ProductionCourtDetails assignment={assignment} />
       )}
 
-      {assignment !== null && access?.kind === 'operator' ? (
+      {assignment !== null && access !== null && access.kind !== 'viewer' ? (
         <OperatorControls
           assignment={assignment}
           commandState={commandState}
@@ -121,7 +121,7 @@ export function ProductionCourtCardView({
         </p>
       )}
 
-      <CourtLinks slug={court.slug} operator={capability === 'operator'} />
+      <CourtLinks slug={court.slug} operator={capability !== 'viewer'} />
     </article>
   );
 }

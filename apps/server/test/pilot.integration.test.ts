@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { PilotReadinessSchema, PilotSessionSchema } from '@kpl/production-contracts';
+import { PilotConfigurationSchema, PilotReadinessSchema, PilotSessionSchema } from '@kpl/production-contracts';
 import { buildApp } from '../src/app.js';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -21,12 +21,27 @@ describe('production pilot', () => {
     expect(readiness.sources[0]).toMatchObject({ id: 'synthetic', kind: 'synthetic' });
     expect(readiness.youtube).toMatchObject({ configured: false, authorized: false });
 
+    const configurationPayload = {
+      courtSlug: 'pista-1', mode: 'simulation', sourceId: 'synthetic',
+      homeTeam: 'Red Lions', awayTeam: 'Kings', matchdayNumber: 1, seasonLabel: 'T2',
+      scheduledAt: new Date(Date.now() + 60 * 60_000).toISOString(), privacyStatus: 'private',
+    } as const;
+    const configureResponse = await app.inject({
+      method: 'PUT', url: '/api/pilot/configurations/pista-1', payload: configurationPayload,
+    });
+    expect(configureResponse.statusCode).toBe(200);
+    const configuration = PilotConfigurationSchema.parse(configureResponse.json().configuration);
+    expect(configuration).toMatchObject(configurationPayload);
+    const configurationsResponse = await app.inject({ method: 'GET', url: '/api/pilot/configurations' });
+    expect(configurationsResponse.json().configurations).toEqual([configuration]);
+
+    const wrongCourtResponse = await app.inject({
+      method: 'PUT', url: '/api/pilot/configurations/pista-2', payload: configurationPayload,
+    });
+    expect(wrongCourtResponse.statusCode).toBe(400);
+
     const prepareResponse = await app.inject({
-      method: 'POST', url: '/api/pilot/sessions', payload: {
-        courtSlug: 'pista-1', mode: 'simulation', sourceId: 'synthetic',
-        homeTeam: 'Red Lions', awayTeam: 'Kings', matchdayNumber: 1, seasonLabel: 'T2',
-        scheduledAt: new Date(Date.now() + 60 * 60_000).toISOString(), privacyStatus: 'private',
-      },
+      method: 'POST', url: '/api/pilot/sessions', payload: configurationPayload,
     });
     expect(prepareResponse.statusCode).toBe(201);
     const prepared = PilotSessionSchema.parse(prepareResponse.json().session);

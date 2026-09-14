@@ -20,12 +20,13 @@ Resultado de referencia obtenido en este PC (Ryzen 5 5600G, 32 GB): `3.04×`, `3
 ## Puerta 2 — recorrido de tres pistas
 
 1. Ejecutar `npm run pilot` y abrir `http://localhost:4310/admin`.
-2. Entrar en **Validar piloto**.
-3. Preparar las tres pistas en simulación y comprobar sus títulos y miniaturas.
-4. Pulsar **Emitir** de forma independiente en las tres pistas.
-5. Mantenerlas 30 minutos. Las tres velocidades deben permanecer por encima de `0.95×` y no debe aparecer un error.
-6. Detener cada señal desde su propia tarjeta.
-7. Repetir en modo **YouTube real**, con privacidad **Privado**, después de configurar OAuth.
+2. Entrar en **Emisiones**, elegir simulación y guardar las tres pistas.
+3. Abrir **Mandos** o entregar al operador `http://localhost:4310/mandos`.
+4. Preparar las tres señales y comprobar sus títulos y miniaturas.
+5. Pulsar **Emitir** de forma independiente en las tres pistas.
+6. Mantenerlas 30 minutos. Las tres velocidades deben permanecer por encima de `0.95×` y no debe aparecer un error.
+7. Detener cada señal desde su propia tarjeta.
+8. Repetir en modo **YouTube real**, con privacidad **Privado**, después de configurar OAuth.
 
 La puerta queda aprobada cuando:
 

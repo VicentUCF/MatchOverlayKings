@@ -9,5 +9,6 @@ test-results
 .env.local
 *.log
 data/events/*.tmp
+data/pilot-configurations.json
 .omo
 .playwright-mcp

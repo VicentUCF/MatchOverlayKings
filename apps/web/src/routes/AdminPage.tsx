@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Lock, Mail } from 'lucide-react';
-import { ProductionOverview } from '../components/ProductionOverview.js';
+import { ProductionOverview, type ProductionDestination } from '../components/ProductionOverview.js';
 import { supabase } from '../lib/supabase.js';
 
-export function AdminPage() {
+export function AdminPage({ destination = 'dashboard' }: { readonly destination?: ProductionDestination }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
@@ -82,8 +82,8 @@ export function AdminPage() {
           <div className="brand">
             <img src="/logos/kpl-wordmark.png" alt="" />
             <span>
-              <strong>KPL Admin</strong>
-              <small>Acceso de control</small>
+              <strong>{destination === 'controls' ? 'KPL Mandos' : 'KPL Admin'}</strong>
+              <small>{destination === 'controls' ? 'Acceso del operador' : 'Acceso de administración'}</small>
             </span>
           </div>
           <label>
@@ -121,5 +121,5 @@ export function AdminPage() {
     );
   }
 
-  return <ProductionOverview signOut={signOut} />;
+  return <ProductionOverview signOut={signOut} destination={destination} />;
 }

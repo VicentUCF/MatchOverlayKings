@@ -74,7 +74,7 @@ export type ViewerProductionAccess = {
 };
 
 export type OperatorProductionAccess = {
-  readonly kind: 'operator';
+  readonly kind: 'admin' | 'operator';
   readonly snapshot: ProductionOverviewSnapshot;
   readonly reconcile: (
     assignment: ProductionCourtAssignment,

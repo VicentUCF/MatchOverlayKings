@@ -47,6 +47,7 @@ import type {
   Team,
 } from '@kpl/shared';
 import { Scoreboard } from '../components/Scoreboard.js';
+import { ProductionNavigation } from '../components/ProductionNavigation.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
 import { MATCH_CARDS, type MatchCardDefinition } from '../lib/match-cards.js';
 import { SPONSORS } from '../lib/sponsors.js';
@@ -445,20 +446,11 @@ export function ControlPage({ eventId }: { eventId: string }) {
 
   return (
     <main className={`control-page ${isSetupPhase ? 'setup-mode' : 'score-mode'}`}>
-      <header className="control-topbar">
-        <div className="brand">
-          <img src="/logos/kpl-wordmark.png" alt="" />
-          <span>
-            <strong>KPL Live Control</strong>
-            <small>{eventId}</small>
-          </span>
-        </div>
-
-        <div className={`connection-pill ${match.connectionState}`}>
+      <ProductionNavigation active="visual" role="operator" currentLabel={`Control visual · ${courtName(eventId)}`}
+        trailing={<div className={`connection-pill ${match.connectionState}`}>
           {match.connectionState === 'connected' ? <Wifi size={16} /> : <WifiOff size={16} />}
           <span>{connectionLabel(match.connectionState)}</span>
-        </div>
-      </header>
+        </div>} />
 
       {state?.status === 'pre_match' ? (
         <div className="control-status-strip">
@@ -1214,6 +1206,11 @@ function connectionLabel(state: string): string {
     disconnected: 'Sin conexion',
     error: 'Error',
   }[state] ?? state;
+}
+
+function courtName(eventId: string): string {
+  const number = eventId.match(/^pista-(\d+)$/i)?.[1];
+  return number ? `Pista ${number}` : eventId;
 }
 
 function sideLabel(side: Side): string {

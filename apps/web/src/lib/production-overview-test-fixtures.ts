@@ -21,7 +21,7 @@ type OperationClaimRowFixture = {
   readonly completed_at: string | null;
 };
 
-export function productionDataset(role: 'operator' | 'viewer' = 'operator') {
+export function productionDataset(role: 'production_admin' | 'operator' | 'viewer' = 'operator') {
   const courts = ['pista-1', 'pista-2', 'pista-3', 'pista-4'].map((slug, index) => ({
     id: `80000000-0000-4000-8000-00000000000${index + 1}`,
     club_id: CLUB_ID,
@@ -71,7 +71,7 @@ export function productionDataset(role: 'operator' | 'viewer' = 'operator') {
       club_id: CLUB_ID,
       event_id: EVENT_ID,
       principal_id: PRINCIPAL_ID,
-      role,
+      role: role === 'production_admin' ? 'operator' : role,
       active: true,
       version: 1,
       created_at: timestamp,

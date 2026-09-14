@@ -5,6 +5,16 @@
   margin: 0 auto;
 }
 
+.control-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.control-topbar-actions a {
+  text-decoration: none;
+}
+
 .control-status-strip {
   align-items: center;
   gap: 10px;

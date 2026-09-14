@@ -113,7 +113,11 @@ de una service-role key.
 
 ## Piloto de viabilidad
 
-El piloto de `/admin` controla tres pistas independientes desde una sola pantalla. Su modo
+El piloto separa la preparación y la operación de tres pistas independientes. La navegación del
+administrador mantiene cargadas tres pestañas: Inicio en `/admin`, preparación en
+`/admin/emisiones` y Mandos en `/mandos`. Cambiar entre ellas no recarga la página ni reinicia su
+estado. El operador entra directamente en `/mandos`, donde solo puede preparar, iniciar, detener y
+vigilar las emisiones. Su modo
 `Simulacion local` genera titulo, descripcion y miniatura y ejecuta una codificacion FFmpeg 1080p30
 real contra una salida nula: no crea recursos externos ni publica contenido.
 
@@ -121,7 +125,9 @@ real contra una salida nula: no crea recursos externos ni publica contenido.
 npm run pilot
 ```
 
-Abre `http://localhost:4310/admin`, inicia sesion y pulsa `Validar piloto`. El panel detecta las
+Abre `http://localhost:4310/admin`, inicia sesión y entra en **Emisiones**. Guarda cada pista
+y entrega al operador `http://localhost:4310/mandos`. La configuración persiste en el agente local
+entre aperturas del navegador y reinicios del servidor. El panel detecta las
 camaras Linux `/dev/video*`; si no hay ninguna conectada ofrece una señal sintetica. La validacion
 considera estable el encoder cuando mantiene al menos `0.95x` de velocidad.
 
@@ -135,7 +141,9 @@ El modo `YouTube real` crea un broadcast, una entrada RTMP, los vincula, sube la
 la URL RTMPS exclusivamente al proceso FFmpeg. Empieza siempre con visibilidad `Privado`. La clave
 de emision y los tokens no se devuelven al navegador ni se escriben en los logs.
 
-Cada pista conserva su propio formulario, fuente, estado, metricas y controles de inicio/parada. El
+Cada pista conserva su propia configuración, fuente, estado, métricas y controles de inicio/parada.
+Los perfiles `production_admin` ven configuración y mandos; los perfiles `operator` acceden
+directamente a Mandos, sin campos editables. El
 piloto todavia no mezcla el overlay KPL, no selecciona audio real y no implementa el movil. Su
 objetivo es reducir primero los riesgos de hardware, codificacion, OAuth, metadata, miniatura,
 ingesta y salud de YouTube antes de incorporar esas capas.

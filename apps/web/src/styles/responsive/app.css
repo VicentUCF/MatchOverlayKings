@@ -64,6 +64,10 @@
     display: none;
   }
 
+  .control-page.score-mode > .production-navigation {
+    display: none;
+  }
+
   .control-topbar {
     align-items: center;
     grid-template-columns: minmax(0, 1fr) auto;

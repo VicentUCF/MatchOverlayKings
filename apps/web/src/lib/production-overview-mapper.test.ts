@@ -8,6 +8,14 @@ import {
 } from './production-overview-test-fixtures.js';
 
 describe('production overview mapping', () => {
+  it('keeps production administrators distinct from delegated operators', () => {
+    const admin = mapProductionOverviewData(USER_ID, productionDataset('production_admin'));
+    const operator = mapProductionOverviewData(USER_ID, productionDataset('operator'));
+
+    expect(admin).toMatchObject({ kind: 'success', capability: 'admin' });
+    expect(operator).toMatchObject({ kind: 'success', capability: 'operator' });
+  });
+
   it('maps validated production rows into fixed court order with no-assignment slots', () => {
     const result = mapProductionOverviewData(USER_ID, productionDataset());
 

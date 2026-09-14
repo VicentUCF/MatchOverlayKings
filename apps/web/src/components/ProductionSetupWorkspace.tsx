@@ -1,9 +1,9 @@
 import { useEffect, useRef, type FormEvent, type ReactNode } from 'react';
-import { LogOut } from 'lucide-react';
 import { useProductionSetup } from '../hooks/useProductionSetup.js';
 import { deriveProductionSetupCompletion } from '../lib/production-setup-orchestrator.js';
 import type { ProductionSetupWorkspaceState, SetupCourtDraft } from '../lib/production-setup-types.js';
 import { ProductionSetupCourtCard } from './ProductionSetupCourtCard.js';
+import { ProductionNavigation } from './ProductionNavigation.js';
 
 type SharedDraftField = 'eventDayName' | 'eventDate' | 'timeZone' | 'agentAuthUserId';
 type CourtDraftField = 'captureAuthUserId' | 'captureRef' | 'outputRef' | 'title'
@@ -131,21 +131,11 @@ function SetupShell({
 }: { readonly children: ReactNode; readonly onBack: () => void; readonly signOut: (() => Promise<void>) | undefined }) {
   return (
     <main className="home-page production-overview-page production-setup-page">
-      <header className="home-topbar production-overview-topbar">
-        <div className="brand">
-          <img src="/logos/kpl-wordmark.png" alt="" width="144" height="54" />
-          <span><strong>KPL Admin</strong><small>Configuración de producción</small></span>
-        </div>
-        <span className="production-role">Operador</span>
-        {signOut === undefined ? null : (
-          <button type="button" className="refresh-button" onClick={() => void signOut()}>
-            <LogOut aria-hidden="true" />Salir
-          </button>
-        )}
-      </header>
+      <ProductionNavigation active="system" role="admin"
+        onSignOut={signOut ? () => void signOut() : undefined} />
       <header className="production-setup-titlebar">
-        <div><p className="production-kicker">Administración · Producción</p><h1>Configurar producción</h1></div>
-        <button className="refresh-button" type="button" onClick={onBack}>Volver al estado</button>
+        <div><p className="production-kicker">Sistema · Configuración técnica</p><h1>Configurar producción</h1></div>
+        <button className="refresh-button" type="button" onClick={onBack}>Volver a Sistema</button>
       </header>
       {children}
     </main>

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
+import { resolve } from 'node:path';
 import { Server as SocketServer } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents } from '@kpl/shared';
 import { FileStore } from './file-store.js';
@@ -18,7 +19,11 @@ export async function buildApp(config: ServerConfig) {
     },
   });
   const store = new FileStore(config.dataDir);
-  const pilot = new PilotService(config.pilot.ffmpegPath, new PilotYouTubeGateway(config.pilot.youtube));
+  const pilot = new PilotService(
+    config.pilot.ffmpegPath,
+    new PilotYouTubeGateway(config.pilot.youtube),
+    resolve(config.dataDir, 'pilot-configurations.json'),
+  );
   await pilot.initialize();
   const io: KplSocketServer = new SocketServer<
     ClientToServerEvents,
@@ -96,6 +101,16 @@ export async function buildApp(config: ServerConfig) {
     return { sessions: await pilot.list() };
   });
 
+  app.get('/api/pilot/configurations', async (request) => {
+    requireLocalPilot(request.ip);
+    return { configurations: pilot.configurations() };
+  });
+
+  app.put<{ Params: { courtSlug: string } }>('/api/pilot/configurations/:courtSlug', async (request) => {
+    requireLocalPilot(request.ip);
+    return { configuration: await pilot.configure(request.params.courtSlug, request.body) };
+  });
+
   app.post('/api/pilot/sessions', async (request, reply) => {
     requireLocalPilot(request.ip);
     const session = await pilot.prepare(request.body);
@@ -130,7 +145,7 @@ export async function buildApp(config: ServerConfig) {
         throw new PilotServiceError(400, 'INVALID_INPUT', 'YouTube no autorizó la conexión.');
       }
       await pilot.completeAuthorization(request.query.code, request.query.state);
-      reply.redirect('/admin?pilot=1');
+      reply.redirect('/admin/emisiones');
     },
   );
 
@@ -146,6 +161,10 @@ export async function buildApp(config: ServerConfig) {
     });
 
     app.get('/admin', async (_request, reply) => reply.sendFile('index.html'));
+    app.get('/admin/emisiones', async (_request, reply) => reply.sendFile('index.html'));
+    app.get('/admin/sistema', async (_request, reply) => reply.sendFile('index.html'));
+    app.get('/admin/sistema/configuracion', async (_request, reply) => reply.sendFile('index.html'));
+    app.get('/mandos', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/live/:eventId', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/control/:eventId', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/overlay/:eventId/scoreboard', async (_request, reply) => reply.sendFile('index.html'));

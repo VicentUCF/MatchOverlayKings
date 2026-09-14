@@ -2,6 +2,53 @@
   padding-inline: var(--kpl-space-4);
 }
 
+.production-pilot-loading {
+  width: min(100%, var(--kpl-container-xl));
+  margin: var(--kpl-space-7) auto;
+}
+
+.production-pilot-navigation {
+  display: flex;
+  gap: var(--kpl-space-1);
+  margin-inline-start: auto;
+  border: var(--kpl-border-width) solid var(--kpl-color-border-subtle);
+  border-radius: var(--kpl-radius-xs);
+  padding: var(--kpl-space-1);
+  background: var(--kpl-color-surface);
+}
+
+.production-pilot-navigation button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--kpl-space-2);
+  min-height: var(--kpl-control-size-md);
+  border: 0;
+  border-radius: var(--kpl-radius-xs);
+  padding-inline: var(--kpl-space-4);
+  color: var(--kpl-color-text-muted);
+  background: transparent;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.production-pilot-navigation button[aria-current="page"] {
+  color: var(--kpl-color-text);
+  background: var(--kpl-color-surface-emphasis);
+}
+
+.production-pilot-navigation button:focus-visible {
+  outline: var(--kpl-border-width) solid var(--kpl-color-focus);
+  outline-offset: var(--kpl-border-width);
+}
+
+.production-pilot-navigation svg,
+.production-pilot-handoff button svg {
+  width: var(--kpl-font-size-200);
+  height: var(--kpl-font-size-200);
+}
+
 .production-pilot-intro,
 .production-pilot-courts,
 .production-pilot-decision {
@@ -39,7 +86,8 @@
 
 .production-pilot-readiness,
 .production-pilot-court,
-.production-pilot-decision {
+.production-pilot-decision,
+.production-pilot-handoff {
   border: var(--kpl-border-width) solid var(--kpl-color-border-subtle);
   border-radius: var(--kpl-radius-xs);
   background: var(--kpl-color-surface-raised);
@@ -66,6 +114,94 @@
 .production-pilot-court {
   min-width: 0;
   overflow: hidden;
+}
+
+.production-pilot-config-note {
+  display: grid;
+  gap: var(--kpl-space-1);
+  border-left: calc(var(--kpl-border-width) * 2) solid var(--kpl-color-brand-strong);
+  padding: var(--kpl-space-3);
+  background: var(--kpl-color-surface-emphasis);
+  line-height: var(--kpl-line-height-body);
+}
+
+.production-pilot-config-note small,
+.production-pilot-control__summary p,
+.production-pilot-ready-action p,
+.production-pilot-empty-state p,
+.production-pilot-handoff p {
+  margin: 0;
+  color: var(--kpl-color-text-muted);
+  line-height: var(--kpl-line-height-body);
+}
+
+.production-pilot-control__body {
+  display: grid;
+  gap: var(--kpl-space-4);
+  padding: var(--kpl-space-4);
+}
+
+.production-pilot-visual-link {
+  width: 100%;
+  text-decoration: none;
+}
+
+.production-pilot-control__summary {
+  display: grid;
+  gap: var(--kpl-space-1);
+  border-bottom: var(--kpl-border-width) solid var(--kpl-color-border-subtle);
+  padding-bottom: var(--kpl-space-4);
+}
+
+.production-pilot-control__summary > span {
+  width: fit-content;
+  border-radius: var(--kpl-radius-pill);
+  padding: var(--kpl-space-1) var(--kpl-space-2);
+  color: var(--kpl-color-text);
+  background: var(--kpl-color-surface-emphasis);
+  font-size: var(--kpl-font-size-50);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.production-pilot-control__summary h3,
+.production-pilot-empty-state h3,
+.production-pilot-handoff h2 {
+  margin: 0;
+}
+
+.production-pilot-ready-action {
+  display: grid;
+  gap: var(--kpl-space-3);
+}
+
+.production-pilot-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--kpl-space-2);
+  padding: var(--kpl-space-6) var(--kpl-space-4);
+  text-align: center;
+}
+
+.production-pilot-empty-state svg {
+  width: var(--kpl-font-size-600);
+  height: var(--kpl-font-size-600);
+  color: var(--kpl-color-text-muted);
+}
+
+.production-pilot-handoff {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--kpl-space-5);
+  width: min(100%, var(--kpl-container-xl));
+  margin: var(--kpl-space-5) auto var(--kpl-space-8);
+  padding: var(--kpl-space-5);
+}
+
+.production-pilot-handoff > div {
+  display: grid;
+  gap: var(--kpl-space-2);
 }
 
 .production-pilot-court__header {
@@ -308,6 +444,16 @@
   .production-pilot-decision {
     grid-template-columns: 1fr;
   }
+
+  .production-pilot-navigation {
+    order: 3;
+    width: 100%;
+    margin-inline-start: 0;
+  }
+
+  .production-pilot-navigation button {
+    flex: 1;
+  }
 }
 
 @media (width <= 1180px) {
@@ -335,6 +481,16 @@
 
   .production-pilot-actions,
   .production-pilot-actions > * {
+    width: 100%;
+  }
+
+  .production-pilot-handoff {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .production-pilot-handoff button,
+  .production-pilot-navigation {
     width: 100%;
   }
 }

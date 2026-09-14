@@ -94,7 +94,7 @@ export function createProductionOverviewAdapter(
       return {
         kind: 'success',
         access: Object.freeze({
-          kind: 'operator',
+          kind: mapped.capability,
           snapshot: mapped.snapshot,
           reconcile: (assignment, lifecycle) => reconcile(backend, commandId, assignment, lifecycle),
         }),

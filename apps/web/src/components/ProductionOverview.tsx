@@ -1,13 +1,18 @@
-import { Eye, LogOut, RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useProductionOverview, type ProductionOverviewState } from '../hooks/useProductionOverview.js';
+import { useProductionPilot, type ProductionPilotController } from '../hooks/useProductionPilot.js';
 import { PRODUCTION_COURT_SLUGS, type ProductionOverviewAccess } from '../lib/production-overview-types.js';
 import { ProductionCourtCard } from './ProductionCourtCard.js';
-import { ProductionPilotWorkspace } from './ProductionPilotWorkspace.js';
-import { ProductionSetupWorkspace } from './ProductionSetupWorkspace.js';
+import { ProductionDashboardView } from './ProductionDashboard.js';
+import { ProductionPilotWorkspaceView } from './ProductionPilotWorkspace.js';
+import { ProductionNavigation } from './ProductionNavigation.js';
+
+export type ProductionDestination = 'dashboard' | 'emissions' | 'controls';
+type AdminArea = ProductionDestination;
 
 type ProductionOverviewProps = {
   readonly signOut: () => Promise<void>;
+  readonly destination?: ProductionDestination;
 };
 
 type ProductionOverviewViewProps = {
@@ -16,24 +21,96 @@ type ProductionOverviewViewProps = {
   readonly signOut?: () => Promise<void>;
   readonly onOpenSetup?: () => void;
   readonly onOpenPilot?: () => void;
+  readonly onOpenControls?: () => void;
+  readonly onBack?: (() => void) | undefined;
 };
 
-export function ProductionOverview({ signOut }: ProductionOverviewProps) {
+export function ProductionOverview({ signOut, destination = 'dashboard' }: ProductionOverviewProps) {
   const overview = useProductionOverview();
-  const [view, setView] = useState<'overview' | 'setup' | 'pilot'>(() =>
-    new URLSearchParams(window.location.search).get('pilot') === '1' ? 'pilot' : 'overview');
-  const setupClubId = operatorClubId(overview.state);
-  if (view === 'pilot' && setupClubId !== null) {
-    return <ProductionPilotWorkspace onBack={() => setView('overview')} />;
+  const pilot = useProductionPilot();
+  const capability = stateCapability(overview.state);
+  if (capability === 'operator') {
+    return <ProductionPilotWorkspaceView pilot={pilot} initialView="controls" controlsOnly
+      navigationRole="operator" onSignOut={signOut} />;
   }
-  if (view === 'setup' && setupClubId !== null) {
-    return <ProductionSetupWorkspace clubId={setupClubId} signOut={signOut} onBack={() => {
-      setView('overview');
-      void overview.refresh();
-    }} />;
+  if (capability === 'admin') {
+    return <ProductionTabbedWorkspace initialArea={destination} pilot={pilot} signOut={signOut} />;
   }
-  return <ProductionOverviewView state={overview.state} refresh={overview.refresh} signOut={signOut}
-    onOpenSetup={() => setView('setup')} onOpenPilot={() => setView('pilot')} />;
+  if (capability === null) {
+    return <ProductionAccessFeedback destination={destination} state={overview.state}
+      refresh={overview.refresh} signOut={signOut} />;
+  }
+  return <ProductionOverviewView state={overview.state} refresh={overview.refresh} signOut={signOut} />;
+}
+
+function ProductionAccessFeedback({ destination, state, refresh, signOut }: {
+  readonly destination: ProductionDestination;
+  readonly state: ProductionOverviewState;
+  readonly refresh: () => Promise<void>;
+  readonly signOut: () => Promise<void>;
+}) {
+  const message = state.kind === 'forbidden' ? 'No tienes permiso para acceder al centro de producción.'
+    : state.kind === 'error' ? 'No se pudo comprobar el acceso al centro de producción.'
+      : 'Preparando el centro de producción…';
+  return <main className="home-page production-overview-page">
+    <ProductionNavigation active={destination} role="admin" onSignOut={() => void signOut()} />
+    <div className={`production-page-feedback ${state.kind === 'loading' ? '' : 'danger'}`} role="status">
+      <span>{message}</span>
+      {state.kind === 'error' ? <button type="button" className="refresh-button" onClick={() => void refresh()}>Reintentar</button> : null}
+    </div>
+  </main>;
+}
+
+export function ProductionTabbedWorkspace({ initialArea, pilot, signOut }: {
+  readonly initialArea: AdminArea;
+  readonly pilot: ProductionPilotController;
+  readonly signOut: () => Promise<void>;
+}) {
+  const [activeArea, setActiveArea] = useState<AdminArea>(initialArea);
+
+  useEffect(() => {
+    const syncFromHistory = () => setActiveArea(areaFromPath(window.location.pathname));
+    window.addEventListener('popstate', syncFromHistory);
+    return () => window.removeEventListener('popstate', syncFromHistory);
+  }, []);
+
+  const openArea = (area: AdminArea) => {
+    if (area === activeArea) return;
+    window.history.pushState({}, '', pathForArea(area));
+    setActiveArea(area);
+  };
+
+  return <main className="home-page production-overview-page production-tabbed-workspace">
+    <ProductionNavigation active={activeArea} role="admin" onAreaChange={openArea}
+      onRefresh={() => void pilot.refresh()} refreshing={pilot.state.kind === 'ready' && pilot.state.refreshing}
+      onSignOut={() => void signOut()} />
+    <section id="production-panel-dashboard" className="production-workspace-panel" role="tabpanel"
+      aria-labelledby="production-tab-dashboard" hidden={activeArea !== 'dashboard'} tabIndex={0}>
+      <ProductionDashboardView state={pilot.state} refresh={pilot.refresh} embedded
+        onOpenConfiguration={() => openArea('emissions')} onOpenControls={() => openArea('controls')} />
+    </section>
+    <section id="production-panel-emissions" className="production-workspace-panel" role="tabpanel"
+      aria-labelledby="production-tab-emissions" hidden={activeArea !== 'emissions'} tabIndex={0}>
+      <ProductionPilotWorkspaceView pilot={pilot} initialView="configuration" embedded
+        onOpenControls={() => openArea('controls')} />
+    </section>
+    <section id="production-panel-controls" className="production-workspace-panel" role="tabpanel"
+      aria-labelledby="production-tab-controls" hidden={activeArea !== 'controls'} tabIndex={0}>
+      <ProductionPilotWorkspaceView pilot={pilot} initialView="controls" controlsOnly embedded />
+    </section>
+  </main>;
+}
+
+function pathForArea(area: AdminArea): string {
+  if (area === 'emissions') return '/admin/emisiones';
+  if (area === 'controls') return '/mandos';
+  return '/admin';
+}
+
+function areaFromPath(path: string): AdminArea {
+  if (path === '/admin/emisiones') return 'emissions';
+  if (path === '/mandos') return 'controls';
+  return 'dashboard';
 }
 
 export function ProductionOverviewView({
@@ -41,61 +118,32 @@ export function ProductionOverviewView({
   refresh = async () => undefined,
   signOut = async () => undefined,
   onOpenSetup,
-  onOpenPilot,
 }: ProductionOverviewViewProps) {
   const capability = stateCapability(state);
   const refreshing = state.kind === 'refreshing';
   return (
     <main className="home-page production-overview-page">
-      <header className="home-topbar production-overview-topbar">
-        <div className="brand">
-          <img src="/logos/kpl-wordmark.png" alt="" width="144" height="54" />
-          <span><strong>KPL Admin</strong><small>Panel de producción</small></span>
-        </div>
-        <span className="production-role"><Eye aria-hidden="true" />{roleLabel(capability)}</span>
-        <div className="production-topbar-actions">
-          {capability === 'operator' && onOpenPilot !== undefined ? (
-            <button type="button" className="refresh-button" onClick={onOpenPilot}>
-              Validar piloto
-            </button>
-          ) : null}
-          {capability === 'operator' && onOpenSetup !== undefined ? (
-            <button type="button" className="refresh-button production-setup-entry" onClick={onOpenSetup}>
-              Configurar producción
-            </button>
-          ) : null}
-          <button type="button" className="refresh-button" onClick={() => void refresh()} disabled={refreshing}>
-            <RefreshCw aria-hidden="true" />{refreshing ? 'Actualizando' : 'Actualizar'}
-          </button>
-          <button type="button" className="refresh-button" onClick={() => void signOut()}>
-            <LogOut aria-hidden="true" />Salir
-          </button>
-        </div>
-      </header>
+      <ProductionNavigation active="system" role={capability ?? 'admin'}
+        onRefresh={() => void refresh()} refreshing={refreshing} onSignOut={() => void signOut()} />
       <section className="production-overview" aria-labelledby="production-overview-title">
         <header className="production-overview__heading">
           <div>
-            <h1 id="production-overview-title">Producción · cuatro pistas</h1>
-            <p>Estado operativo, contexto de marcador y solicitudes de reconciliación en una sola vista.</p>
+            <h1 id="production-overview-title">Sistema de producción</h1>
+            <p>Diagnóstico técnico, estado deseado y reconciliación de los agentes.</p>
           </div>
-          {stateTimestamp(state)}
+          <div className="production-overview__heading-actions">
+            {capability === 'admin' && onOpenSetup !== undefined ? (
+              <button type="button" className="refresh-button production-setup-entry" onClick={onOpenSetup}>
+                Configuración técnica
+              </button>
+            ) : null}
+            {stateTimestamp(state)}
+          </div>
         </header>
         {renderOverviewState(state, refresh)}
       </section>
     </main>
   );
-}
-
-function operatorClubId(state: ProductionOverviewState): string | null {
-  switch (state.kind) {
-    case 'ready':
-    case 'refreshing':
-    case 'stale': return state.access.kind === 'operator' ? state.access.snapshot.clubId : null;
-    case 'loading':
-    case 'forbidden':
-    case 'error': return null;
-    default: return assertNever(state);
-  }
 }
 
 function renderOverviewState(state: ProductionOverviewState, refresh: () => Promise<void>) {
@@ -187,15 +235,6 @@ function RefreshTimestamp({ value }: { readonly value: string }) {
       Última actualización <time dateTime={value} aria-label={value}>{new Intl.DateTimeFormat('es-ES', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))}</time>
     </span>
   );
-}
-
-function roleLabel(capability: ProductionOverviewAccess['kind'] | null): string {
-  switch (capability) {
-    case 'operator': return 'Operador';
-    case 'viewer': return 'Viewer';
-    case null: return 'Verificando acceso';
-    default: return assertNever(capability);
-  }
 }
 
 function assertNever(value: never): never {

@@ -39,7 +39,8 @@ function access(kind: ProductionOverviewAccess['kind']): ProductionOverviewAcces
 function overviewHtml(kind: ProductionOverviewAccess['kind']): string {
   const state: ProductionOverviewState = { kind: 'ready', access: access(kind), refreshing: false };
   return renderToStaticMarkup(createElement(ProductionOverviewView, {
-    state, refresh: async () => undefined, signOut: async () => undefined, onOpenSetup: () => undefined,
+    state, refresh: async () => undefined, signOut: async () => undefined,
+    onOpenSetup: () => undefined, onOpenPilot: () => undefined, onOpenControls: () => undefined,
   }));
 }
 
@@ -60,9 +61,16 @@ function findButtonAction(node: ReactNode, label: string): (() => void) | undefi
 }
 
 describe('production setup workspace', () => {
-  it('exposes setup from the operator overview but not the viewer overview', () => {
-    expect(overviewHtml('operator')).toContain('Configurar producción');
-    expect(overviewHtml('viewer')).not.toContain('Configurar producción');
+  it('separates administrator configuration from operator controls', () => {
+    expect(overviewHtml('admin')).toContain('Configuración técnica');
+    expect(overviewHtml('admin')).toContain('Emisiones');
+    expect(overviewHtml('admin')).toContain('Mandos');
+    expect(overviewHtml('operator')).not.toContain('Configuración técnica');
+    expect(overviewHtml('operator')).not.toContain('Emisiones');
+    expect(overviewHtml('operator')).toContain('Mandos');
+    expect(overviewHtml('viewer')).not.toContain('Configuración técnica');
+    expect(overviewHtml('viewer')).not.toContain('Emisiones');
+    expect(overviewHtml('viewer')).not.toContain('Mandos');
   });
 
   it('renders one shared panel and exactly four fixed court forms in source order', () => {

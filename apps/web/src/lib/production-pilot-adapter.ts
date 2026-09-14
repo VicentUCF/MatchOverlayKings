@@ -1,9 +1,12 @@
 import { z } from 'zod';
 import {
+  PilotConfigurationSchema,
+  PilotConfigurationsSchema,
   PilotReadinessSchema,
   PilotSessionSchema,
   PilotSessionsSchema,
   PreparePilotSessionInputSchema,
+  type PilotConfiguration,
   type PilotSession,
   type PreparePilotSessionInput,
 } from '@kpl/production-contracts';
@@ -13,6 +16,8 @@ const ErrorEnvelopeSchema = z.strictObject({
 });
 const SessionEnvelopeSchema = z.strictObject({ session: PilotSessionSchema });
 const SessionsEnvelopeSchema = z.strictObject({ sessions: PilotSessionsSchema });
+const ConfigurationEnvelopeSchema = z.strictObject({ configuration: PilotConfigurationSchema });
+const ConfigurationsEnvelopeSchema = z.strictObject({ configurations: PilotConfigurationsSchema });
 
 export type PilotApiResult<Value> =
   | { readonly kind: 'success'; readonly value: Value }
@@ -47,6 +52,20 @@ export function createProductionPilotAdapter(fetcher: typeof fetch = fetch) {
     sessions: async (): Promise<PilotApiResult<readonly PilotSession[]>> => {
       const result = await request('/api/pilot/sessions', SessionsEnvelopeSchema);
       return result.kind === 'success' ? { kind: 'success', value: result.value.sessions } : result;
+    },
+    configurations: async (): Promise<PilotApiResult<readonly PilotConfiguration[]>> => {
+      const result = await request('/api/pilot/configurations', ConfigurationsEnvelopeSchema);
+      return result.kind === 'success' ? { kind: 'success', value: result.value.configurations } : result;
+    },
+    configure: async (input: PreparePilotSessionInput): Promise<PilotApiResult<PilotConfiguration>> => {
+      const parsed = PreparePilotSessionInputSchema.safeParse(input);
+      if (!parsed.success) return { kind: 'error', message: 'Revisa la configuración de la pista.' };
+      const result = await request(`/api/pilot/configurations/${encodeURIComponent(parsed.data.courtSlug)}`, ConfigurationEnvelopeSchema, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(parsed.data),
+      });
+      return result.kind === 'success' ? { kind: 'success', value: result.value.configuration } : result;
     },
     prepare: async (input: PreparePilotSessionInput): Promise<PilotApiResult<PilotSession>> => {
       const parsed = PreparePilotSessionInputSchema.safeParse(input);

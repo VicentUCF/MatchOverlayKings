@@ -15,7 +15,20 @@ export function App() {
   }
 
   if (path === '/admin') {
-    return <AdminPage />;
+    return <AdminPage destination="dashboard" />;
+  }
+
+  if (path === '/admin/emisiones') {
+    return <AdminPage destination="emissions" />;
+  }
+
+  if (path === '/admin/sistema' || path === '/admin/sistema/configuracion') {
+    window.location.replace('/admin');
+    return null;
+  }
+
+  if (path === '/mandos') {
+    return <AdminPage destination="controls" />;
   }
 
   if (controlMatch?.[1]) {

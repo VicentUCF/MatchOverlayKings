@@ -52,6 +52,12 @@ export const PreparePilotSessionInputSchema = z.strictObject({
   privacyStatus: PilotPrivacySchema,
 });
 
+export const PilotConfigurationSchema = PreparePilotSessionInputSchema.extend({
+  updatedAt: z.iso.datetime({ offset: true }),
+});
+
+export const PilotConfigurationsSchema = z.array(PilotConfigurationSchema).readonly();
+
 export const PilotEncoderHealthSchema = z.strictObject({
   frame: z.number().int().nonnegative(),
   framesPerSecond: z.number().nonnegative(),
@@ -85,5 +91,6 @@ export type PilotPrivacy = z.infer<typeof PilotPrivacySchema>;
 export type PilotSource = z.infer<typeof PilotSourceSchema>;
 export type PilotReadiness = z.infer<typeof PilotReadinessSchema>;
 export type PreparePilotSessionInput = z.infer<typeof PreparePilotSessionInputSchema>;
+export type PilotConfiguration = z.infer<typeof PilotConfigurationSchema>;
 export type PilotEncoderHealth = z.infer<typeof PilotEncoderHealthSchema>;
 export type PilotSession = z.infer<typeof PilotSessionSchema>;

@@ -27,4 +27,21 @@ describe('production pilot adapter', () => {
 
     await expect(adapter.readiness()).resolves.toEqual({ kind: 'error', message: 'Conecta primero YouTube.' });
   });
+
+  it('saves and validates a reusable court configuration', async () => {
+    const input = {
+      courtSlug: 'pista-1', mode: 'simulation', sourceId: 'synthetic', homeTeam: 'Local', awayTeam: 'Visitante',
+      matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: '2026-09-14T12:00:00.000Z', privacyStatus: 'private',
+    } as const;
+    const configuration = { ...input, updatedAt: '2026-09-14T10:00:00.000Z' };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ configuration }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    const adapter = createProductionPilotAdapter(fetcher as typeof fetch);
+
+    await expect(adapter.configure(input)).resolves.toEqual({ kind: 'success', value: configuration });
+    expect(fetcher).toHaveBeenCalledWith('/api/pilot/configurations/pista-1', expect.objectContaining({
+      method: 'PUT', body: JSON.stringify(input),
+    }));
+  });
 });
