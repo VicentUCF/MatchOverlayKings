@@ -99,30 +99,28 @@ describe('reconcileOutput', () => {
     expect(result.action).toMatchObject({ kind: 'restart', reason: 'profile-changed' });
   });
 
-  it.each(['unknown', 'degraded', 'failed', 'offline'])(
-    'returns restart given an authoritative active desire and %s health',
-    (health) => {
+  it.each([
+    ['healthy', 'healthy'],
+    ['unknown', 'unknown'],
+    ['degraded', 'degraded'],
+    ['failed', 'failed'],
+    ['offline', 'offline'],
+    ['no observation', null],
+  ] as const)(
+    'returns noop given a matching inspected runtime and %s observed health',
+    (_label, health) => {
       const base = reconcileInput();
       const given = {
         ...base,
-        observed: { ...base.observed, health },
+        observed: health === null ? null : { ...base.observed, health },
         runtime: matchingRuntime(base),
       };
 
       const result = reconcileOutput(given);
 
-      expect(result.action).toMatchObject({ kind: 'restart', reason: 'runtime-unhealthy' });
+      expect(result.action).toEqual({ kind: 'noop', reason: 'runtime-healthy' });
     },
   );
-
-  it('returns restart given an active runtime has no health observation', () => {
-    const base = reconcileInput();
-    const given = { ...base, observed: null, runtime: matchingRuntime(base) };
-
-    const result = reconcileOutput(given);
-
-    expect(result.action).toMatchObject({ kind: 'restart', reason: 'runtime-unhealthy' });
-  });
 
   it('returns start given failed observed health but no local runtime', () => {
     const base = reconcileInput();

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@kpl/design-system": "file:../../../Documents/Projects/kpl-design-system",
+    "@kpl/production-contracts": "0.1.0",
     "@kpl/shared": "0.1.0",
     "@supabase/supabase-js": "^2.110.0",
     "@vitejs/plugin-react": "^5.1.1",

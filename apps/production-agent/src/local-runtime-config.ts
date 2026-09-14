@@ -101,7 +101,11 @@ export class LocalAgentRuntimeConfigError extends Error {
 }
 
 export function parseLocalAgentEnvironment(input: unknown): LocalAgentRuntimeConfig {
-  const parsedEnvironment = z.record(z.string(), z.string().optional()).safeParse(input);
+  if (typeof input !== 'object' || input === null) throw new LocalAgentRuntimeConfigError();
+  const parsedEnvironment = z
+    .array(z.tuple([z.string(), z.string().optional()]))
+    .transform((entries): Record<string, string | undefined> => Object.fromEntries(entries))
+    .safeParse(Object.entries(input));
   if (!parsedEnvironment.success) throw new LocalAgentRuntimeConfigError();
   const environment = parsedEnvironment.data;
   const hasUnknownAgentField = Object.keys(environment).some(

@@ -45,6 +45,14 @@
     "test/mediamtx-service-races.test.ts",
     "test/mediamtx-service-cleanup.test.ts",
     "test/mediamtx-service-failed-restart.test.ts",
-    "test/supabase-sdk-bridge.test.ts"
+    "test/supabase-sdk-bridge.test.ts",
+    "test/production-agent-fixture.ts",
+    "test/production-agent-config.test.ts",
+    "test/production-composition.test.ts",
+    "test/observed-state-projection.test.ts",
+    "test/production-agent-lifecycle.test.ts",
+    "test/production-reconciliation-failures.test.ts",
+    "test/production-reconciliation-loop.test.ts",
+    "test/production-runtime-races.test.ts"
   ]
 }

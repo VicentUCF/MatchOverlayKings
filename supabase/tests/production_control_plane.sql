@@ -105,11 +105,15 @@ values
   ('40000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000005', 'Display 2', 'display', 'local://devices/display-2');
 
 select pg_temp.assert_eq_int((select count(*)::int from public.courts), 4, 'all four courts remain seeded');
-select pg_temp.assert_eq_int((select count(*)::int from public.courts where production_enabled), 3, 'three courts enabled by default');
-select pg_temp.assert_true((select not production_enabled from public.courts where slug = 'pista-4'), 'pista-4 remains disabled capacity');
+select pg_temp.assert_eq_int((select count(*)::int from public.courts where production_enabled), 4, 'four courts enabled by default');
+select pg_temp.assert_true((select production_enabled from public.courts where slug = 'pista-4'), 'pista-4 is production enabled');
 
 set local role authenticated;
 select pg_temp.use_principal('10000000-0000-4000-8000-000000000001');
+select pg_temp.assert_true(
+  (select production_enabled from public.courts where slug = 'pista-4'),
+  'authenticated club administrator reads production-enabled pista-4'
+);
 
 do $$
 declare
@@ -538,7 +542,7 @@ begin
     '50000000-0000-4000-8000-000000000004',
     '30000000-0000-4000-8000-000000000001',
     'pista-4',
-    'Disabled capacity',
+    'Fourth court eligibility',
     now() - interval '10 minutes',
     now() + interval '2 hours',
     0,
@@ -552,9 +556,9 @@ begin
       (v_event ->> 'version')::int,
       'start-pista-4'
     );
-    raise exception 'Disabled court start should fail.';
+    raise exception 'Pista-4 without a program output should not become live.';
   exception when others then
-    if sqlerrm <> 'COURT_DISABLED' then raise; end if;
+    if sqlerrm <> 'PROGRAM_OUTPUT_REQUIRED' then raise; end if;
   end;
 end;
 $$;

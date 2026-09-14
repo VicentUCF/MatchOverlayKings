@@ -1,4 +1,3 @@
-import type { ObservedHealth } from '@kpl/production-contracts';
 import { fingerprintProfile } from './fingerprint.js';
 import {
   ReconcileInputSchema,
@@ -7,8 +6,6 @@ import {
   type ReconciliationAction,
   type ReconciliationResult,
 } from './models.js';
-
-type RuntimeHealth = ObservedHealth | 'unreported';
 
 class UnexpectedReconciliationVariantError extends Error {
   public constructor() {
@@ -29,11 +26,7 @@ export function reconcileOutput(input: unknown): ReconciliationResult {
     switch (parsedInput.desired.desired.lifecycle) {
       case 'running':
       case 'preflight':
-        return reconcileActiveRuntime(
-          parsedInput.runtime,
-          parsedInput.observed?.health ?? 'unreported',
-          target,
-        );
+        return reconcileActiveRuntime(parsedInput.runtime, target);
       case 'off':
       case 'stopped':
         return parsedInput.runtime === null
@@ -54,7 +47,6 @@ export function reconcileOutput(input: unknown): ReconciliationResult {
 
 function reconcileActiveRuntime(
   runtime: PipelineRuntime | null,
-  health: RuntimeHealth,
   target: PipelineTarget,
 ): ReconciliationAction {
   if (runtime === null) {
@@ -67,18 +59,7 @@ function reconcileActiveRuntime(
     return { kind: 'restart', reason: 'profile-changed', runtime, target };
   }
 
-  switch (health) {
-    case 'healthy':
-      return { kind: 'noop', reason: 'runtime-healthy' };
-    case 'unknown':
-    case 'degraded':
-    case 'failed':
-    case 'offline':
-    case 'unreported':
-      return { kind: 'restart', reason: 'runtime-unhealthy', runtime, target };
-    default:
-      return assertNever(health);
-  }
+  return { kind: 'noop', reason: 'runtime-healthy' };
 }
 
 function assertNever(value: never): never {

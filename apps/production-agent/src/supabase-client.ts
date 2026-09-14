@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { ControlPlaneAdapterError } from './control-plane.js';
 import type {
   ControlPlaneRequest,
@@ -6,8 +6,26 @@ import type {
   ControlPlaneResponse,
 } from './control-plane-request.js';
 import { SupabaseControlPlane } from './supabase-control-plane.js';
+import type { LocalAgentRuntimeConfig } from './local-runtime-config.js';
 
 export type AuthenticatedSupabaseClient = Pick<SupabaseClient, 'from' | 'rpc'>;
+
+export function createAuthenticatedSupabaseSdkClient(
+  config: LocalAgentRuntimeConfig,
+): SupabaseClient {
+  return config.supabasePublishableKey.use((publishableKey) => createClient(
+    config.supabaseUrl,
+    publishableKey,
+    {
+      accessToken: async () => config.agentAccessToken.use((accessToken) => accessToken),
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    },
+  ));
+}
 
 export function createAuthenticatedSupabaseControlPlane(
   client: AuthenticatedSupabaseClient,

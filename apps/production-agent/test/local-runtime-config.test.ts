@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseLocalAgentEnvironment } from '../src/local-runtime-config.js';
 
 const courtIds = [
@@ -23,6 +23,19 @@ function validEnvironment(): Readonly<Record<string, string>> {
 }
 
 describe('local agent runtime config', () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('parses the Node process environment object used by the executable', () => {
+    // Given
+    for (const [name, value] of Object.entries(validEnvironment())) vi.stubEnv(name, value);
+
+    // When
+    const parse = () => parseLocalAgentEnvironment(process.env);
+
+    // Then
+    expect(parse).not.toThrow();
+  });
+
   it('parses a strict four-court local environment without serializing credentials', () => {
     const config = parseLocalAgentEnvironment(validEnvironment());
 

@@ -1,0 +1,45 @@
+{
+  "courtIds": [
+    "10000000-0000-4000-8000-000000000001",
+    "10000000-0000-4000-8000-000000000002",
+    "10000000-0000-4000-8000-000000000003",
+    "10000000-0000-4000-8000-000000000004"
+  ],
+  "mediaMtxVersion": "1.21.0",
+  "mediaMtxExecutablePath": "/opt/kpl/bin/mediamtx",
+  "ffmpegExecutablePath": "/usr/bin/ffmpeg",
+  "runtimeDirectoryPath": "/var/lib/kpl-agent/runtime",
+  "runtimeDirectoryMode": 448,
+  "configFileMode": 384,
+  "persistence": "ephemeral",
+  "startupTimeoutMs": 10000,
+  "healthTimeoutMs": 10000,
+  "stopGraceMs": 5000,
+  "bindings": {
+    "apiHost": "127.0.0.1",
+    "apiPort": 9997,
+    "srtHost": "127.0.0.1",
+    "srtPort": 8890,
+    "courts": [
+      { "courtId": "10000000-0000-4000-8000-000000000001", "pathName": "pista-1" },
+      { "courtId": "10000000-0000-4000-8000-000000000002", "pathName": "pista-2" },
+      { "courtId": "10000000-0000-4000-8000-000000000003", "pathName": "pista-3" },
+      { "courtId": "10000000-0000-4000-8000-000000000004", "pathName": "pista-4" }
+    ],
+    "videoInputs": [
+      {
+        "deviceId": "20000000-0000-4000-8000-000000000001",
+        "kind": "v4l2",
+        "devicePath": "/dev/video0",
+        "inputPixelFormat": "yuyv422"
+      }
+    ],
+    "audioInputs": [
+      {
+        "deviceId": "30000000-0000-4000-8000-000000000001",
+        "kind": "alsa",
+        "deviceName": "hw:0,0"
+      }
+    ]
+  }
+}

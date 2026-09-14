@@ -1,30 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Eye, Lock, LogOut, Mail, MonitorPlay, RefreshCw, SlidersHorizontal } from 'lucide-react';
-import type { MatchState } from '@kpl/shared';
-import { type EventSummary, fetchEventSummaries } from '../lib/kpl-data.js';
+import { useEffect, useState } from 'react';
+import { Lock, Mail } from 'lucide-react';
+import { ProductionOverview } from '../components/ProductionOverview.js';
 import { supabase } from '../lib/supabase.js';
 
 export function AdminPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
-  const [events, setEvents] = useState<EventSummary[]>([]);
+  const [clubReady, setClubReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const loadEvents = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const nextEvents = await fetchEventSummaries({ liveOnly: false });
-      setEvents(nextEvents);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Error desconocido.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -49,19 +34,24 @@ export function AdminPage() {
 
   useEffect(() => {
     if (authenticated) {
-      void claimClubAndLoad();
+      void claimClub();
+    } else {
+      setClubReady(false);
     }
   }, [authenticated]);
 
-  async function claimClubAndLoad() {
+  async function claimClub() {
+    setLoading(true);
     const { error: claimError } = await supabase.rpc('claim_default_club');
 
     if (claimError) {
       setError(claimError.message);
+      setLoading(false);
       return;
     }
 
-    await loadEvents();
+    setClubReady(true);
+    setLoading(false);
   }
 
   async function signIn() {
@@ -82,7 +72,7 @@ export function AdminPage() {
   async function signOut() {
     await supabase.auth.signOut();
     setAuthenticated(false);
-    setEvents([]);
+    setClubReady(false);
   }
 
   if (!authenticated) {
@@ -119,76 +109,17 @@ export function AdminPage() {
     );
   }
 
-  return (
-    <main className="home-page">
-      <header className="home-topbar">
-        <div className="brand">
-          <img src="/logos/kpl-wordmark.png" alt="" />
-          <span>
-            <strong>KPL Admin</strong>
-            <small>Panel de pistas</small>
-          </span>
-        </div>
+  if (!clubReady) {
+    return (
+      <main className="home-page">
+        <section className="admin-login">
+          <div className="brand"><img src="/logos/kpl-wordmark.png" alt="" /><span><strong>KPL Admin</strong><small>Preparando producción</small></span></div>
+          {error ? <div className="empty-panel">{error}</div> : <div className="loading-panel">Cargando producción</div>}
+          <button type="button" className="refresh-button" onClick={() => void signOut()}>Salir</button>
+        </section>
+      </main>
+    );
+  }
 
-        <button type="button" className="refresh-button" onClick={() => void loadEvents()} disabled={loading}>
-          <RefreshCw size={18} />
-          Actualizar
-        </button>
-        <button type="button" className="refresh-button" onClick={() => void signOut()}>
-          <LogOut size={18} />
-          Salir
-        </button>
-      </header>
-
-      <section className="match-picker" aria-labelledby="admin-title">
-        <div className="section-heading">
-          <h1 id="admin-title">Todas las pistas</h1>
-          <span>{events.length} pistas</span>
-        </div>
-
-        {error ? <div className="empty-panel">{error}</div> : null}
-        {loading ? <div className="loading-panel">Cargando pistas</div> : null}
-
-        {!loading && events.length > 0 ? (
-          <div className="match-list">
-            {events.map((event) => (
-              <article className="match-row" key={event.id}>
-                <div className="match-info">
-                  <span className={`match-status ${event.status}`}>{statusLabel(event.status)}</span>
-                  <h2>{event.courtName}</h2>
-                  <p>{event.title}</p>
-                  <small>
-                    Ruta {event.id} - Version {event.version}
-                  </small>
-                </div>
-
-                <div className="match-actions">
-                  <a className="match-action primary" href={`/control/${event.id}`}>
-                    <SlidersHorizontal size={18} />
-                    Mandos
-                  </a>
-                  <a className="match-action" href={`/overlay/${event.id}/scoreboard`}>
-                    <MonitorPlay size={18} />
-                    OBS
-                  </a>
-                  <a className="match-action" href={`/live/${event.id}`}>
-                    <Eye size={18} />
-                    Publico
-                  </a>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : null}
-      </section>
-    </main>
-  );
-}
-
-function statusLabel(status: MatchState['status']): string {
-  return {
-    pre_match: 'Pre',
-    live: 'Live',
-    finished: 'Final',
-  }[status];
+  return <ProductionOverview signOut={signOut} />;
 }

@@ -116,9 +116,11 @@ export {
   AgentConfigSchema,
   CourtSnapshotSchema,
   CourtWorkerConfigSchema,
+  SupervisorSnapshotsSchema,
   type AgentConfig,
   type CourtSnapshot,
   type CourtWorkerConfig,
+  type SupervisorSnapshots,
 } from './config.js';
 export { CourtWorker } from './court-worker.js';
 export {
@@ -162,6 +164,7 @@ export type { CourtPipelinePort } from './ports.js';
 export { reconcileOutput } from './reconcile.js';
 export {
   createAuthenticatedSupabaseControlPlane,
+  createAuthenticatedSupabaseSdkClient,
   type AuthenticatedSupabaseClient,
 } from './supabase-client.js';
 export { SupabaseControlPlane } from './supabase-control-plane.js';
@@ -174,3 +177,36 @@ export type {
   SupervisorShutdownResult,
 } from './orchestration-models.js';
 export { Supervisor, type CourtPipelinePorts } from './supervisor.js';
+export {
+  loadProductionAgentConfig,
+  parseProductionAgentConfig,
+  ProductionAgentConfigError,
+  type ProductionAgentConfig,
+} from './production-agent-config.js';
+export {
+  composeProductionAgent,
+  ProductionCompositionError,
+  type ProductionAgentComposition,
+  type ProductionCourtComposition,
+} from './production-composition.js';
+export {
+  ObservedStateProjectionError,
+  ObservedStateProjector,
+} from './observed-state-projection.js';
+export {
+  ProductionReconciliationError,
+  ProductionReconciliationLoop,
+  type ProductionReconciliationLoopOptions,
+  type ReconciliationControlPlanePort,
+  type ReconciliationSupervisorPort,
+} from './production-reconciliation-loop.js';
+export {
+  NodeProductionSignalSource,
+  ProductionAgentLifecycle,
+  ProductionAgentShutdownDeadlineError,
+  type ProductionAgentLifecycleOptions,
+  type ProductionAgentLoopPort,
+  type ProductionSignal,
+  type ProductionSignalSource,
+} from './production-agent-lifecycle.js';
+export { runProductionAgent } from './main.js';

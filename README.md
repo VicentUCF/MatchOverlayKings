@@ -84,6 +84,33 @@ El despliegue registra el hash de cada migracion y aplica solo archivos pendient
 
 `SUPABASE_DB_URL` es la connection string de Postgres del proyecto Supabase. No sirve la publishable key ni la secret API key para crear tablas, RLS o funciones SQL.
 
+## Agente de produccion local
+
+El agente local gestiona cuatro pistas y un unico servicio MediaMTX. Solo admite tres procesos
+FFmpeg simultaneos, por lo que la cuarta solicitud activa queda en estado `capacity-deferred`
+hasta que haya capacidad. No sustituye el marcador, las rutas publicas ni el overlay OBS.
+
+Consulta el runbook de [apps/production-agent/README.md](apps/production-agent/README.md) antes
+de instalarlo. La configuracion separa el entorno secreto de la configuracion de medios, que se
+pasa como un unico argumento de ruta absoluta:
+
+```bash
+npm run build
+npm run start:production-agent -- /absolute/path/to/media-config.json
+```
+
+El proceso necesita `KPL_AGENT_SUPABASE_PUBLISHABLE_KEY` y `KPL_AGENT_ACCESS_TOKEN`, nunca una
+service-role key. Sus cuatro UUID de `KPL_AGENT_COURT_IDS` deben ser el mismo conjunto que
+`courtIds` y `bindings.courts` del JSON de medios.
+
+El agente consulta por sondeo snapshots autorizados de asignacion, salida y estado deseado. Estos
+snapshots son la fuente de verdad: una accion de `/admin` solo solicita reconciliacion. El agente
+reconcilia, publica estados observados con secuencia monotona y solo entonces completa o falla la
+operacion solicitada.
+
+Quedan fuera del MVP: Android, YouTube, camaras de red, una interfaz de aprovisionamiento y el uso
+de una service-role key.
+
 ## Vercel
 
 Configura estas variables en Vercel:
