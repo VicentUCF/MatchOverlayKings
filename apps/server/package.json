@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npm run build -w @kpl/shared && tsx watch src/index.ts",
+    "dev": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/production-assets && tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
         "start:pilot": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local dist/pilot-index.js"
