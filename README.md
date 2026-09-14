@@ -111,6 +111,33 @@ operacion solicitada.
 Quedan fuera del MVP: Android, YouTube, camaras de red, una interfaz de aprovisionamiento y el uso
 de una service-role key.
 
+## Producción local en el PC de emisión
+
+La rama mantiene Supabase como fuente de verdad para autenticación, marcador y Realtime, pero
+ejecuta en el PC de emisión todo el trabajo pesado: servidor web local, FFmpeg, MediaMTX y la
+integración con YouTube. El navegador del operador debe abrir la instalación local; Vercel sigue
+sirviendo la página HTTPS que necesita el móvil para conceder acceso a la cámara.
+
+La instalación soportada usa Docker Compose:
+
+```bash
+cp .env.pilot.docker.example .env.pilot.docker
+# Completa Supabase, la IP/CIDR de la LAN y, si procede, YouTube.
+npm run production:local:check
+npm run production:local:up
+```
+
+Abre `http://localhost:4310/admin` en el PC de emisión. Los valores
+`VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` se incorporan a la web al construir la
+imagen; cambiar cualquiera de ellos exige repetir `npm run production:local:up`. Para seguir el
+servicio usa `npm run production:local:logs`, y para apagarlo sin borrar la configuración usa
+`npm run production:local:down`.
+
+El arranque espera a que el servidor y FFmpeg estén listos. Docker reinicia el servicio si cae,
+limita los registros a cinco archivos de 10 MB y concede 20 segundos para detener limpiamente las
+codificaciones antes de cerrar el contenedor. `./data` conserva la configuración local y el token
+OAuth; la base de datos y el estado del marcador continúan en Supabase.
+
 ## Piloto de viabilidad
 
 ### Arranque reproducible con Docker
@@ -119,9 +146,9 @@ En un equipo nuevo con Docker Compose y acceso a Internet:
 
 ```bash
 cp .env.pilot.docker.example .env.pilot.docker
-# Edita KPL_PILOT_LAN_HOST y KPL_PILOT_LAN_CIDR con la red local real.
-docker compose up -d --build
-docker compose logs -f kpl-pilot
+# Edita Supabase, KPL_PILOT_LAN_HOST y KPL_PILOT_LAN_CIDR con los valores reales.
+npm run production:local:up
+npm run production:local:logs
 ```
 
 Compose levanta un único contenedor con Node, FFmpeg, el frontend del piloto y MediaMTX `1.21.0`.
@@ -151,8 +178,8 @@ El Compose usa una red bridge privada fija (`172.30.0.0/24`): solo su gateway `1
 usar las rutas administrativas, mientras que el teléfono sigue limitado a los endpoints móviles
 con token y origen HTTPS.
 
-Para apagarlo sin borrar datos: `docker compose down`. Para actualizar la imagen, repite
-`docker compose up -d --build`.
+Para apagarlo sin borrar datos: `npm run production:local:down`. Para actualizar la imagen, repite
+`npm run production:local:up`.
 
 El piloto separa la preparación y la operación de tres pistas independientes. La navegación del
 administrador mantiene cargadas tres pestañas: Inicio en `/admin`, preparación en

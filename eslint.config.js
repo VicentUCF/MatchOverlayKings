@@ -6,6 +6,7 @@ export default tseslint.config(
     ignores: [
       '**/dist/**',
       '**/node_modules/**',
+      'data/**',
       'apps/web/public/**',
       '**/*.d.ts',
       '**/*.js.map',

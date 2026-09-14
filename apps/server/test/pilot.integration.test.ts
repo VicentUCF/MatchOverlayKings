@@ -20,6 +20,22 @@ afterEach(async () => {
 });
 
 describe('production pilot', () => {
+  it('reports process liveness and FFmpeg readiness separately', async () => {
+    const app = await createPilotApp();
+
+    const health = await app.inject({ method: 'GET', url: '/health' });
+    expect(health.statusCode).toBe(200);
+    expect(health.json()).toMatchObject({ ok: true, service: 'kpl-live-overlays' });
+
+    const ready = await app.inject({ method: 'GET', url: '/ready' });
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json()).toMatchObject({
+      ok: true,
+      service: 'kpl-live-overlays',
+      ffmpeg: { available: true },
+    });
+  });
+
   it('runs a real synthetic FFmpeg session without creating a YouTube broadcast', async () => {
     const app = await createPilotApp();
 

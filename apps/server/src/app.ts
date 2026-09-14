@@ -85,6 +85,19 @@ export async function buildApp(
     time: new Date().toISOString(),
   }));
 
+  app.get('/ready', async (_request, reply) => {
+    const readiness = pilot.readiness();
+    if (!readiness.ffmpeg.available) {
+      reply.status(503);
+    }
+    return {
+      ok: readiness.ffmpeg.available,
+      service: 'kpl-live-overlays',
+      ffmpeg: readiness.ffmpeg,
+      time: new Date().toISOString(),
+    };
+  });
+
   app.get('/api/teams', async () => ({
     teams: await store.getTeams(),
   }));

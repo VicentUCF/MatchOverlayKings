@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1
 
 FROM node:22-bookworm-slim AS build
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_PUBLISHABLE_KEY
+ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL} \
+    VITE_SUPABASE_PUBLISHABLE_KEY=${VITE_SUPABASE_PUBLISHABLE_KEY}
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/server/package.json apps/server/package.json
@@ -14,7 +18,9 @@ RUN npm install --global npm@11.6.2 --no-audit --no-fund
 # rechaza el lock por los peers opcionales multiplataforma de Rolldown (@emnapi).
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY . .
-RUN npm run build
+RUN test -n "$VITE_SUPABASE_URL" \
+  && test -n "$VITE_SUPABASE_PUBLISHABLE_KEY" \
+  && npm run build
 
 FROM node:22-bookworm-slim
 ARG TARGETARCH

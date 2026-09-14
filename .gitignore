@@ -12,5 +12,6 @@ secrets/
 *.log
 data/events/*.tmp
 data/pilot-configurations.json
+data/mobile-camera-runtime/
 .omo
 .playwright-mcp
