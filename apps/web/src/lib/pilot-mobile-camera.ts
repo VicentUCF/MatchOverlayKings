@@ -156,6 +156,16 @@ export class PilotMobileCameraRuntime {
 
   private async desiredLoop(whipUrl: string, whipUser: string): Promise<void> {
     while (!this.abortController.signal.aborted) {
+      const desired = this.desired;
+      if (desired !== null && this.applied?.revision !== desired.revision) {
+        try {
+          await this.applyDesired(desired, whipUrl, whipUser);
+        } catch {
+          if (this.abortController.signal.aborted) return;
+          await delay(2_000, this.abortController.signal).catch(() => undefined);
+        }
+        continue;
+      }
       try {
         const response = await localJson(
           `${this.link.endpoint}/api/pilot/mobile-camera/${encodeURIComponent(this.link.sessionId)}/desired?after=${this.desired?.revision ?? 0}`,
@@ -164,7 +174,6 @@ export class PilotMobileCameraRuntime {
         );
         if (response.desired.revision !== this.desired?.revision) {
           this.desired = response.desired;
-          await this.applyDesired(response.desired, whipUrl, whipUser);
         }
       } catch (error) {
         if (this.abortController.signal.aborted) return;
@@ -188,6 +197,8 @@ export class PilotMobileCameraRuntime {
   ): Promise<void> {
     if (desired.cameraId === null) throw new Error('El panel todavía no ha seleccionado una cámara.');
     this.applying = true;
+    if (this.reconnectTimer !== null) window.clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.setState('connecting');
     try {
       await this.publisher?.close();

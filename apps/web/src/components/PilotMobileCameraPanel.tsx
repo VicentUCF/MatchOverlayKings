@@ -29,6 +29,7 @@ export function PilotMobileCameraPanel({
   const [audioEnabled, setAudioEnabled] = useState(owned?.desired.audioEnabled ?? true);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [saving, setSaving] = useState(false);
+  const [requestedRevision, setRequestedRevision] = useState<number | null>(null);
 
   useEffect(() => {
     if (owned === null) return;
@@ -36,6 +37,8 @@ export function PilotMobileCameraPanel({
     setProfile(owned.desired.profile);
     setAudioEnabled(owned.desired.audioEnabled);
   }, [owned?.desired.audioEnabled, owned?.desired.cameraId, owned?.desired.profile, owned?.id]);
+
+  useEffect(() => setRequestedRevision(null), [owned?.id]);
 
   const selectedCamera = owned?.capabilities?.cameras.find(({ id }) => id === cameraId) ?? null;
   const profiles = selectedCamera?.supportedProfiles ?? [];
@@ -57,14 +60,20 @@ export function PilotMobileCameraPanel({
     event.preventDefault();
     if (owned === null || cameraId === '') return;
     setSaving(true);
-    await onUpdate(owned.id, {
+    const updated = await onUpdate(owned.id, {
       expectedRevision: owned.desired.revision,
       cameraId,
       profile,
       audioEnabled,
     });
+    if (updated) setRequestedRevision(owned.desired.revision + 1);
     setSaving(false);
   };
+
+  const applyingRemotely = owned !== null && owned.claimed
+    && owned.applied?.revision !== owned.desired.revision;
+  const requestedApplied = requestedRevision !== null
+    && (owned?.applied?.revision ?? 0) >= requestedRevision;
 
   return <section className="pilot-mobile-camera" aria-labelledby={`mobile-camera-${courtSlug}`}>
     <div className="pilot-mobile-camera__heading">
@@ -103,8 +112,13 @@ export function PilotMobileCameraPanel({
           <label className="pilot-mobile-camera__audio"><input type="checkbox" checked={audioEnabled}
             disabled={!owned.capabilities.audioAvailable} onChange={(event) => setAudioEnabled(event.currentTarget.checked)} />
             Usar micrófono del móvil</label>
-          <button type="submit" disabled={cameraId === '' || profiles.length === 0}>{saving ? 'Aplicando…' : 'Aplicar al móvil'}</button>
+          <button type="submit" disabled={cameraId === '' || profiles.length === 0 || (applyingRemotely && !owned.error)}>
+            {saving ? 'Enviando…' : applyingRemotely && !owned.error ? 'Aplicando en el móvil…' : 'Aplicar al móvil'}
+          </button>
         </fieldset>
+        {applyingRemotely ? <p role="status" aria-live="polite">Android está cambiando la cámara y reconectando la señal…</p>
+          : requestedApplied ? <p className="production-command-feedback" role="status">Configuración aplicada en el móvil.</p> : null}
+        {requestedRevision !== null && owned.error ? <p className="production-command-feedback danger" role="alert">{owned.error}</p> : null}
         {active ? <p>Detén la emisión para cambiar cámara, FPS o audio.</p> : null}
       </form>}
 
