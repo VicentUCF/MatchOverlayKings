@@ -1,5 +1,6 @@
 import {
   Activity,
+  ExternalLink,
   MonitorPlay,
   Radio,
   Settings2,
@@ -7,6 +8,7 @@ import {
 } from 'lucide-react';
 import type { PilotConfiguration, PilotCourtSlug, PilotSession } from '@kpl/production-contracts';
 import { useProductionPilot, type PilotState } from '../hooks/useProductionPilot.js';
+import { youtubeWatchUrl } from '../lib/pilot-youtube-watch.js';
 import { ProductionNavigation } from './ProductionNavigation.js';
 
 const COURTS = [
@@ -98,6 +100,7 @@ function UnifiedCourtCard({ court, configuration, session, loading, onOpenConfig
   readonly onOpenControls: () => void;
 }) {
   const status = streamStatus(session, loading);
+  const watchUrl = youtubeWatchUrl(session);
   return <article className="production-dashboard-court" aria-labelledby={`dashboard-${court.slug}`}>
     <header><div><span className="production-court-card__slug">{court.slug}</span><h2 id={`dashboard-${court.slug}`}>{court.label}</h2></div>
       <span className={`production-status ${status.tone}`}><Activity aria-hidden="true" />{status.label}</span></header>
@@ -124,6 +127,10 @@ function UnifiedCourtCard({ court, configuration, session, loading, onOpenConfig
         <a className="refresh-button production-controls-entry" href={`/control/${court.slug}`}>
           <SlidersHorizontal aria-hidden="true" />Control visual
         </a>
+        {watchUrl ? <a className="production-setup-submit production-dashboard-youtube-link" href={watchUrl}
+          target="_blank" rel="noreferrer">
+          <ExternalLink aria-hidden="true" />Ver directo en YouTube
+        </a> : null}
       </nav>
     </div>
   </article>;

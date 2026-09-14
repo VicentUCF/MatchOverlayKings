@@ -16,6 +16,7 @@ import {
   type PreparePilotSessionInput,
 } from '@kpl/production-contracts';
 import { useProductionPilot, type ProductionPilotController } from '../hooks/useProductionPilot.js';
+import { youtubeWatchUrl } from '../lib/pilot-youtube-watch.js';
 import { ProductionNavigation, type ProductionNavigationRole } from './ProductionNavigation.js';
 import { PilotMobileCameraMonitor, PilotMobileCameraPanel } from './PilotMobileCameraPanel.js';
 
@@ -326,6 +327,7 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onStop }:
   readonly onStop: () => void;
 }) {
   const active = ['starting', 'live', 'reconnecting'].includes(session.status);
+  const watchUrl = youtubeWatchUrl(session);
   return <div className="production-pilot-session">
     <div className="production-pilot-thumbnail"><img src={session.thumbnailUrl} alt={`Miniatura de ${session.title}`} /></div>
     <div className="production-pilot-session__copy"><h3>{session.title}</h3><p>{session.source.label} · {session.mode === 'youtube' ? 'YouTube' : 'Salida local'}</p>
@@ -341,7 +343,8 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onStop }:
       <div className="production-pilot-actions">
         {session.status === 'prepared' ? <button className="production-setup-submit" type="button" disabled={pending} onClick={onStart}>Emitir</button> : null}
         {active ? <button className="refresh-button danger" type="button" disabled={pending} onClick={onStop}>Detener</button> : null}
-        {session.watchUrl ? <a className="refresh-button" href={session.watchUrl} target="_blank" rel="noreferrer">Abrir YouTube <ExternalLink aria-hidden="true" /></a> : null}
+        {watchUrl ? <a className="production-setup-submit production-pilot-youtube-link" href={watchUrl}
+          target="_blank" rel="noreferrer">Ver directo en YouTube <ExternalLink aria-hidden="true" /></a> : null}
       </div>
     </div>
   </div>;

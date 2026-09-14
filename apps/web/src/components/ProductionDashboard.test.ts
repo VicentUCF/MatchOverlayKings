@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import type { PilotSession } from '@kpl/production-contracts';
 import type { PilotState } from '../hooks/useProductionPilot.js';
 import { ProductionDashboardView } from './ProductionDashboard.js';
 
@@ -19,6 +20,15 @@ const state: PilotState = {
   }],
   sessions: [], mobileCamera: null, mobileConnectUrl: null,
   refreshing: false, pendingCourts: [], courtErrors: {}, error: null,
+};
+
+const liveYoutubeSession: PilotSession = {
+  id: '11111111-1111-4111-8111-111111111111', courtSlug: 'pista-1', mode: 'youtube',
+  source: { id: 'synthetic', kind: 'synthetic', label: 'Señal de prueba' }, status: 'live',
+  title: 'Kings vs Lions', description: 'Partido en directo', thumbnailUrl: '/thumbnail.png',
+  broadcastId: 'broadcast-1', watchUrl: 'https://www.youtube.com/watch?v=broadcast-1',
+  youtubeStreamStatus: 'active · good', encoder: null, startedAt: '2026-09-14T18:00:00.000Z',
+  stoppedAt: null, error: null,
 };
 
 describe('unified production dashboard', () => {
@@ -46,5 +56,15 @@ describe('unified production dashboard', () => {
     expect(html).toContain('http://127.0.0.1:4310/admin');
     expect(html).toContain('/control/pista-1');
     expect((html.match(/Control visual/g) ?? [])).toHaveLength(3);
+  });
+
+  it('offers the YouTube live stream from Inicio once broadcasting has started', () => {
+    const html = renderToStaticMarkup(createElement(ProductionDashboardView, {
+      state: { ...state, sessions: [liveYoutubeSession] },
+    }));
+
+    expect(html).toContain('Ver directo en YouTube');
+    expect(html).toContain('href="https://www.youtube.com/watch?v=broadcast-1"');
+    expect(html).toContain('target="_blank"');
   });
 });

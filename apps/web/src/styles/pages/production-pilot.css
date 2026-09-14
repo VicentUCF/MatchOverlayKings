@@ -412,6 +412,10 @@
   text-decoration: none;
 }
 
+.production-pilot-youtube-link {
+  margin-inline-start: auto;
+}
+
 .production-pilot-decision {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.8fr);
@@ -482,6 +486,10 @@
   .production-pilot-actions,
   .production-pilot-actions > * {
     width: 100%;
+  }
+
+  .production-pilot-youtube-link {
+    margin-inline-start: 0;
   }
 
   .production-pilot-handoff {

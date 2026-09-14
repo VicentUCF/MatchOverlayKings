@@ -216,6 +216,10 @@
   text-decoration: none;
 }
 
+.production-dashboard-youtube-link {
+  grid-column: 1 / -1;
+}
+
 @media (width <= 1180px) {
   .production-dashboard-courts {
     grid-template-columns: repeat(2, minmax(0, 1fr));
