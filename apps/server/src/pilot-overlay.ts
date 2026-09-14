@@ -1,9 +1,8 @@
 import { once } from 'node:events';
 import type { Writable } from 'node:stream';
 import type { PilotCourtSlug } from '@kpl/production-contracts';
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, type Browser, type CDPSession, type Page } from 'playwright';
 
-const CAPTURE_FRAMES_PER_SECOND = 15;
 const OVERLAY_WIDTH = 1920;
 const OVERLAY_HEIGHT = 1080;
 const NAVIGATION_TIMEOUT_MS = 20_000;
@@ -113,18 +112,14 @@ async function pumpBrowserFrames(
   outputFramesPerSecond: number,
   signal: AbortSignal,
 ): Promise<void> {
-  let frame = await capture(page);
-  let captureError: unknown = null;
-  const captureController = new AbortController();
-  const capturePromise = refreshFrames(page, (next) => { frame = next; }, captureController.signal)
-    .catch((error: unknown) => { captureError = error; });
+  const capture = await startCompositorCapture(page, signal);
 
   try {
     const frameDurationMs = 1_000 / outputFramesPerSecond;
     let nextFrameAt = performance.now();
     while (!signal.aborted && !output.destroyed) {
-      if (captureError !== null) throw captureError;
-      const accepted = output.write(frame);
+      if (capture.error !== null) throw capture.error;
+      const accepted = output.write(capture.frame);
       if (!accepted) await Promise.race([once(output, 'drain'), aborted(signal)]);
       nextFrameAt = Math.max(nextFrameAt + frameDurationMs, performance.now());
       const waitMs = Math.max(0, nextFrameAt - performance.now());
@@ -133,27 +128,69 @@ async function pumpBrowserFrames(
   } catch (error) {
     if (!signal.aborted && !isClosedPipe(error)) throw error;
   } finally {
-    captureController.abort();
-    await capturePromise;
+    await capture.stop();
   }
 }
 
-async function refreshFrames(
-  page: Page,
-  update: (frame: Uint8Array) => void,
-  signal: AbortSignal,
+interface ScreencastFrameEvent {
+  readonly data: string;
+  readonly sessionId: number;
+}
+
+interface CompositorCapture {
+  readonly frame: Uint8Array;
+  readonly error: unknown;
+  readonly stop: () => Promise<void>;
+}
+
+async function startCompositorCapture(page: Page, signal: AbortSignal): Promise<CompositorCapture> {
+  const client = await page.context().newCDPSession(page);
+  await client.send('Emulation.setDefaultBackgroundColorOverride', {
+    color: { r: 0, g: 0, b: 0, a: 0 },
+  });
+  let frame: Uint8Array | null = null;
+  let captureError: unknown = null;
+  let resolveFirstFrame: (() => void) | null = null;
+  const firstFrame = new Promise<void>((resolve) => { resolveFirstFrame = resolve; });
+  const onFrame = (event: ScreencastFrameEvent) => {
+    frame = Buffer.from(event.data, 'base64');
+    resolveFirstFrame?.();
+    resolveFirstFrame = null;
+    void acknowledgeFrame(client, event.sessionId).catch((error: unknown) => {
+      captureError = error;
+    });
+  };
+  client.on('Page.screencastFrame', onFrame);
+  await client.send('Page.startScreencast', {
+    format: 'png',
+    maxWidth: OVERLAY_WIDTH,
+    maxHeight: OVERLAY_HEIGHT,
+    everyNthFrame: 1,
+  });
+  await Promise.race([firstFrame, aborted(signal)]);
+  if (frame === null) {
+    await stopCompositorCapture(client, onFrame);
+    throw new Error('Overlay capture stopped before its first frame');
+  }
+
+  return {
+    get frame() { return frame as Uint8Array; },
+    get error() { return captureError; },
+    stop: () => stopCompositorCapture(client, onFrame),
+  };
+}
+
+async function acknowledgeFrame(client: CDPSession, sessionId: number): Promise<void> {
+  await client.send('Page.screencastFrameAck', { sessionId });
+}
+
+async function stopCompositorCapture(
+  client: CDPSession,
+  onFrame: (event: ScreencastFrameEvent) => void,
 ): Promise<void> {
-  const intervalMs = 1_000 / CAPTURE_FRAMES_PER_SECOND;
-  while (!signal.aborted) {
-    const startedAt = performance.now();
-    update(await capture(page));
-    const waitMs = Math.max(0, intervalMs - (performance.now() - startedAt));
-    if (waitMs > 0) await Promise.race([delay(waitMs), aborted(signal)]);
-  }
-}
-
-async function capture(page: Page): Promise<Uint8Array> {
-  return page.screenshot({ type: 'png', omitBackground: true, animations: 'allow', caret: 'hide' });
+  client.off('Page.screencastFrame', onFrame);
+  await client.send('Page.stopScreencast').catch(() => undefined);
+  await client.detach().catch(() => undefined);
 }
 
 function delay(milliseconds: number): Promise<void> {
