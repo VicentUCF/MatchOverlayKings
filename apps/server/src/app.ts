@@ -89,11 +89,12 @@ export async function buildApp(
   const pilotControlOrigins = new Set(config.pilot.controlOrigins
     ?? (config.pilot.mobileCamera === undefined ? [] : [config.pilot.mobileCamera.cameraPageOrigin]));
   app.addHook('onRequest', async (request, reply) => {
-    if (request.url.startsWith('/api/pilot/')) {
+    if (request.url.startsWith('/api/pilot/') || request.url === '/api/teams') {
       pilotControlCors(request, reply, pilotControlOrigins);
     }
   });
   app.options('/api/pilot/*', async (_request, reply) => reply.status(204).send());
+  app.options('/api/teams', async (_request, reply) => reply.status(204).send());
 
   app.get('/health', async () => ({
     ok: true,

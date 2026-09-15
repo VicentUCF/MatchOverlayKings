@@ -57,9 +57,26 @@ describe('production pilot', () => {
     expect(preflight.headers['access-control-allow-private-network']).toBe('true');
     expect(preflight.headers['private-network-access-name']).toBe('kpl-production-agent');
 
+    const teamsPreflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/teams',
+      headers: {
+        origin,
+        'access-control-request-method': 'GET',
+        'access-control-request-private-network': 'true',
+      },
+    });
+    expect(teamsPreflight.statusCode).toBe(204);
+    expect(teamsPreflight.headers['access-control-allow-origin']).toBe(origin);
+    expect(teamsPreflight.headers['access-control-allow-private-network']).toBe('true');
+
     const allowed = await app.inject({ method: 'GET', url: '/api/pilot/readiness', headers: { origin } });
     expect(allowed.statusCode).toBe(200);
     expect(allowed.headers['access-control-allow-origin']).toBe(origin);
+
+    const teams = await app.inject({ method: 'GET', url: '/api/teams', headers: { origin } });
+    expect(teams.statusCode).toBe(200);
+    expect(teams.headers['access-control-allow-origin']).toBe(origin);
 
     const denied = await app.inject({
       method: 'GET', url: '/api/pilot/readiness', headers: { origin: 'https://attacker.example' },
@@ -390,6 +407,14 @@ describe('production pilot', () => {
 
 async function createPilotApp() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kpl-pilot-'));
+  await writeFile(join(dataDir, 'teams.json'), JSON.stringify([{
+    id: 'kings-of-favar',
+    name: 'Kings of Favar',
+    shortName: 'Kings',
+    logoUrl: '/logos/kings.png',
+    primaryColor: '#D1007A',
+    secondaryColor: '#0F1115',
+  }]));
   const { app } = await buildApp({
     host: '127.0.0.1', port: 0, dataDir, webDistDir: join(dataDir, 'missing-web'), controlPin: null,
     pilot: {
