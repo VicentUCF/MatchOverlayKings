@@ -74,6 +74,9 @@ describe('tabbed production workspace', () => {
     expect((html.match(/href="https:\/\/www.youtube.com\/watch\?v=broadcast-1"/g) ?? [])).toHaveLength(2);
     expect(html).toContain('Datos compartidos');
     expect(html).toContain('Descripción compartida de la jornada');
+    expect(html).toContain('aria-label="Información de este PC"');
+    expect(html).toContain('aria-label="Abrir ajustes generales"');
+    expect(html).toContain('<dialog');
     expect((html.match(/id="pilot-home-pista-/g) ?? [])).toHaveLength(3);
     expect(html).toContain('<option value="Kings of Favar">Kings of Favar</option>');
     expect(html).toContain('<option value="Red Lions">Red Lions</option>');

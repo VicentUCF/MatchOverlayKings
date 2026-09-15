@@ -1,8 +1,8 @@
 import { PilotThumbnailPreview } from './PilotThumbnailPreview.js';
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
 import {
-  CircleCheck, CircleX, ExternalLink, MonitorPlay, Radio, RefreshCw,
-  Settings2, SlidersHorizontal, TestTube2,
+  CircleCheck, CircleX, ExternalLink, Info, MonitorPlay, Radio, RefreshCw,
+  Settings, Settings2, SlidersHorizontal, TestTube2, X,
 } from 'lucide-react';
 import {
   PILOT_MOBILE_SOURCE_ID,
@@ -61,6 +61,7 @@ export function ProductionPilotWorkspaceView({
 }: ProductionPilotWorkspaceViewProps) {
   const view: PilotWorkspaceView = controlsOnly ? 'controls' : initialView;
   const [elapsedByCourt, setElapsedByCourt] = useState<Partial<Record<PilotCourtSlug, number>>>({});
+  const generalSettingsDialog = useRef<HTMLDialogElement>(null);
   const [description, setDescription] = useState(() =>
     pilot.state.kind === 'ready'
       ? pilot.state.configurations.find((configuration) => configuration.description)?.description
@@ -106,11 +107,19 @@ export function ProductionPilotWorkspaceView({
           ? 'Deja preparadas las tres pistas. Los cambios se guardan en este PC y aparecerán en Mandos.'
           : 'Controla las emisiones sin cambiar fuentes, títulos ni visibilidad.'}</p>
       </div>
-      <ReadinessSummary readiness={ready.readiness} activeCount={activeCount} configuredCount={configuredCount} />
+      <div className="production-pilot-intro__actions">
+        <ReadinessSummary readiness={ready.readiness} activeCount={activeCount} configuredCount={configuredCount} />
+        {view === 'configuration' ? <button className="production-pilot-settings-trigger" type="button"
+          aria-label="Abrir ajustes generales" title="Ajustes generales"
+          onClick={() => generalSettingsDialog.current?.showModal()}>
+          <Settings aria-hidden="true" />
+        </button> : null}
+      </div>
     </section>
     {ready.error ? <div className="production-page-feedback danger" role="alert">{ready.error}</div> : null}
     {view === 'configuration' ? <>
-      <GeneralBroadcastSettings description={description} onDescriptionChange={setDescription} />
+      <GeneralBroadcastSettingsDialog dialogRef={generalSettingsDialog}
+        description={description} onDescriptionChange={setDescription} />
       <section className="production-pilot-courts" aria-label="Configuración de emisiones por pista">
         {COURTS.map((court) => <PilotConfigurationPanel key={court.slug} court={court}
           teams={ready.teams} description={description}
@@ -138,24 +147,30 @@ export function ProductionPilotWorkspaceView({
   </>);
 }
 
-function GeneralBroadcastSettings({
-  description, onDescriptionChange,
+function GeneralBroadcastSettingsDialog({
+  dialogRef, description, onDescriptionChange,
 }: {
+  readonly dialogRef: RefObject<HTMLDialogElement | null>;
   readonly description: string;
   readonly onDescriptionChange: (value: string) => void;
 }) {
-  return <section className="production-pilot-general" aria-labelledby="pilot-general-title">
-    <div>
-      <p className="production-kicker">Ajustes generales</p>
-      <h2 id="pilot-general-title">Datos compartidos</h2>
+  return <dialog className="production-pilot-settings-dialog" ref={dialogRef}
+    aria-labelledby="pilot-general-title"
+    onClick={(event) => { if (event.target === event.currentTarget) event.currentTarget.close(); }}>
+    <div className="production-pilot-settings-dialog__panel">
+      <header>
+        <div><p className="production-kicker">Ajustes generales</p><h2 id="pilot-general-title">Datos compartidos</h2></div>
+        <form method="dialog"><button type="submit" aria-label="Cerrar ajustes generales"><X aria-hidden="true" /></button></form>
+      </header>
       <p>Esta descripción se aplicará por igual a cada pista cuando guardes su configuración.</p>
+      <label htmlFor="pilot-general-description">Descripción de los directos
+        <textarea id="pilot-general-description" required maxLength={5_000} value={description}
+          onChange={(event) => onDescriptionChange(event.currentTarget.value)} />
+        <small>{description.length}/5000 caracteres</small>
+      </label>
+      <form method="dialog"><button className="production-setup-submit" type="submit">Listo</button></form>
     </div>
-    <label htmlFor="pilot-general-description">Descripción de los directos
-      <textarea id="pilot-general-description" required maxLength={5_000} value={description}
-        onChange={(event) => onDescriptionChange(event.currentTarget.value)} />
-      <small>{description.length}/5000 caracteres</small>
-    </label>
-  </section>;
+  </dialog>;
 }
 
 function PilotConfigurationPanel({
@@ -404,14 +419,17 @@ function ReadinessSummary({ readiness, activeCount, configuredCount }: {
   readonly activeCount: number;
   readonly configuredCount: number;
 }) {
-  return <aside className="production-pilot-readiness"><h2>Este PC</h2>
-    <p>{readiness.ffmpeg.available ? '✓ FFmpeg disponible' : '✕ FFmpeg no disponible'}</p>
-    <p><strong>{configuredCount}/3</strong> pistas configuradas</p><p><strong>{activeCount}/3</strong> salidas activas</p>
-    <p>{readiness.sources.filter(({ kind }) => kind === 'v4l2').length} cámaras detectadas</p>
-    <p>{readiness.youtube.authorized ? '✓ YouTube conectado' : 'YouTube pendiente'}</p>
-    {!readiness.youtube.authorized && readiness.youtube.configured && readiness.youtube.authorizationUrl
-      ? <a className="production-setup-submit" href={readiness.youtube.authorizationUrl}>Conectar YouTube</a> : null}
-    {readiness.limitations.map((limitation) => <small key={limitation}>{limitation}</small>)}</aside>;
+  return <details className="production-pilot-readiness">
+    <summary aria-label="Información de este PC" title="Información de este PC"><Info aria-hidden="true" /></summary>
+    <aside><h2>Este PC</h2>
+      <p>{readiness.ffmpeg.available ? '✓ FFmpeg disponible' : '✕ FFmpeg no disponible'}</p>
+      <p><strong>{configuredCount}/3</strong> pistas configuradas</p><p><strong>{activeCount}/3</strong> salidas activas</p>
+      <p>{readiness.sources.filter(({ kind }) => kind === 'v4l2').length} cámaras detectadas</p>
+      <p>{readiness.youtube.authorized ? '✓ YouTube conectado' : 'YouTube pendiente'}</p>
+      {!readiness.youtube.authorized && readiness.youtube.configured && readiness.youtube.authorizationUrl
+        ? <a className="production-setup-submit" href={readiness.youtube.authorizationUrl}>Conectar YouTube</a> : null}
+      {readiness.limitations.map((limitation) => <small key={limitation}>{limitation}</small>)}</aside>
+  </details>;
 }
 
 function HandoffPanel({ configuredCount, onOpenControls }: { readonly configuredCount: number; readonly onOpenControls: () => void }) {

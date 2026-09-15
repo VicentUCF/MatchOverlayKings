@@ -79,7 +79,9 @@ export function createProductionPilotAdapter(
     readiness: () => request('/api/pilot/readiness', PilotReadinessSchema),
     sessions: async (): Promise<PilotApiResult<readonly PilotSession[]>> => {
       const result = await request('/api/pilot/sessions', SessionsEnvelopeSchema);
-      return result.kind === 'success' ? { kind: 'success', value: result.value.sessions } : result;
+      return result.kind === 'success'
+        ? { kind: 'success', value: result.value.sessions.map((session) => localizeSession(session, baseUrl)) }
+        : result;
     },
     configurations: async (): Promise<PilotApiResult<readonly PilotConfiguration[]>> => {
       const result = await request('/api/pilot/configurations', ConfigurationsEnvelopeSchema);
@@ -138,7 +140,9 @@ export function createProductionPilotAdapter(
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(parsed.data),
       });
-      return result.kind === 'success' ? { kind: 'success', value: result.value.session } : result;
+      return result.kind === 'success'
+        ? { kind: 'success', value: localizeSession(result.value.session, baseUrl) }
+        : result;
     },
     start: (id: string) => sessionMutation(id, 'start'),
     stop: (id: string) => sessionMutation(id, 'stop'),
@@ -148,8 +152,15 @@ export function createProductionPilotAdapter(
     const result = await request(`/api/pilot/sessions/${encodeURIComponent(id)}/${action}`, SessionEnvelopeSchema, {
       method: 'POST',
     });
-    return result.kind === 'success' ? { kind: 'success', value: result.value.session } : result;
+    return result.kind === 'success'
+      ? { kind: 'success', value: localizeSession(result.value.session, baseUrl) }
+      : result;
   }
+}
+
+function localizeSession(session: PilotSession, baseUrl: string): PilotSession {
+  if (baseUrl === '' || !session.thumbnailUrl.startsWith('/')) return session;
+  return { ...session, thumbnailUrl: `${baseUrl}${session.thumbnailUrl}` };
 }
 
 function defaultLocalAgentBaseUrl(): string {

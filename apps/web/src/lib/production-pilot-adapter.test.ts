@@ -8,6 +8,15 @@ const readiness = {
   limitations: ['YouTube pendiente'],
 } as const;
 
+const session = {
+  id: '123e4567-e89b-42d3-a456-426614174000', courtSlug: 'pista-1', mode: 'youtube',
+  source: { id: 'synthetic', kind: 'synthetic', label: 'Señal de prueba' }, status: 'prepared',
+  title: 'Kings vs Lions', description: 'Partido en directo',
+  thumbnailUrl: '/api/pilot/sessions/123e4567-e89b-42d3-a456-426614174000/thumbnail',
+  broadcastId: 'broadcast-1', watchUrl: 'https://youtube.com/watch?v=broadcast-1',
+  youtubeStreamStatus: 'ready', encoder: null, startedAt: null, stoppedAt: null, error: null,
+} as const;
+
 describe('production pilot adapter', () => {
   it('loads and validates readiness from the local agent', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify(readiness), {
@@ -71,5 +80,21 @@ describe('production pilot adapter', () => {
 
     await expect(adapter.teams()).resolves.toEqual({ kind: 'success', value: teams });
     expect(fetcher).toHaveBeenCalledWith('/api/teams', undefined);
+  });
+
+  it('loads session thumbnails from the loopback agent when the web is deployed', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ sessions: [session] }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    const adapter = createProductionPilotAdapter(fetcher as typeof fetch, 'http://127.0.0.1:4310/');
+
+    const result = await adapter.sessions();
+
+    expect(result).toMatchObject({
+      kind: 'success',
+      value: [{
+        thumbnailUrl: 'http://127.0.0.1:4310/api/pilot/sessions/123e4567-e89b-42d3-a456-426614174000/thumbnail',
+      }],
+    });
   });
 });
