@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { Team } from '@kpl/shared';
 import type {
   PilotConfiguration,
   PilotCourtSlug,
@@ -15,6 +16,7 @@ export type ReadyPilotState = {
   readonly kind: 'ready';
   readonly readiness: PilotReadiness;
   readonly configurations: readonly PilotConfiguration[];
+  readonly teams: readonly Team[];
   readonly sessions: readonly PilotSession[];
   readonly mobileCamera: PilotMobileCameraSession | null;
   readonly mobileConnectUrl: string | null;
@@ -40,8 +42,8 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
   const refresh = useCallback(async (quiet = false) => {
     const requestId = ++refreshSequence.current;
     if (!quiet) setState((current) => current.kind === 'ready' ? { ...current, refreshing: true, error: null } : current);
-    const [readiness, sessions, configurations, mobileCamera] = await Promise.all([
-      adapter.readiness(), adapter.sessions(), adapter.configurations(), adapter.mobileCamera(),
+    const [readiness, sessions, configurations, teams, mobileCamera] = await Promise.all([
+      adapter.readiness(), adapter.sessions(), adapter.configurations(), adapter.teams(), adapter.mobileCamera(),
     ]);
     if (requestId !== refreshSequence.current) return;
     const failure = readiness.kind === 'error'
@@ -49,6 +51,7 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
       : sessions.kind === 'error'
         ? sessions.message
         : configurations.kind === 'error' ? configurations.message
+          : teams.kind === 'error' ? teams.message
           : mobileCamera.kind === 'error' ? mobileCamera.message : null;
     if (failure !== null) {
       setState((current) => current.kind === 'ready'
@@ -57,16 +60,16 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
       return;
     }
     if (readiness.kind !== 'success' || sessions.kind !== 'success'
-      || configurations.kind !== 'success' || mobileCamera.kind !== 'success') return;
+      || configurations.kind !== 'success' || teams.kind !== 'success' || mobileCamera.kind !== 'success') return;
     setState((current): PilotState => current.kind === 'ready'
       ? {
         ...current, readiness: readiness.value, sessions: sessions.value,
-        configurations: configurations.value, mobileCamera: mobileCamera.value,
+        configurations: configurations.value, teams: teams.value, mobileCamera: mobileCamera.value,
         refreshing: false, error: null,
       }
       : {
         kind: 'ready', readiness: readiness.value, sessions: sessions.value,
-        configurations: configurations.value, refreshing: false,
+        configurations: configurations.value, teams: teams.value, refreshing: false,
         mobileCamera: mobileCamera.value, mobileConnectUrl: null,
         pendingCourts: [], courtErrors: {}, error: null,
       });

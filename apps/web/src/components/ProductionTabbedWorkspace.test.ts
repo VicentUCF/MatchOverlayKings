@@ -52,9 +52,14 @@ describe('tabbed production workspace', () => {
           sources: [{ id: 'synthetic', kind: 'synthetic', label: 'Señal de prueba' }],
           limitations: [],
         },
+        teams: [
+          { id: 'kings-of-favar', name: 'Kings of Favar', shortName: 'Kings', logoUrl: '/logos/kings.png', primaryColor: '#D1007A', secondaryColor: '#0F1115' },
+          { id: 'red-lions', name: 'Red Lions', shortName: 'Red Lions', logoUrl: '/logos/red-lions.png', primaryColor: '#E21A23', secondaryColor: '#14151A' },
+        ],
         configurations: [{
           courtSlug: 'pista-1', mode: 'youtube', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
-          matchdayNumber: 2, seasonLabel: 'T2', scheduledAt: '2026-09-14T18:00:00.000Z', privacyStatus: 'public',
+          matchdayNumber: 2, seasonLabel: 'T2', description: 'Descripción compartida de la jornada',
+          scheduledAt: '2026-09-14T18:00:00.000Z', privacyStatus: 'public',
           updatedAt: '2026-09-14T16:00:00.000Z',
         }],
         sessions: [liveYoutubeSession], mobileCamera: null, mobileConnectUrl: null,
@@ -67,5 +72,10 @@ describe('tabbed production workspace', () => {
 
     expect((html.match(/Ver directo en YouTube/g) ?? [])).toHaveLength(2);
     expect((html.match(/href="https:\/\/www.youtube.com\/watch\?v=broadcast-1"/g) ?? [])).toHaveLength(2);
+    expect(html).toContain('Datos compartidos');
+    expect(html).toContain('Descripción compartida de la jornada');
+    expect((html.match(/id="pilot-home-pista-/g) ?? [])).toHaveLength(3);
+    expect(html).toContain('<option value="Kings of Favar">Kings of Favar</option>');
+    expect(html).toContain('<option value="Red Lions">Red Lions</option>');
   });
 });

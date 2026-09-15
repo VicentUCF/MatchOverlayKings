@@ -160,6 +160,7 @@ export const PreparePilotSessionInputSchema = z.strictObject({
   awayTeam: z.string().trim().min(1).max(80),
   matchdayNumber: z.number().int().positive().max(999),
   seasonLabel: z.string().trim().min(1).max(32),
+  description: z.string().trim().min(1).max(5_000).optional(),
   scheduledAt: z.iso.datetime({ offset: true }),
   privacyStatus: PilotPrivacySchema,
 });

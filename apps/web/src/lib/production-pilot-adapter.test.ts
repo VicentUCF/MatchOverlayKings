@@ -58,4 +58,18 @@ describe('production pilot adapter', () => {
       method: 'PUT', body: JSON.stringify(input),
     }));
   });
+
+  it('loads the team catalogue used by the broadcast selectors', async () => {
+    const teams = [{
+      id: 'kings-of-favar', name: 'Kings of Favar', shortName: 'Kings', logoUrl: '/logos/kings.png',
+      primaryColor: '#D1007A', secondaryColor: '#0F1115',
+    }];
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ teams }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    const adapter = createProductionPilotAdapter(fetcher as typeof fetch);
+
+    await expect(adapter.teams()).resolves.toEqual({ kind: 'success', value: teams });
+    expect(fetcher).toHaveBeenCalledWith('/api/teams', undefined);
+  });
 });

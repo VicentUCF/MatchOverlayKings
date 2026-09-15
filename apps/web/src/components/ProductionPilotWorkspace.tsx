@@ -15,6 +15,7 @@ import {
   type PilotSession,
   type PreparePilotSessionInput,
 } from '@kpl/production-contracts';
+import type { Team } from '@kpl/shared';
 import { useProductionPilot, type ProductionPilotController } from '../hooks/useProductionPilot.js';
 import { youtubeWatchUrl } from '../lib/pilot-youtube-watch.js';
 import { ProductionNavigation, type ProductionNavigationRole } from './ProductionNavigation.js';
@@ -23,13 +24,15 @@ import { PilotMobileCameraMonitor, PilotMobileCameraPanel } from './PilotMobileC
 const COURTS: readonly {
   readonly slug: PilotCourtSlug;
   readonly label: string;
-  readonly home: string;
-  readonly away: string;
+  readonly homeTeamId: string;
+  readonly awayTeamId: string;
 }[] = [
-  { slug: 'pista-1', label: 'Pista 1', home: 'Red Lions', away: 'Kings' },
-  { slug: 'pista-2', label: 'Pista 2', home: 'Vipers', away: 'Titans' },
-  { slug: 'pista-3', label: 'Pista 3', home: 'Warriors', away: 'Legends' },
+  { slug: 'pista-1', label: 'Pista 1', homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' },
+  { slug: 'pista-2', label: 'Pista 2', homeTeamId: 'barbaridad-team', awayTeamId: 'magic-city' },
+  { slug: 'pista-3', label: 'Pista 3', homeTeamId: 'thormentadores', awayTeamId: 'titanics' },
 ];
+
+const DEFAULT_BROADCAST_DESCRIPTION = 'Sigue en directo la jornada de Kings Padel League.';
 
 type PilotWorkspaceView = 'configuration' | 'controls';
 
@@ -57,6 +60,18 @@ export function ProductionPilotWorkspaceView({
 }: ProductionPilotWorkspaceViewProps) {
   const view: PilotWorkspaceView = controlsOnly ? 'controls' : initialView;
   const [elapsedByCourt, setElapsedByCourt] = useState<Partial<Record<PilotCourtSlug, number>>>({});
+  const [description, setDescription] = useState(() =>
+    pilot.state.kind === 'ready'
+      ? pilot.state.configurations.find((configuration) => configuration.description)?.description
+        ?? DEFAULT_BROADCAST_DESCRIPTION
+      : DEFAULT_BROADCAST_DESCRIPTION);
+  const descriptionInitialized = useRef(pilot.state.kind === 'ready');
+  useEffect(() => {
+    if (pilot.state.kind !== 'ready' || descriptionInitialized.current) return;
+    setDescription(pilot.state.configurations.find((configuration) => configuration.description)?.description
+      ?? DEFAULT_BROADCAST_DESCRIPTION);
+    descriptionInitialized.current = true;
+  }, [pilot.state]);
   const recordElapsed = useCallback((court: PilotCourtSlug, seconds: number | null) => {
     setElapsedByCourt((current) => ({ ...current, [court]: seconds ?? undefined }));
   }, []);
@@ -94,8 +109,10 @@ export function ProductionPilotWorkspaceView({
     </section>
     {ready.error ? <div className="production-page-feedback danger" role="alert">{ready.error}</div> : null}
     {view === 'configuration' ? <>
+      <GeneralBroadcastSettings description={description} onDescriptionChange={setDescription} />
       <section className="production-pilot-courts" aria-label="Configuración de emisiones por pista">
         {COURTS.map((court) => <PilotConfigurationPanel key={court.slug} court={court}
+          teams={ready.teams} description={description}
           readiness={ready.readiness} configuration={configurationFor(ready.configurations, court.slug)}
           session={latestSession(ready.sessions, court.slug)} pending={ready.pendingCourts.includes(court.slug)}
           error={ready.courtErrors[court.slug] ?? null} unavailableSources={unavailableSources}
@@ -120,11 +137,33 @@ export function ProductionPilotWorkspaceView({
   </>);
 }
 
+function GeneralBroadcastSettings({
+  description, onDescriptionChange,
+}: {
+  readonly description: string;
+  readonly onDescriptionChange: (value: string) => void;
+}) {
+  return <section className="production-pilot-general" aria-labelledby="pilot-general-title">
+    <div>
+      <p className="production-kicker">Ajustes generales</p>
+      <h2 id="pilot-general-title">Datos compartidos</h2>
+      <p>Esta descripción se aplicará por igual a cada pista cuando guardes su configuración.</p>
+    </div>
+    <label htmlFor="pilot-general-description">Descripción de los directos
+      <textarea id="pilot-general-description" required maxLength={5_000} value={description}
+        onChange={(event) => onDescriptionChange(event.currentTarget.value)} />
+      <small>{description.length}/5000 caracteres</small>
+    </label>
+  </section>;
+}
+
 function PilotConfigurationPanel({
-  court, readiness, configuration, session, pending, error, unavailableSources, mobileCamera,
+  court, teams, description, readiness, configuration, session, pending, error, unavailableSources, mobileCamera,
   mobileConnectUrl, onCreateMobile, onUpdateMobile, onRevokeMobile, onSave,
 }: {
   readonly court: (typeof COURTS)[number];
+  readonly teams: readonly Team[];
+  readonly description: string;
   readonly readiness: PilotReadiness;
   readonly configuration: PilotConfiguration | null;
   readonly session: PilotSession | null;
@@ -139,8 +178,8 @@ function PilotConfigurationPanel({
   readonly onSave: (input: PreparePilotSessionInput) => Promise<boolean>;
 }) {
   const [mode, setMode] = useState<PilotMode>(configuration?.mode ?? 'simulation');
-  const [homeTeam, setHomeTeam] = useState(configuration?.homeTeam ?? court.home);
-  const [awayTeam, setAwayTeam] = useState(configuration?.awayTeam ?? court.away);
+  const [homeTeam, setHomeTeam] = useState(configuration?.homeTeam ?? teamName(teams, court.homeTeamId));
+  const [awayTeam, setAwayTeam] = useState(configuration?.awayTeam ?? teamName(teams, court.awayTeamId));
   const [seasonLabel, setSeasonLabel] = useState(configuration?.seasonLabel ?? 'T2');
   const [matchdayNumber, setMatchdayNumber] = useState(configuration?.matchdayNumber ?? 1);
   const [scheduledAt, setScheduledAt] = useState(() => toLocalDateTime(configuration?.scheduledAt));
@@ -170,7 +209,7 @@ function PilotConfigurationPanel({
     event.preventDefault();
     if (youtubeUnavailable || pending) return;
     const didSave = await onSave({
-      courtSlug: court.slug, mode, sourceId, homeTeam, awayTeam, matchdayNumber, seasonLabel,
+      courtSlug: court.slug, mode, sourceId, homeTeam, awayTeam, matchdayNumber, seasonLabel, description,
       scheduledAt: new Date(scheduledAt).toISOString(), privacyStatus,
     });
     setSaved(didSave);
@@ -207,9 +246,13 @@ function PilotConfigurationPanel({
             })}
           </select>
           <label htmlFor={`pilot-home-${court.slug}`}>Local</label>
-          <input id={`pilot-home-${court.slug}`} required value={homeTeam} onChange={(event) => setHomeTeam(event.currentTarget.value)} />
+          <select id={`pilot-home-${court.slug}`} required value={homeTeam} onChange={(event) => setHomeTeam(event.currentTarget.value)}>
+            {teams.map((team) => <option key={team.id} value={team.name}>{team.name}</option>)}
+          </select>
           <label htmlFor={`pilot-away-${court.slug}`}>Visitante</label>
-          <input id={`pilot-away-${court.slug}`} required value={awayTeam} onChange={(event) => setAwayTeam(event.currentTarget.value)} />
+          <select id={`pilot-away-${court.slug}`} required value={awayTeam} onChange={(event) => setAwayTeam(event.currentTarget.value)}>
+            {teams.map((team) => <option key={team.id} value={team.name}>{team.name}</option>)}
+          </select>
           <label htmlFor={`pilot-season-${court.slug}`}>Temporada</label>
           <input id={`pilot-season-${court.slug}`} required value={seasonLabel} onChange={(event) => setSeasonLabel(event.currentTarget.value)} />
           <label htmlFor={`pilot-matchday-${court.slug}`}>Jornada</label>
@@ -225,7 +268,7 @@ function PilotConfigurationPanel({
           </select>
         </div>
         <div className="production-pilot-config-note"><strong>Vista previa:</strong> {homeTeam || 'Local'} vs {awayTeam || 'Visitante'} · Jornada {matchdayNumber || '—'}
-          <small>El título, la descripción y la miniatura se generarán al preparar la emisión desde Mandos.</small></div>
+          <small>El título y la miniatura se generarán al preparar la emisión. Se usará la descripción general.</small></div>
         {active ? <p className="production-command-feedback">Hay una sesión en curso. Esta configuración se usará en la siguiente.</p> : null}
         <button className="production-setup-submit" type="submit" disabled={youtubeUnavailable || pending}>
           {pending ? 'Guardando…' : saved ? 'Configuración guardada' : configuration ? 'Guardar cambios' : 'Guardar configuración'}
@@ -427,6 +470,10 @@ function configurationFor(configurations: readonly PilotConfiguration[], courtSl
 
 function latestSession(sessions: readonly PilotSession[], courtSlug: PilotCourtSlug): PilotSession | null {
   return [...sessions].filter((session) => session.courtSlug === courtSlug).at(-1) ?? null;
+}
+
+function teamName(teams: readonly Team[], teamId: string): string {
+  return teams.find((team) => team.id === teamId)?.name ?? teams[0]?.name ?? '';
 }
 
 function inputFromConfiguration(configuration: PilotConfiguration): PreparePilotSessionInput {

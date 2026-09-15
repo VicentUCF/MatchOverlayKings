@@ -157,7 +157,11 @@ export class PilotService {
       session.courtSlug === input.courtSlug && !['stopped', 'failed'].includes(session.status));
     if (existing !== undefined) throw new PilotServiceError(409, 'CONFLICT', 'La pista ya tiene un piloto activo.');
 
-    const assets = productionAssets(input);
+    const generatedAssets = productionAssets(input);
+    const assets = {
+      ...generatedAssets,
+      description: input.description ?? generatedAssets.description,
+    };
     let youtubePrepared: Awaited<ReturnType<PilotYouTubeGateway['prepareBroadcast']>> | null = null;
     if (input.mode === 'youtube') {
       try {

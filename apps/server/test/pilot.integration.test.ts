@@ -79,6 +79,7 @@ describe('production pilot', () => {
     const configurationPayload = {
       courtSlug: 'pista-1', mode: 'simulation', sourceId: 'synthetic',
       homeTeam: 'Red Lions', awayTeam: 'Kings', matchdayNumber: 1, seasonLabel: 'T2',
+      description: 'Descripción común de todos los directos.',
       scheduledAt: new Date(Date.now() + 60 * 60_000).toISOString(), privacyStatus: 'private',
     } as const;
     const configureResponse = await app.inject({
@@ -100,7 +101,10 @@ describe('production pilot', () => {
     });
     expect(prepareResponse.statusCode).toBe(201);
     const prepared = PilotSessionSchema.parse(prepareResponse.json().session);
-    expect(prepared).toMatchObject({ status: 'prepared', mode: 'simulation', broadcastId: null });
+    expect(prepared).toMatchObject({
+      status: 'prepared', mode: 'simulation', broadcastId: null,
+      description: 'Descripción común de todos los directos.',
+    });
 
     const thumbnail = await app.inject({ method: 'GET', url: prepared.thumbnailUrl });
     expect(thumbnail.headers['content-type']).toContain('image/png');

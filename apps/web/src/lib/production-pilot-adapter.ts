@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Team } from '@kpl/shared';
 import {
   PilotConfigurationSchema,
   PilotConfigurationsSchema,
@@ -24,6 +25,11 @@ const SessionsEnvelopeSchema = z.strictObject({ sessions: PilotSessionsSchema })
 const ConfigurationEnvelopeSchema = z.strictObject({ configuration: PilotConfigurationSchema });
 const ConfigurationsEnvelopeSchema = z.strictObject({ configurations: PilotConfigurationsSchema });
 const MobileCameraEnvelopeSchema = z.strictObject({ mobileCamera: PilotMobileCameraSessionSchema.nullable() });
+const TeamSchema = z.strictObject({
+  id: z.string().min(1), name: z.string().min(1), shortName: z.string().min(1),
+  logoUrl: z.string(), primaryColor: z.string(), secondaryColor: z.string(),
+});
+const TeamsEnvelopeSchema = z.strictObject({ teams: z.array(TeamSchema).readonly() });
 
 export type PilotApiResult<Value> =
   | { readonly kind: 'success'; readonly value: Value }
@@ -78,6 +84,10 @@ export function createProductionPilotAdapter(
     configurations: async (): Promise<PilotApiResult<readonly PilotConfiguration[]>> => {
       const result = await request('/api/pilot/configurations', ConfigurationsEnvelopeSchema);
       return result.kind === 'success' ? { kind: 'success', value: result.value.configurations } : result;
+    },
+    teams: async (): Promise<PilotApiResult<readonly Team[]>> => {
+      const result = await request('/api/teams', TeamsEnvelopeSchema);
+      return result.kind === 'success' ? { kind: 'success', value: result.value.teams } : result;
     },
     mobileCamera: async (): Promise<PilotApiResult<PilotMobileCameraSession | null>> => {
       const result = await request('/api/pilot/mobile-camera', MobileCameraEnvelopeSchema);
