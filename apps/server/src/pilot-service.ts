@@ -368,6 +368,12 @@ export class PilotService {
     return session.public;
   }
 
+  public previewThumbnail(rawInput: unknown): Uint8Array {
+    const parsed = PreparePilotSessionInputSchema.safeParse(rawInput);
+    if (!parsed.success) throw new PilotServiceError(400, 'INVALID_INPUT', 'Revisa los datos de la portada.');
+    return productionAssets(parsed.data).pngBytes;
+  }
+
   public thumbnail(id: string): Uint8Array {
     return this.get(id).thumbnail;
   }
@@ -457,7 +463,7 @@ function productionAssets(input: PreparePilotSessionInput) {
     timeZone: 'Europe/Madrid',
     locale: 'es-ES',
     publicUrl: `https://live.kingspadelleague.es/live/${input.courtSlug}`,
-    templateRevision: 'pilot-v1',
+    templateRevision: 'kpl-season-v2',
   });
 }
 

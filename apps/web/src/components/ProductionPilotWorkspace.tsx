@@ -1,3 +1,4 @@
+import { PilotThumbnailPreview } from './PilotThumbnailPreview.js';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   CircleCheck, CircleX, ExternalLink, MonitorPlay, Radio, RefreshCw,
@@ -268,7 +269,8 @@ function PilotConfigurationPanel({
           </select>
         </div>
         <div className="production-pilot-config-note"><strong>Vista previa:</strong> {homeTeam || 'Local'} vs {awayTeam || 'Visitante'} · Jornada {matchdayNumber || '—'}
-          <small>El título y la miniatura se generarán al preparar la emisión. Se usará la descripción general.</small></div>
+          <small>Esta portada se subirá a YouTube al preparar la emisión. Se usará la descripción general.</small></div>
+        <PilotThumbnailPreview homeTeam={homeTeam} awayTeam={awayTeam} matchdayNumber={matchdayNumber} />
         {active ? <p className="production-command-feedback">Hay una sesión en curso. Esta configuración se usará en la siguiente.</p> : null}
         <button className="production-setup-submit" type="submit" disabled={youtubeUnavailable || pending}>
           {pending ? 'Guardando…' : saved ? 'Configuración guardada' : configuration ? 'Guardar cambios' : 'Guardar configuración'}

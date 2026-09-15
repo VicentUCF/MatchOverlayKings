@@ -96,6 +96,15 @@ describe('production pilot', () => {
     });
     expect(wrongCourtResponse.statusCode).toBe(400);
 
+    const preview = await app.inject({ method: 'POST', url: '/api/pilot/thumbnail-preview', payload: configurationPayload });
+    expect(preview.statusCode).toBe(200);
+    const changedPreview = await app.inject({ method: 'POST', url: '/api/pilot/thumbnail-preview',
+      payload: { ...configurationPayload, matchdayNumber: 2 } });
+    expect(changedPreview.json().dataUrl).not.toBe(preview.json().dataUrl);
+    const invalidPreview = await app.inject({ method: 'POST', url: '/api/pilot/thumbnail-preview', payload: {} });
+    expect(invalidPreview.statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/pilot/sessions' })).json().sessions).toEqual([]);
+
     const prepareResponse = await app.inject({
       method: 'POST', url: '/api/pilot/sessions', payload: configurationPayload,
     });
@@ -108,6 +117,7 @@ describe('production pilot', () => {
 
     const thumbnail = await app.inject({ method: 'GET', url: prepared.thumbnailUrl });
     expect(thumbnail.headers['content-type']).toContain('image/png');
+    expect(preview.json().dataUrl).toBe(`data:image/png;base64,${thumbnail.rawPayload.toString('base64')}`);
     expect(thumbnail.rawPayload.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
 
     const startResponse = await app.inject({ method: 'POST', url: `/api/pilot/sessions/${prepared.id}/start` });

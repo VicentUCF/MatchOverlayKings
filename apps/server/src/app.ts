@@ -217,6 +217,12 @@ export async function buildApp(
     return { configuration: await pilot.configure(request.params.courtSlug, request.body) };
   });
 
+  app.post('/api/pilot/thumbnail-preview', async (request) => {
+    requireLocalPilot(request.ip);
+    const png = pilot.previewThumbnail(request.body);
+    return { dataUrl: `data:image/png;base64,${Buffer.from(png).toString('base64')}` };
+  });
+
   app.post('/api/pilot/sessions', async (request, reply) => {
     requireLocalPilot(request.ip);
     const session = await pilot.prepare(request.body);

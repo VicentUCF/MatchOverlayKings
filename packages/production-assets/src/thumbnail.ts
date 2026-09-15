@@ -1,6 +1,7 @@
 import { Resvg } from '@resvg/resvg-js';
 import { fileURLToPath } from 'node:url';
 import { logoDataUri } from './logo.js';
+import { officialLeagueLogo, officialTeamLogo, officialThumbnailBackground } from './official-logos.js';
 import { THUMBNAIL_TOKENS as token } from './tokens.js';
 import type { ProductionAssetInput, ProductionAssetOptions } from './types.js';
 
@@ -9,58 +10,46 @@ const FONT_FILES = [
   fileURLToPath(import.meta.resolve('@expo-google-fonts/manrope/700Bold/Manrope_700Bold.ttf')),
 ] as const;
 
-export function buildThumbnailSvg(
-  input: ProductionAssetInput,
-  options: ProductionAssetOptions,
-): string {
-  const homeName = input.home.shortName ?? input.home.name;
-  const awayName = input.away.shortName ?? input.away.name;
-  const homeColor = input.home.color ?? token.color.brandStrong;
-  const awayColor = input.away.color ?? token.color.accent;
-  const homeLogo = logoDataUri(input.home, options);
-  const awayLogo = logoDataUri(input.away, options);
-  const matchday = `${input.matchdayLabel} ${input.matchdayNumber} · ${input.seasonLabel}`;
-  const layout = token.layout;
-  const type = token.typography;
-  const atmosphere = token.atmosphere;
-  const date = new Intl.DateTimeFormat(input.locale, {
-    timeZone: input.timeZone,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).format(new Date(input.scheduledAt));
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${token.canvas.width}" height="${token.canvas.height}" viewBox="0 0 ${token.canvas.width} ${token.canvas.height}">
+export function buildThumbnailSvg(input: ProductionAssetInput, options: ProductionAssetOptions): string {
+  const gold = token.color.brand;
+  const team = (side: 'home' | 'away', x: number) => {
+    const value = input[side];
+    const name = value.name.toUpperCase();
+    const logo = logoDataUri(value, options) ?? officialTeamLogo(value.name);
+    const mark = logo
+      ? `<image href="${logo}" x="${x - 200}" y="130" width="400" height="400" preserveAspectRatio="xMidYMid meet"/>`
+      : `<text x="${x}" y="360" text-anchor="middle" font-size="100" fill="${xml(value.color ?? gold)}">${xml((value.shortName ?? value.name).split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase())}</text>`;
+    return `<ellipse cx="${x}" cy="340" rx="190" ry="190" fill="${xml(value.color ?? gold)}" opacity=".035"/>${mark}<text x="${x}" y="608" text-anchor="middle" font-size="44"${name.length > 14 ? ' textLength="450" lengthAdjust="spacingAndGlyphs"' : ''}>${xml(name)}</text>`;
+  };
+  const day = `${input.matchdayLabel} ${input.matchdayNumber}`.toUpperCase();
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <title>${xml(input.leagueName)} · ${xml(input.home.shortName ?? input.home.name)} vs ${xml(input.away.shortName ?? input.away.name)} · ${xml(day)}</title>
   <defs>
-    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${token.color.background}"/><stop offset=".55" stop-color="${token.color.surfaceRaised}"/><stop offset="1" stop-color="${token.color.background}"/></linearGradient>
-    <radialGradient id="homeGlow"><stop stop-color="${homeColor}" stop-opacity=".36"/><stop offset="1" stop-color="${homeColor}" stop-opacity="0"/></radialGradient>
-    <radialGradient id="awayGlow"><stop stop-color="${awayColor}" stop-opacity=".34"/><stop offset="1" stop-color="${awayColor}" stop-opacity="0"/></radialGradient>
-    <pattern id="stripes" width="${atmosphere.patternSize}" height="${atmosphere.patternSize}" patternUnits="userSpaceOnUse" patternTransform="rotate(${atmosphere.patternAngle})"><line x1="0" y1="0" x2="0" y2="${atmosphere.patternSize}" stroke="${token.color.text}" stroke-opacity="${token.opacity.pattern}" stroke-width="${token.stroke.pattern}"/></pattern>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="${atmosphere.shadow.y}" stdDeviation="${atmosphere.shadow.blur}" flood-opacity="${atmosphere.shadow.opacity}"/></filter>
+    <radialGradient id="background"><stop stop-color="#242018"/><stop offset="1" stop-color="#08090b"/></radialGradient>
+    <linearGradient id="gold"><stop stop-color="#80632c"/><stop offset=".45" stop-color="#f1d383"/><stop offset="1" stop-color="#ac873a"/></linearGradient>
+    <pattern id="mesh" width="14" height="14" patternUnits="userSpaceOnUse"><path d="M14 0H0V14" fill="none" stroke="#b99a57" stroke-opacity=".12"/></pattern>
+    <pattern id="dots" width="12" height="12" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.2" fill="${gold}" opacity=".18"/></pattern>
   </defs>
-  <rect width="${token.canvas.width}" height="${token.canvas.height}" fill="url(#background)"/>
-  <ellipse cx="${atmosphere.homeGlow.x}" cy="${atmosphere.homeGlow.y}" rx="${atmosphere.homeGlow.width}" ry="${atmosphere.homeGlow.height}" fill="url(#homeGlow)"/>
-  <ellipse cx="${atmosphere.awayGlow.x}" cy="${atmosphere.awayGlow.y}" rx="${atmosphere.awayGlow.width}" ry="${atmosphere.awayGlow.height}" fill="url(#awayGlow)"/>
-  <rect width="${token.canvas.width}" height="${token.canvas.height}" fill="url(#stripes)"/>
-  <path d="M0 0h${atmosphere.homeWedge.top}L${atmosphere.homeWedge.bottom} ${token.canvas.height}H0z" fill="${token.color.brand}" fill-opacity="${token.opacity.wedgeHome}"/>
-  <path d="M${token.canvas.width} 0H${atmosphere.awayWedge.top}L${atmosphere.awayWedge.bottom} ${token.canvas.height}h${atmosphere.awayWedge.inset}z" fill="${token.color.accent}" fill-opacity="${token.opacity.wedgeAway}"/>
-  <rect width="${token.canvas.width}" height="${layout.edge}" fill="${token.color.brand}"/>
-  <rect y="${token.canvas.height - layout.edge}" width="${token.canvas.width}" height="${layout.edge}" fill="${token.color.accent}"/>
-  <g font-family="${type.family.body}">
-    <rect x="${token.space.gutter}" y="${layout.headerY}" width="${layout.brandWidth}" height="${layout.brandHeight}" rx="${token.radius.small}" fill="${token.color.brand}"/>
-    <text x="${token.space.gutter + layout.brandWidth / 2}" y="${layout.brandTextY}" text-anchor="middle" fill="${token.color.background}" font-family="${type.family.heading}" font-size="${type.size.brand}" font-weight="${type.weight.bold}">KPL</text>
-    <text x="${layout.leagueX}" y="${layout.brandTextY}" fill="${token.color.text}" font-size="${type.size.body}" font-weight="${type.weight.bold}">${xml(input.leagueName)}</text>
-    <circle cx="${layout.liveX}" cy="${layout.headerY + type.size.body}" r="${token.radius.live}" fill="${token.color.live}"/>
-    <text x="${layout.liveTextX}" y="${layout.brandTextY - token.space.unit / 4}" text-anchor="end" fill="${token.color.text}" font-size="${type.size.label}" font-weight="${type.weight.heavy}" letter-spacing="${type.tracking.status}">DIRECTO</text>
-    <text x="${layout.versusX}" y="${layout.eyebrowY}" text-anchor="middle" fill="${token.color.brandStrong}" font-size="${type.size.body}" font-weight="${type.weight.heavy}" letter-spacing="${type.tracking.overline}">${xml(matchday.toUpperCase())}</text>
+  <rect width="1280" height="720" fill="url(#background)"/>
+  <image href="${officialThumbnailBackground()}" width="1280" height="720" preserveAspectRatio="xMidYMid slice"/>
+  <rect width="1280" height="720" fill="#08090b" opacity=".38"/>
+  <path d="M0 90L250 720H0ZM1280 90L1030 720H1280Z" fill="url(#dots)"/>
+  <g fill="none" stroke="url(#gold)">
+    <path d="M0 9H476L488 14H792L804 9H1280M0 710H1280" stroke-width="3"/>
+    <path d="M0 130L225 710M1280 130L1055 710" stroke-width="12" opacity=".55"/>
+    <path d="M0 235L190 710M1280 235L1090 710" stroke-width="2"/>
   </g>
-  ${teamCard({ x: token.space.gutter, color: homeColor, name: homeName, side: 'LOCAL', logo: homeLogo })}
-  ${teamCard({ x: layout.awayX, color: awayColor, name: awayName, side: 'VISITANTE', logo: awayLogo })}
-  <g filter="url(#shadow)"><circle cx="${layout.versusX}" cy="${layout.versusY}" r="${token.radius.versus}" fill="${token.color.brandStrong}"/><circle cx="${layout.versusX}" cy="${layout.versusY}" r="${token.radius.badge}" fill="${token.color.background}" stroke="${token.color.accent}" stroke-width="${token.stroke.accent}"/><text x="${layout.versusX}" y="${layout.versusTextY}" text-anchor="middle" fill="${token.color.text}" font-family="${type.family.heading}" font-size="${type.size.versus}" font-weight="${type.weight.bold}">VS</text></g>
-  <g font-family="${type.family.body}" font-weight="${type.weight.bold}">
-    <text x="${token.space.gutter}" y="${layout.footerY}" fill="${token.color.text}" font-size="${type.size.body}">${xml(date)} · ${xml(input.timeZone)}</text>
-    <text x="${layout.footerRight}" y="${layout.footerY}" text-anchor="end" fill="${token.color.text}" font-size="${type.size.body}">${xml(input.courtName)}</text>
+  <path d="M640 180V530" stroke="url(#gold)" stroke-width="2" opacity=".5"/>
+  <image href="${officialLeagueLogo()}" x="48" y="36" width="228" height="97" preserveAspectRatio="xMidYMid meet"/>
+  <g font-family="${token.typography.family.heading}" font-weight="700" fill="#f5f5f5">
+    <text x="640" y="94" text-anchor="middle" font-size="54"${day.length > 12 ? ' textLength="470" lengthAdjust="spacingAndGlyphs"' : ''}>${xml(day)}</text>
+    <circle cx="1020" cy="77" r="10" fill="#ff1834"/>
+    <text x="1043" y="85" font-family="Manrope" font-size="23">EN DIRECTO</text>
+    ${team('home', 326)}
+    ${team('away', 954)}
+    <text x="640" y="408" text-anchor="middle" font-size="116" fill="url(#gold)" stroke="#b99a57" stroke-width="1">VS</text>
   </g>
-</svg>`;
+  </svg>`;
 }
 
 export function renderThumbnailPng(svg: string): Uint8Array {
@@ -76,25 +65,6 @@ export function renderThumbnailPng(svg: string): Uint8Array {
     textRendering: 2,
     logLevel: 'off',
   }).render().asPng();
-}
-
-type TeamCard = {
-  readonly x: number;
-  readonly color: string;
-  readonly name: string;
-  readonly side: string;
-  readonly logo: string | undefined;
-};
-
-function teamCard(card: TeamCard): string {
-  const layout = token.layout;
-  const center = card.x + layout.cardWidth / 2;
-  const initials = card.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.slice(0, 1)).join('').toUpperCase();
-  const mark = card.logo === undefined
-    ? `<text x="${center}" y="${layout.logoTextY}" text-anchor="middle" fill="${token.color.text}" font-family="${token.typography.family.heading}" font-size="${token.typography.size.versus}" font-weight="${token.typography.weight.bold}">${xml(initials)}</text>`
-    : `<image href="${card.logo}" x="${center - layout.logoImage / 2}" y="${layout.logoCenterY - layout.logoImage / 2}" width="${layout.logoImage}" height="${layout.logoImage}" preserveAspectRatio="xMidYMid meet"/>`;
-  const length = card.name.length > 16 ? ` textLength="${layout.teamNameWidth}" lengthAdjust="spacingAndGlyphs"` : '';
-  return `<g filter="url(#shadow)"><rect x="${card.x}" y="${layout.cardY}" width="${layout.cardWidth}" height="${layout.cardHeight}" rx="${token.radius.small}" fill="${token.color.surface}" stroke="${token.color.text}" stroke-opacity="${token.opacity.cardBorder}"/><rect x="${card.x}" y="${layout.cardY}" width="${layout.edge}" height="${layout.cardHeight}" rx="${token.space.unit}" fill="${card.color}"/><circle cx="${center}" cy="${layout.logoCenterY}" r="${token.radius.logo}" fill="${card.color}" fill-opacity="${token.opacity.logoFill}" stroke="${card.color}" stroke-width="${token.stroke.accent}"/>${mark}<text x="${center}" y="${layout.sideY}" text-anchor="middle" fill="${token.color.textMuted}" font-family="${token.typography.family.body}" font-size="${token.typography.size.label}" font-weight="${token.typography.weight.heavy}" letter-spacing="${token.typography.tracking.team}">${card.side}</text><text x="${center}" y="${layout.teamNameY}" text-anchor="middle" fill="${token.color.text}" font-family="${token.typography.family.heading}" font-size="${token.typography.size.team}" font-weight="${token.typography.weight.bold}"${length}>${xml(card.name.toUpperCase())}</text></g>`;
 }
 
 function xml(value: string): string {

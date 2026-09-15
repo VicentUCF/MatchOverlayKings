@@ -43,6 +43,16 @@ describe('livestream production assets', () => {
     expect(frame.every((channel) => channel === 0)).toBe(true);
   });
 
+  it.each(['Kings of Favar', 'Red Lions', 'Barbaridad Team', 'Magic City', 'Thormentadores', 'Titanics'])(
+    'embeds the official crest for %s and the KPL wordmark without external image references', (name) => {
+      const assets = createProductionAssets({ ...baseInput, home: { name } });
+      expect(assets.svg.match(/<image href="data:image\/(?:png|webp);base64,/g)).toHaveLength(4);
+      expect(assets.svg).toContain(name.toUpperCase());
+      expect(assets.svg).toContain('JORNADA 3');
+      expect(assets.pngBytes.length).toBeLessThan(2 * 1024 * 1024);
+    },
+  );
+
   it('builds the semantic YouTube title from match metadata', () => {
     // Given / When
     const assets = createProductionAssets(baseInput);

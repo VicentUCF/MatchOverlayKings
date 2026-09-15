@@ -114,6 +114,12 @@ export function createProductionPilotAdapter(
         ? { kind: 'success' as const, value: result.value.mobileCamera }
         : result.kind === 'error' ? result : { kind: 'error' as const, message: 'La cámara móvil ya no está disponible.' };
     },
+    thumbnailPreview: (input: PreparePilotSessionInput, signal?: AbortSignal) => request(
+      '/api/pilot/thumbnail-preview', z.strictObject({ dataUrl: z.string().startsWith('data:image/png;base64,') }), {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input), ...(signal ? { signal } : {}),
+      },
+    ),
     configure: async (input: PreparePilotSessionInput): Promise<PilotApiResult<PilotConfiguration>> => {
       const parsed = PreparePilotSessionInputSchema.safeParse(input);
       if (!parsed.success) return { kind: 'error', message: 'Revisa la configuración de la pista.' };
