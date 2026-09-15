@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { supabase } from './supabase.js';
 import type { Team } from '@kpl/shared';
 import {
   PilotConfigurationSchema,
@@ -53,6 +54,11 @@ export function createProductionPilotAdapter(
   ): Promise<PilotApiResult<Value>> => {
     try {
       const endpoint = `${baseUrl}${path}`;
+      if ((init?.method === 'PUT' && path.startsWith('/api/pilot/configurations/'))
+        || (init?.method === 'POST' && path === '/api/pilot/sessions')) {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) init = { ...init, headers: { ...init.headers, Authorization: `Bearer ${data.session.access_token}` } };
+      }
       const requestInit: LocalNetworkRequestInit | undefined = isLoopbackHttp(baseUrl)
         ? { ...init, targetAddressSpace: 'loopback' }
         : init;

@@ -240,7 +240,7 @@ function PilotConfigurationPanel({
       </span>
     </header>
     <form className="production-pilot-form" onSubmit={(event) => void submit(event)} onChange={() => setSaved(false)}>
-      <fieldset disabled={pending}>
+      <fieldset disabled={pending || active}>
         <legend>Datos de la emisión</legend>
         <div className="production-pilot-mode">
           <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'simulation'} onChange={() => setMode('simulation')} />
@@ -340,7 +340,9 @@ function PilotControlPanel({
   };
   const stop = () => {
     if (session === null) return;
-    if (session.mode === 'youtube' && !window.confirm(`Se finalizará la emisión real de ${court.label}. ¿Continuar?`)) return;
+    if (session.mode === 'youtube' && !window.confirm(session.status === 'prepared'
+      ? `Se cancelará la emisión programada de ${court.label} en YouTube. ¿Continuar?`
+      : `Se finalizará la emisión real de ${court.label}. ¿Continuar?`)) return;
     onStop(session);
   };
 
@@ -406,7 +408,7 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onStop }:
       {session.error ? <p className="production-command-feedback danger" role="alert">{session.error}</p> : null}
       <div className="production-pilot-actions">
         {session.status === 'prepared' ? <button className="production-setup-submit" type="button" disabled={pending} onClick={onStart}>Emitir</button> : null}
-        {active ? <button className="refresh-button danger" type="button" disabled={pending} onClick={onStop}>Detener</button> : null}
+        {active || session.status === 'prepared' ? <button className="refresh-button danger" type="button" disabled={pending} onClick={onStop}>{session.status === 'prepared' ? 'Cancelar preparación' : 'Detener'}</button> : null}
         {watchUrl ? <a className="production-setup-submit production-pilot-youtube-link" href={watchUrl}
           target="_blank" rel="noreferrer">Ver directo en YouTube <ExternalLink aria-hidden="true" /></a> : null}
       </div>

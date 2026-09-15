@@ -163,6 +163,8 @@ export interface MatchHistoryEntry {
 }
 
 export interface MatchState {
+  /** Match identity assigned by the production administrator. */
+  productionConfigured?: boolean;
   id: EventId;
   title: string;
   homeTeamId: TeamId;

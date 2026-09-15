@@ -122,10 +122,10 @@ export function ControlPage({ eventId }: { eventId: string }) {
 
   function setupPayload() {
     return {
-      title: metaTitle,
-      courtName: metaCourt,
-      homeTeamId,
-      awayTeamId,
+      title: state?.productionConfigured ? state.title : metaTitle,
+      courtName: state?.productionConfigured ? state.courtName : metaCourt,
+      homeTeamId: state?.productionConfigured ? state.homeTeamId : homeTeamId,
+      awayTeamId: state?.productionConfigured ? state.awayTeamId : awayTeamId,
       lineups,
       servingSide,
     };
@@ -236,16 +236,17 @@ export function ControlPage({ eventId }: { eventId: string }) {
       <h2>{state?.status === 'pre_match' ? 'Preparar partido' : 'Preparar siguiente'}</h2>
       <label>
         <span>Titulo</span>
-        <input value={metaTitle} onChange={(event) => setMetaTitle(event.target.value)} />
+        <input disabled={state?.productionConfigured === true} value={metaTitle} onChange={(event) => setMetaTitle(event.target.value)} />
       </label>
       <label>
         <span>Pista</span>
         <input value={metaCourt} onChange={(event) => setMetaCourt(event.target.value)} disabled />
       </label>
+      {state?.productionConfigured ? <p>Partido fijado desde Administración. Los equipos y la pista coinciden con la emisión. Para cambiar el partido, actualiza la configuración allí.</p> : null}
       <div className="team-select-grid">
         <label>
           <span>Local</span>
-          <select value={homeTeamId} onChange={(event) => setHomeTeamId(event.target.value)}>
+          <select disabled={state?.productionConfigured === true} value={homeTeamId} onChange={(event) => setHomeTeamId(event.target.value)}>
             {match.teams.map((team) => (
               <option key={team.id} value={team.id}>
                 {team.shortName}
@@ -255,7 +256,7 @@ export function ControlPage({ eventId }: { eventId: string }) {
         </label>
         <label>
           <span>Visitante</span>
-          <select value={awayTeamId} onChange={(event) => setAwayTeamId(event.target.value)}>
+          <select disabled={state?.productionConfigured === true} value={awayTeamId} onChange={(event) => setAwayTeamId(event.target.value)}>
             {match.teams.map((team) => (
               <option key={team.id} value={team.id}>
                 {team.shortName}

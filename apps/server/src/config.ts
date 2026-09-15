@@ -4,6 +4,7 @@ import type { PilotYouTubeConfig } from './pilot-youtube.js';
 
 export interface PilotServerConfig {
   ffmpegPath: string;
+  supabase?: { url: string; publishableKey: string };
   youtube: PilotYouTubeConfig;
   mobileCamera?: PilotMobileCameraRuntimeConfig;
   controlOrigins?: readonly string[];
@@ -44,6 +45,10 @@ export function readConfig(): ServerConfig {
       : resolve(process.cwd(), '../web/dist'),
     controlPin: process.env.KPL_CONTROL_PIN?.trim() || null,
     pilot: {
+      supabase: {
+        url: process.env.VITE_SUPABASE_URL?.trim() ?? '',
+        publishableKey: process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ?? '',
+      },
       ffmpegPath: process.env.KPL_PILOT_FFMPEG_PATH?.trim() || '/bin/ffmpeg',
       controlOrigins: origins(process.env.KPL_PILOT_CONTROL_ORIGINS, cameraPageOrigin),
       mobileCamera: {

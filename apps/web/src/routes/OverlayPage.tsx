@@ -32,6 +32,18 @@ interface SideChangeSceneState {
 
 export function OverlayPage({ eventId }: { eventId: string }) {
   const match = useMatchSocket(eventId, 'overlay', '');
+  const expected = new URLSearchParams(window.location.search);
+  const home = expected.get('homeTeamId');
+  const away = expected.get('awayTeamId');
+  if ((home || away) && (!match.state || match.state.homeTeamId !== home || match.state.awayTeamId !== away)) {
+    return <OverlayScene key="mismatch" match={{ ...match, state: null }} />;
+  }
+  return <div data-pilot-match-ready={match.state ? 'true' : 'false'}>
+    <OverlayScene key={`${eventId}:${match.state?.homeTeamId}:${match.state?.awayTeamId}`} match={match} />
+  </div>;
+}
+
+function OverlayScene({ match }: { match: ReturnType<typeof useMatchSocket> }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const sideChangeBaselineVersionRef = useRef<number | null>(null);
   const lastSideChangeKeyRef = useRef<string | null>(null);

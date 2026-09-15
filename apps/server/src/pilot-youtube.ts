@@ -202,6 +202,14 @@ export class PilotYouTubeGateway {
     }
   }
 
+  public async cancelBroadcast(broadcastId: string): Promise<void> {
+    try {
+      await this.client().liveBroadcasts.delete({ id: broadcastId });
+    } catch (error) {
+      throw new PilotYouTubeError('API_ERROR', youtubeApiErrorMessage(error));
+    }
+  }
+
   public async completeBroadcast(broadcastId: string): Promise<void> {
     const youtube = this.client();
     try {

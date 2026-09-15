@@ -280,3 +280,23 @@ npm run test:e2e
 ```
 
 Los e2e se omiten si no existen `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `KPL_E2E_EMAIL` y `KPL_E2E_PASSWORD` en el entorno de ejecucion.
+
+### Partido único para emisión y marcador
+
+La configuración de cada pista en Administración fija también los equipos, el título
+y la pista del marcador en Supabase. El control visual permite gestionar el juego,
+pero no sustituir esa identidad. Antes de preparar una emisión, el agente comprueba
+que sus datos coinciden con la configuración guardada; si falta la conexión o hay
+un desfase, rechaza la preparación.
+
+Para activar esta protección, aplica la migración
+`20260915120000_pilot_match_binding.sql` y despliega web y agente juntos. El agente
+necesita `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` del mismo proyecto que
+la web (Docker Compose ya carga `apps/web/.env`). Utiliza la sesión del administrador,
+sin una clave de servicio. Guarda de nuevo las configuraciones anteriores para
+vincularlas; no se migran automáticamente desde el fichero local.
+
+Una emisión preparada o activa bloquea su configuración. Para cambiar el partido,
+cancela la preparación o detén la emisión; si el marcador sigue en juego, finaliza
+el partido desde el control visual. Cancelar una preparación de YouTube elimina
+esa emisión programada; si YouTube rechaza la cancelación, se mantiene el bloqueo.

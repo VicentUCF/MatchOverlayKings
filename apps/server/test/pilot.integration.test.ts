@@ -422,7 +422,10 @@ async function createPilotApp() {
       controlOrigins: ['https://live.kingspadelleague.es'],
       youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
     },
-  }, { pilotOverlayRenderer: testOverlayRenderer() });
+  }, { pilotOverlayRenderer: testOverlayRenderer(), pilotMatchBinding: {
+    configure: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
+    assertConfigured: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
+  } });
   cleanups.push(async () => { await app.close(); await rm(dataDir, { recursive: true, force: true }); });
   return app;
 }

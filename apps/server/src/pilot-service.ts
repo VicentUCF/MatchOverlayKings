@@ -19,6 +19,7 @@ import {
   type PilotSource,
   type PreparePilotSessionInput,
 } from '@kpl/production-contracts';
+import type { PilotMatchBinding } from './pilot-match-binding.js';
 import { PilotYouTubeError } from './pilot-youtube.js';
 import type { PilotYouTubeGateway } from './pilot-youtube.js';
 import type { PilotMobileCameraService } from './pilot-mobile-camera.js';
@@ -57,6 +58,7 @@ export class PilotServiceError extends Error {
 export class PilotService {
   private readonly sessions = new Map<string, InternalPilotSession>();
   private readonly configurationByCourt = new Map<PilotCourtSlug, PilotConfiguration>();
+  private readonly changingCourts = new Set<string>();
   private ffmpegVersion: string | null = null;
 
   public constructor(
@@ -65,6 +67,7 @@ export class PilotService {
     private readonly configurationPath: string,
     private readonly mobileCamera?: PilotMobileCameraService,
     private readonly overlayRenderer?: PilotOverlayRenderer,
+    private readonly matchBinding?: PilotMatchBinding,
   ) {}
 
   public async initialize(): Promise<void> {
@@ -80,7 +83,7 @@ export class PilotService {
     return PilotConfigurationsSchema.parse([...this.configurationByCourt.values()]);
   }
 
-  public async configure(rawCourtSlug: unknown, rawInput: unknown): Promise<PilotConfiguration> {
+  public async configure(rawCourtSlug: unknown, rawInput: unknown, authorization?: string): Promise<PilotConfiguration> {
     const input = PreparePilotSessionInputSchema.safeParse(rawInput);
     if (!input.success || input.data.courtSlug !== rawCourtSlug) {
       throw new PilotServiceError(400, 'INVALID_INPUT', 'Revisa la configuración de la pista.');
@@ -93,9 +96,19 @@ export class PilotService {
       ...input.data,
       updatedAt: new Date().toISOString(),
     });
-    this.configurationByCourt.set(configuration.courtSlug, configuration);
-    await this.persistConfigurations();
-    return configuration;
+    return this.changeCourt(configuration.courtSlug, async () => {
+      if (this.hasOpenSession(configuration.courtSlug)) throw new PilotServiceError(409, 'CONFLICT', 'Detén la emisión preparada o activa antes de cambiar el partido.');
+      if (!this.matchBinding) throw new PilotServiceError(503, 'NOT_READY', 'No se puede vincular el partido con el marcador.');
+      await this.matchBinding.configure(configuration, authorization);
+      const previous = this.configurationByCourt.get(configuration.courtSlug);
+      this.configurationByCourt.set(configuration.courtSlug, configuration);
+      try { await this.persistConfigurations(); } catch (error) {
+        if (previous) this.configurationByCourt.set(configuration.courtSlug, previous);
+        else this.configurationByCourt.delete(configuration.courtSlug);
+        throw error;
+      }
+      return configuration;
+    });
   }
 
   public readiness(): PilotReadiness {
@@ -131,7 +144,23 @@ export class PilotService {
     }
   }
 
-  public async prepare(rawInput: unknown): Promise<PilotSession> {
+  private hasOpenSession(courtSlug: string): boolean {
+    return [...this.sessions.values()].some(({ public: session }) => session.courtSlug === courtSlug && !['stopped', 'failed'].includes(session.status));
+  }
+
+  private async changeCourt<T>(courtSlug: string, operation: () => Promise<T>): Promise<T> {
+    if (this.changingCourts.has(courtSlug)) throw new PilotServiceError(409, 'CONFLICT', 'La pista está guardando o preparando una emisión. Espera y vuelve a intentarlo.');
+    this.changingCourts.add(courtSlug);
+    try { return await operation(); } finally { this.changingCourts.delete(courtSlug); }
+  }
+
+  public async prepare(rawInput: unknown, authorization?: string): Promise<PilotSession> {
+    const parsed = PreparePilotSessionInputSchema.safeParse(rawInput);
+    if (!parsed.success) throw new PilotServiceError(400, 'INVALID_INPUT', 'Revisa los datos del directo.');
+    return this.changeCourt(parsed.data.courtSlug, () => this.prepareCourt(parsed.data, authorization));
+  }
+
+  private async prepareCourt(rawInput: unknown, authorization?: string): Promise<PilotSession> {
     const parsed = PreparePilotSessionInputSchema.safeParse(rawInput);
     if (!parsed.success) throw new PilotServiceError(400, 'INVALID_INPUT', 'Revisa los datos del directo.');
     const input = parsed.data;
@@ -157,6 +186,8 @@ export class PilotService {
       session.courtSlug === input.courtSlug && !['stopped', 'failed'].includes(session.status));
     if (existing !== undefined) throw new PilotServiceError(409, 'CONFLICT', 'La pista ya tiene un piloto activo.');
 
+    if (!this.matchBinding) throw new PilotServiceError(503, 'NOT_READY', 'No se puede comprobar el partido del marcador.');
+    const identity = await this.matchBinding.assertConfigured(input, authorization);
     const generatedAssets = productionAssets(input);
     const assets = {
       ...generatedAssets,
@@ -210,6 +241,7 @@ export class PilotService {
       lastYouTubeCheckAt: 0,
       overlay: {
         courtSlug: input.courtSlug,
+        ...identity,
       },
       overlayController: null,
     });
@@ -333,10 +365,18 @@ export class PilotService {
 
   public async stop(id: string): Promise<PilotSession> {
     const session = this.get(id);
-    if (!['starting', 'live', 'reconnecting'].includes(session.public.status)) {
-      throw new PilotServiceError(409, 'CONFLICT', 'La sesión no está emitiendo.');
+    if (!['prepared', 'starting', 'live', 'reconnecting'].includes(session.public.status)) {
+      throw new PilotServiceError(409, 'CONFLICT', 'La sesión no está preparada ni emitiendo.');
     }
+    const wasPrepared = session.public.status === 'prepared';
     session.public = PilotSessionSchema.parse({ ...session.public, status: 'stopping' });
+    if (wasPrepared && session.public.broadcastId !== null) {
+      try { await this.youtube.cancelBroadcast(session.public.broadcastId); }
+      catch (error) {
+        session.public = PilotSessionSchema.parse({ ...session.public, status: 'prepared' });
+        throw mapYouTubeError(error);
+      }
+    }
     if (session.retryTimer !== null) {
       clearTimeout(session.retryTimer);
       session.retryTimer = null;
@@ -351,7 +391,7 @@ export class PilotService {
       }, 3_000);
       forceStop.unref();
     }
-    if (session.public.mode === 'youtube' && session.public.broadcastId !== null) {
+    if (!wasPrepared && session.public.mode === 'youtube' && session.public.broadcastId !== null) {
       try {
         await this.youtube.completeBroadcast(session.public.broadcastId);
       } catch {

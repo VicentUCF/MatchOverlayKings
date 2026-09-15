@@ -10,6 +10,8 @@ const NAVIGATION_TIMEOUT_MS = 20_000;
 export interface PilotOverlayOptions {
   readonly courtSlug: PilotCourtSlug;
   readonly framesPerSecond: 30 | 60;
+  readonly homeTeamId?: string;
+  readonly awayTeamId?: string;
 }
 
 export interface PilotOverlayRenderer {
@@ -49,7 +51,7 @@ export class BrowserPilotOverlayRenderer implements PilotOverlayRenderer {
 
     try {
       const page = await context.newPage();
-      await prepareOverlayPage(page, overlayUrl(this.options.baseUrl, options.courtSlug), signal);
+      await prepareOverlayPage(page, overlayUrl(this.options.baseUrl, options.courtSlug, options), signal);
       await pumpBrowserFrames(output, page, options.framesPerSecond, signal);
     } finally {
       signal.removeEventListener('abort', abort);
@@ -94,8 +96,10 @@ export class BrowserPilotOverlayRenderer implements PilotOverlayRenderer {
   }
 }
 
-export function overlayUrl(baseUrl: string, courtSlug: PilotCourtSlug): string {
-  return `${baseUrl.replace(/\/+$/, '')}/overlay/${encodeURIComponent(courtSlug)}/scoreboard`;
+export function overlayUrl(baseUrl: string, courtSlug: PilotCourtSlug, identity?: { homeTeamId?: string; awayTeamId?: string }): string {
+  const url = `${baseUrl.replace(/\/+$/, '')}/overlay/${encodeURIComponent(courtSlug)}/scoreboard`;
+  if (!identity?.homeTeamId || !identity.awayTeamId) return url;
+  return `${url}?${new URLSearchParams({ homeTeamId: identity.homeTeamId, awayTeamId: identity.awayTeamId })}`;
 }
 
 async function prepareOverlayPage(page: Page, url: string, signal: AbortSignal): Promise<void> {

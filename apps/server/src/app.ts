@@ -9,6 +9,7 @@ import type { ServerConfig } from './config.js';
 import { HttpCommandError } from './http-error.js';
 import { registerSocketHandlers } from './socket-handlers.js';
 import type { KplSocketServer, SocketData } from './socket-handlers.js';
+import { SupabasePilotMatchBinding, type PilotMatchBinding } from './pilot-match-binding.js';
 import { PilotService, PilotServiceError } from './pilot-service.js';
 import { PilotYouTubeGateway } from './pilot-youtube.js';
 import { PilotMobileCameraError, PilotMobileCameraService } from './pilot-mobile-camera.js';
@@ -21,6 +22,7 @@ export async function buildApp(
     readonly mobileCameraVersionProbe?: ConstructorParameters<typeof PilotMobileCameraService>[4];
     readonly mobileCameraNow?: ConstructorParameters<typeof PilotMobileCameraService>[5];
     readonly pilotOverlayRenderer?: PilotOverlayRenderer;
+    readonly pilotMatchBinding?: PilotMatchBinding;
   } = {},
 ) {
   const app = Fastify({
@@ -48,6 +50,7 @@ export async function buildApp(
       baseUrl: `http://127.0.0.1:${config.port}`,
       ...(browserPath ? { chromiumExecutablePath: browserPath } : {}),
     }),
+    dependencies.pilotMatchBinding ?? new SupabasePilotMatchBinding(config.pilot.supabase),
   );
   await pilot.initialize();
   const io: KplSocketServer = new SocketServer<
@@ -215,7 +218,7 @@ export async function buildApp(
 
   app.put<{ Params: { courtSlug: string } }>('/api/pilot/configurations/:courtSlug', async (request) => {
     requireLocalPilot(request.ip);
-    return { configuration: await pilot.configure(request.params.courtSlug, request.body) };
+    return { configuration: await pilot.configure(request.params.courtSlug, request.body, request.headers.authorization) };
   });
 
   app.post('/api/pilot/thumbnail-preview', async (request) => {
@@ -226,7 +229,7 @@ export async function buildApp(
 
   app.post('/api/pilot/sessions', async (request, reply) => {
     requireLocalPilot(request.ip);
-    const session = await pilot.prepare(request.body);
+    const session = await pilot.prepare(request.body, request.headers.authorization);
     reply.status(201).send({ session });
   });
 
