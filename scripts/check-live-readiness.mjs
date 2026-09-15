@@ -16,7 +16,7 @@ try {
   ]);
 
   check(health.ok === true, 'El proceso local responde');
-  check(ready.ok === true, 'El agente declara disponibilidad');
+  check(ready.ok === true, 'El runtime declara disponibilidad');
   check(readiness.ffmpeg?.available === true, 'FFmpeg está disponible');
 
   if (requireYouTube) {
@@ -50,7 +50,7 @@ try {
     warnings.push(String(limitation));
   }
 } catch (error) {
-  checks.push({ ok: false, label: error instanceof Error ? error.message : 'No se pudo comprobar el agente local' });
+  checks.push({ ok: false, label: error instanceof Error ? error.message : 'No se pudo comprobar el runtime local' });
 }
 
 for (const item of checks) {

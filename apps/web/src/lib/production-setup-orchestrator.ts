@@ -1,5 +1,5 @@
 import type { ProductionProvisioningAdapter, ProductionProvisioningResult } from './production-provisioning-contracts.js';
-import { PRODUCTION_COURT_SLUGS } from './production-overview-types.js';
+import type { ProductionCourtSlug } from './production-overview-types.js';
 import type {
   ProductionSetupCompletion,
   ProductionSetupDraft,
@@ -50,7 +50,8 @@ export function createProductionSetupDraft(
     timeZone: eventDay?.timeZone ?? 'Europe/Madrid',
     agentPrincipalId: agent?.id ?? createId(),
     agentAuthUserId: agent?.authUserId ?? '',
-    courts: PRODUCTION_COURT_SLUGS.map((slug) => courtDraft(inventory, eventDay?.id, agent?.id, slug, createId)),
+    courts: inventory.courts.filter(({ productionEnabled }) => productionEnabled)
+      .map(({ slug }) => courtDraft(inventory, eventDay?.id, agent?.id, slug, createId)),
   };
 }
 
@@ -80,7 +81,12 @@ export function deriveProductionSetupCompletion(
   });
   const completeCourts = courts.filter(({ complete }) => complete).length;
   const sharedComplete = eventDay !== undefined && agent !== undefined;
-  return { sharedComplete, completeCourts, courts, complete: sharedComplete && completeCourts === 4 };
+  return {
+    sharedComplete,
+    completeCourts,
+    courts,
+    complete: sharedComplete && courts.length > 0 && completeCourts === courts.length,
+  };
 }
 
 export async function runProductionSetup(request: SetupRequest): Promise<ProductionSetupRunResult> {
@@ -197,7 +203,7 @@ function courtDraft(
   inventory: ProductionSetupInventory,
   eventDayId: string | undefined,
   agentId: string | undefined,
-  slug: (typeof PRODUCTION_COURT_SLUGS)[number],
+  slug: ProductionCourtSlug,
   createId: () => string,
 ): SetupCourtDraft {
   const court = inventory.courts.find((candidate) => candidate.slug === slug);

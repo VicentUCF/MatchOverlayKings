@@ -22,6 +22,7 @@ export type SetupCourt = {
   readonly clubId: string;
   readonly slug: ProductionCourtSlug;
   readonly name: string;
+  readonly displayOrder: number;
   readonly productionEnabled: boolean;
 };
 

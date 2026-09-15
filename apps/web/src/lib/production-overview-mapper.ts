@@ -4,6 +4,7 @@ import {
   ClubIdSchema,
   CourtIdSchema,
   CourtSlugSchema,
+  PilotCourtSlugSchema,
   PrincipalIdSchema,
   PrincipalKindSchema,
   PrincipalRoleSchema,
@@ -18,7 +19,6 @@ import {
   VersionSchema,
 } from '@kpl/production-contracts';
 import {
-  PRODUCTION_COURT_SLUGS,
   type ProductionCourtAssignment,
   type ProductionCourtSlot,
   type ProductionOverviewSnapshot,
@@ -133,16 +133,10 @@ export function mapProductionOverviewData(userId: string, input: unknown): Produ
       ? 'viewer'
       : null;
   if (capability === null) return { kind: 'forbidden' };
-  const courtRows = PRODUCTION_COURT_SLUGS.map((slug) => parsed.data.courts.find((court) => court.slug === slug));
-  if (courtRows.some((court) => court === undefined)) return { kind: 'malformed' };
-  const [first, second, third, fourth] = courtRows;
-  if (first === undefined || second === undefined || third === undefined || fourth === undefined) return { kind: 'malformed' };
-  const courts = Object.freeze([
-    mapCourt(first, parsed.data, principal.id),
-    mapCourt(second, parsed.data, principal.id),
-    mapCourt(third, parsed.data, principal.id),
-    mapCourt(fourth, parsed.data, principal.id),
-  ] as const);
+  if (parsed.data.courts.length === 0 || hasDuplicateCourtIdentity(parsed.data.courts)) return { kind: 'malformed' };
+  const courts = Object.freeze([...parsed.data.courts]
+    .sort((left, right) => left.display_order - right.display_order || left.slug.localeCompare(right.slug))
+    .map((court) => mapCourt(court, parsed.data, principal.id)));
   return {
     kind: 'success',
     capability,
@@ -203,12 +197,18 @@ function mapCourt(court: CourtRow, data: ParsedDataset, principalId: string): Pr
     });
   }
   return Object.freeze({
-    slug: z.enum(PRODUCTION_COURT_SLUGS).parse(court.slug),
+    slug: PilotCourtSlugSchema.parse(court.slug),
     courtId: court.id,
     name: court.name,
     productionEnabled: court.production_enabled,
     assignment,
   });
+}
+
+function hasDuplicateCourtIdentity(courts: readonly CourtRow[]): boolean {
+  return new Set(courts.map(({ id }) => id)).size !== courts.length
+    || new Set(courts.map(({ slug }) => slug)).size !== courts.length
+    || new Set(courts.map(({ display_order }) => display_order)).size !== courts.length;
 }
 
 function eventRank(status: string): number {

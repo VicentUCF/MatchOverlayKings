@@ -14,6 +14,7 @@ import { PilotService, PilotServiceError } from './pilot-service.js';
 import { PilotYouTubeGateway } from './pilot-youtube.js';
 import { PilotMobileCameraError, PilotMobileCameraService } from './pilot-mobile-camera.js';
 import { BrowserPilotOverlayRenderer, type PilotOverlayRenderer } from './pilot-overlay.js';
+import { SupabaseProductionAccessGuard, type ProductionAccessGuard } from './production-access.js';
 
 export async function buildApp(
   config: ServerConfig,
@@ -23,6 +24,7 @@ export async function buildApp(
     readonly mobileCameraNow?: ConstructorParameters<typeof PilotMobileCameraService>[5];
     readonly pilotOverlayRenderer?: PilotOverlayRenderer;
     readonly pilotMatchBinding?: PilotMatchBinding;
+    readonly productionAccessGuard?: ProductionAccessGuard;
   } = {},
 ) {
   const app = Fastify({
@@ -52,6 +54,8 @@ export async function buildApp(
     }),
     dependencies.pilotMatchBinding ?? new SupabasePilotMatchBinding(config.pilot.supabase),
   );
+  const productionAccess = dependencies.productionAccessGuard
+    ?? new SupabaseProductionAccessGuard(config.pilot.supabase);
   await pilot.initialize();
   const io: KplSocketServer = new SocketServer<
     ClientToServerEvents,
@@ -164,12 +168,14 @@ export async function buildApp(
 
   app.post('/api/pilot/mobile-camera', async (request, reply) => {
     requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
     const link = await mobileCamera.create(request.body);
     reply.status(201).send(link);
   });
 
   app.put<{ Params: { sessionId: string } }>('/api/pilot/mobile-camera/:sessionId/desired', async (request) => {
     requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
     const current = mobileCamera.current();
     if (current !== null && current.id === request.params.sessionId && pilot.isCourtActive(current.courtSlug)) {
       throw new PilotMobileCameraError(409, 'CONFLICT', 'Detén la emisión antes de cambiar cámara, FPS o audio.');
@@ -179,6 +185,7 @@ export async function buildApp(
 
   app.delete<{ Params: { sessionId: string } }>('/api/pilot/mobile-camera/:sessionId', async (request) => {
     requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
     const current = mobileCamera.current();
     if (current !== null && current.id === request.params.sessionId && pilot.isCourtActive(current.courtSlug)) {
       throw new PilotMobileCameraError(409, 'CONFLICT', 'Detén la emisión antes de revocar la cámara.');
@@ -218,33 +225,39 @@ export async function buildApp(
 
   app.put<{ Params: { courtSlug: string } }>('/api/pilot/configurations/:courtSlug', async (request) => {
     requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
     return { configuration: await pilot.configure(request.params.courtSlug, request.body, request.headers.authorization) };
   });
 
   app.post('/api/pilot/thumbnail-preview', async (request) => {
     requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
     const png = pilot.previewThumbnail(request.body);
     return { dataUrl: `data:image/png;base64,${Buffer.from(png).toString('base64')}` };
   });
 
   app.post('/api/pilot/sessions', async (request, reply) => {
     requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'operator');
     const session = await pilot.prepare(request.body, request.headers.authorization);
     reply.status(201).send({ session });
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/start', async (request) => {
     requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'operator');
     return { session: await pilot.start(request.params.sessionId) };
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/recover', async (request) => {
     requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'operator');
     return { session: await pilot.recover(request.params.sessionId) };
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/stop', async (request) => {
     requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'operator');
     return { session: await pilot.stop(request.params.sessionId) };
   });
 
@@ -333,7 +346,7 @@ function mobileCors(request: FastifyRequest, reply: FastifyReply, allowedOrigin:
   reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   reply.header('Access-Control-Allow-Private-Network', 'true');
-  reply.header('Private-Network-Access-Name', 'kpl-production-agent');
+  reply.header('Private-Network-Access-Name', 'kpl-production-runtime');
   reply.header('Private-Network-Access-ID', '02:4b:50:4c:00:01');
   reply.header('Vary', 'Origin');
 }
@@ -349,13 +362,13 @@ function pilotControlCors(
   const isSameServer = host !== undefined
     && (requestOrigin === `http://${host}` || requestOrigin === `https://${host}`);
   if (!isSameServer && !allowedOrigins.has(requestOrigin)) {
-    throw new PilotServiceError(403, 'FORBIDDEN', 'El origen del control no está autorizado para usar el agente local.');
+    throw new PilotServiceError(403, 'FORBIDDEN', 'El origen del control no está autorizado para usar el runtime local.');
   }
   reply.header('Access-Control-Allow-Origin', requestOrigin);
   reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   reply.header('Access-Control-Allow-Private-Network', 'true');
-  reply.header('Private-Network-Access-Name', 'kpl-production-agent');
+  reply.header('Private-Network-Access-Name', 'kpl-production-runtime');
   reply.header('Private-Network-Access-ID', '02:4b:50:4c:00:01');
   reply.header('Access-Control-Max-Age', '600');
   reply.header('Vary', 'Origin');
@@ -370,6 +383,6 @@ function requireLocalPilot(ip: string): void {
   // The value is intentionally an exact IP, never a broad LAN range.
   const dockerAdminHost = process.env.KPL_PILOT_ADMIN_HOST;
   if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1' && ip !== dockerAdminHost) {
-    throw new PilotServiceError(403, 'FORBIDDEN', 'El control del piloto solo está disponible desde este PC.');
+    throw new PilotServiceError(403, 'FORBIDDEN', 'El control de producción solo está disponible desde este PC.');
   }
 }

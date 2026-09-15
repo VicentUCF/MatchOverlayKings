@@ -54,8 +54,7 @@ export function createProductionPilotAdapter(
   ): Promise<PilotApiResult<Value>> => {
     try {
       const endpoint = `${baseUrl}${path}`;
-      if ((init?.method === 'PUT' && path.startsWith('/api/pilot/configurations/'))
-        || (init?.method === 'POST' && path === '/api/pilot/sessions')) {
+      if (init?.method === 'POST' || init?.method === 'PUT' || init?.method === 'DELETE') {
         const { data } = await supabase.auth.getSession();
         if (data.session) init = { ...init, headers: { ...init.headers, Authorization: `Bearer ${data.session.access_token}` } };
       }
@@ -66,16 +65,16 @@ export function createProductionPilotAdapter(
       const payload: unknown = await response.json();
       if (!response.ok) {
         const error = ErrorEnvelopeSchema.safeParse(payload);
-        return { kind: 'error', message: error.success ? error.data.error.message : 'El agente local rechazó la operación.' };
+        return { kind: 'error', message: error.success ? error.data.error.message : 'El runtime local rechazó la operación.' };
       }
       const parsed = schema.safeParse(payload);
       return parsed.success
         ? { kind: 'success', value: parsed.data }
-        : { kind: 'error', message: 'La respuesta del agente local no es válida.' };
+        : { kind: 'error', message: 'La respuesta del runtime local no es válida.' };
     } catch {
       return {
         kind: 'error',
-        message: 'No se puede contactar con el agente local. Comprueba que está arrancado en este PC y permite a esta web acceder a la red local.',
+        message: 'No se puede contactar con el runtime local. Comprueba que está arrancado en este PC y permite a esta web acceder a la red local.',
       };
     }
   };

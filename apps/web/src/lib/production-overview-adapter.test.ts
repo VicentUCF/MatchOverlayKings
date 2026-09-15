@@ -81,7 +81,7 @@ describe('production overview adapter', () => {
     const loaded = await adapter.load();
     if (loaded.kind !== 'success' || loaded.access.kind !== 'operator') throw new Error('operator fixture failed');
     const assignedCourt = loaded.access.snapshot.courts[0];
-    if (!assignedCourt.assignment) throw new Error('assignment fixture failed');
+    if (assignedCourt === undefined || !assignedCourt.assignment) throw new Error('assignment fixture failed');
 
     const result = await loaded.access.reconcile(assignedCourt.assignment, 'stopped');
 
@@ -107,7 +107,7 @@ describe('production overview adapter', () => {
     const adapter = createProductionOverviewAdapter(backend, () => 'generated-command');
     const loaded = await adapter.load();
     if (loaded.kind !== 'success' || loaded.access.kind !== 'operator') throw new Error('operator fixture failed');
-    const assignment = loaded.access.snapshot.courts[0].assignment;
+    const assignment = loaded.access.snapshot.courts[0]?.assignment;
     if (!assignment) throw new Error('assignment fixture failed');
 
     await expect(loaded.access.reconcile(assignment, 'running')).resolves.toEqual({
@@ -124,7 +124,7 @@ describe('production overview adapter', () => {
     rpc.mockResolvedValueOnce({ data: null, error });
     const loaded = await createProductionOverviewAdapter(backend).load();
     if (loaded.kind !== 'success' || loaded.access.kind !== 'operator') throw new Error('operator fixture failed');
-    const assignment = loaded.access.snapshot.courts[0].assignment;
+    const assignment = loaded.access.snapshot.courts[0]?.assignment;
     if (!assignment) throw new Error('assignment fixture failed');
 
     const result = await loaded.access.reconcile(assignment, 'running');
@@ -137,7 +137,7 @@ describe('production overview adapter', () => {
     rpc.mockResolvedValueOnce({ data: { version: 4 }, error: null });
     const loaded = await createProductionOverviewAdapter(backend).load();
     if (loaded.kind !== 'success' || loaded.access.kind !== 'operator') throw new Error('operator fixture failed');
-    const assignment = loaded.access.snapshot.courts[0].assignment;
+    const assignment = loaded.access.snapshot.courts[0]?.assignment;
     if (!assignment) throw new Error('assignment fixture failed');
 
     const result = await loaded.access.reconcile(assignment, 'running');
@@ -145,7 +145,7 @@ describe('production overview adapter', () => {
     expect(result).toEqual({ kind: 'malformed' });
   });
 
-  it('subscribes only to production state tables and removes every channel', async () => {
+  it('subscribes to every authoritative inventory and runtime table and removes every channel', async () => {
     const { backend, removeChannel, subscribe } = backendFor();
     const adapter = createProductionOverviewAdapter(backend);
     const loaded = await adapter.load();
@@ -155,12 +155,19 @@ describe('production overview adapter', () => {
     cleanup();
 
     expect(subscribe.mock.calls.map(([table]) => table)).toEqual([
+      'production_principals',
+      'production_principal_roles',
+      'courts',
+      'production_assignments',
+      'production_events',
+      'production_outputs',
       'production_desired_states',
       'production_observed_states',
       'production_operations',
       'production_operation_claims',
+      'score_states',
     ]);
-    expect(removeChannel).toHaveBeenCalledTimes(4);
+    expect(removeChannel).toHaveBeenCalledTimes(11);
   });
 
   it('loads operation claims with the resolved club filter', async () => {

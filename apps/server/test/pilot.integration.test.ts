@@ -17,6 +17,7 @@ import { buildPilotMediaMtxConfiguration } from '../src/pilot-mobile-camera.js';
 import type { PilotOverlayRenderer } from '../src/pilot-overlay.js';
 
 const cleanups: Array<() => Promise<void>> = [];
+const allowProductionAccess = { require: async () => undefined };
 
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()?.();
@@ -55,7 +56,7 @@ describe('production pilot', () => {
     expect(preflight.statusCode).toBe(204);
     expect(preflight.headers['access-control-allow-origin']).toBe(origin);
     expect(preflight.headers['access-control-allow-private-network']).toBe('true');
-    expect(preflight.headers['private-network-access-name']).toBe('kpl-production-agent');
+    expect(preflight.headers['private-network-access-name']).toBe('kpl-production-runtime');
 
     const teamsPreflight = await app.inject({
       method: 'OPTIONS',
@@ -208,6 +209,7 @@ describe('production pilot', () => {
     } as const;
     const dependencies = {
       pilotOverlayRenderer: testOverlayRenderer(),
+      productionAccessGuard: allowProductionAccess,
       pilotMatchBinding: {
         configure: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
         assertConfigured: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
@@ -275,6 +277,7 @@ describe('production pilot', () => {
       mobileCameraReadinessProbe: async () => undefined,
       mobileCameraVersionProbe: () => true,
       mobileCameraNow: () => now,
+      productionAccessGuard: allowProductionAccess,
     });
     cleanups.push(async () => { await app.close(); await rm(dataDir, { recursive: true, force: true }); });
 
@@ -483,7 +486,7 @@ async function createPilotApp() {
       controlOrigins: ['https://live.kingspadelleague.es'],
       youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
     },
-  }, { pilotOverlayRenderer: testOverlayRenderer(), pilotMatchBinding: {
+  }, { pilotOverlayRenderer: testOverlayRenderer(), productionAccessGuard: allowProductionAccess, pilotMatchBinding: {
     configure: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
     assertConfigured: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
   } });

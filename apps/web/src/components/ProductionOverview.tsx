@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useProductionOverview, type ProductionOverviewState } from '../hooks/useProductionOverview.js';
 import { useProductionPilot, type ProductionPilotController } from '../hooks/useProductionPilot.js';
-import { PRODUCTION_COURT_SLUGS, type ProductionOverviewAccess } from '../lib/production-overview-types.js';
+import type { ProductionCourtSlots, ProductionOverviewAccess } from '../lib/production-overview-types.js';
 import { ProductionCourtCard } from './ProductionCourtCard.js';
 import { ProductionDashboardView } from './ProductionDashboard.js';
 import { ProductionPilotWorkspaceView } from './ProductionPilotWorkspace.js';
@@ -29,12 +29,15 @@ export function ProductionOverview({ signOut, destination = 'dashboard' }: Produ
   const overview = useProductionOverview();
   const pilot = useProductionPilot();
   const capability = stateCapability(overview.state);
+  const courts = stateCourts(overview.state);
+  const inventoryStale = overview.state.kind === 'stale';
   if (capability === 'operator') {
     return <ProductionPilotWorkspaceView pilot={pilot} initialView="controls" controlsOnly
-      navigationRole="operator" onSignOut={signOut} />;
+      navigationRole="operator" onSignOut={signOut} courts={courts} inventoryStale={inventoryStale} />;
   }
   if (capability === 'admin') {
-    return <ProductionTabbedWorkspace initialArea={destination} pilot={pilot} signOut={signOut} />;
+    return <ProductionTabbedWorkspace initialArea={destination} pilot={pilot} signOut={signOut} courts={courts}
+      inventoryStale={inventoryStale} />;
   }
   if (capability === null) {
     return <ProductionAccessFeedback destination={destination} state={overview.state}
@@ -61,10 +64,12 @@ function ProductionAccessFeedback({ destination, state, refresh, signOut }: {
   </main>;
 }
 
-export function ProductionTabbedWorkspace({ initialArea, pilot, signOut }: {
+export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts, inventoryStale = false }: {
   readonly initialArea: AdminArea;
   readonly pilot: ProductionPilotController;
   readonly signOut: () => Promise<void>;
+  readonly courts: ProductionCourtSlots;
+  readonly inventoryStale?: boolean;
 }) {
   const [activeArea, setActiveArea] = useState<AdminArea>(initialArea);
 
@@ -84,21 +89,29 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut }: {
     <ProductionNavigation active={activeArea} role="admin" onAreaChange={openArea}
       onRefresh={() => void pilot.refresh()} refreshing={pilot.state.kind === 'ready' && pilot.state.refreshing}
       onSignOut={() => void signOut()} />
+    {inventoryStale ? <InventoryStaleWarning /> : null}
     <section id="production-panel-dashboard" className="production-workspace-panel" role="tabpanel"
       aria-labelledby="production-tab-dashboard" hidden={activeArea !== 'dashboard'} tabIndex={0}>
       <ProductionDashboardView state={pilot.state} refresh={pilot.refresh} localAdminUrl={pilot.localAdminUrl} embedded
-        onOpenConfiguration={() => openArea('emissions')} onOpenControls={() => openArea('controls')} />
+        courts={courts} onOpenConfiguration={() => openArea('emissions')} onOpenControls={() => openArea('controls')} />
     </section>
     <section id="production-panel-emissions" className="production-workspace-panel" role="tabpanel"
       aria-labelledby="production-tab-emissions" hidden={activeArea !== 'emissions'} tabIndex={0}>
       <ProductionPilotWorkspaceView pilot={pilot} initialView="configuration" embedded
-        onOpenControls={() => openArea('controls')} />
+        courts={courts} onOpenControls={() => openArea('controls')} />
     </section>
     <section id="production-panel-controls" className="production-workspace-panel" role="tabpanel"
       aria-labelledby="production-tab-controls" hidden={activeArea !== 'controls'} tabIndex={0}>
-      <ProductionPilotWorkspaceView pilot={pilot} initialView="controls" controlsOnly embedded />
+      <ProductionPilotWorkspaceView pilot={pilot} initialView="controls" controlsOnly embedded courts={courts} />
     </section>
   </main>;
+}
+
+function InventoryStaleWarning() {
+  return <div className="production-page-feedback danger" role="status">
+    No se pudo actualizar el inventario de Supabase. Se conserva la última configuración válida;
+    revisa las pistas antes de iniciar una emisión.
+  </div>;
 }
 
 function pathForArea(area: AdminArea): string {
@@ -182,15 +195,25 @@ function CourtGrid({ access, stale, refresh }: {
 function LoadingGrid() {
   return (
     <div className="production-court-grid" aria-busy="true">
-      {PRODUCTION_COURT_SLUGS.map((slug, index) => (
-        <article className="production-court-card production-court-card--loading" data-court={slug} key={slug}>
-          <span className="production-court-card__slug">{slug}</span>
-          <h2>Pista {index + 1}</h2>
-          <p>Cargando producción</p>
-        </article>
-      ))}
+      <article className="production-court-card production-court-card--loading">
+        <span className="production-court-card__slug">Inventario</span>
+        <h2>Cargando pistas</h2>
+        <p>Consultando la configuración autoritativa</p>
+      </article>
     </div>
   );
+}
+
+function stateCourts(state: ProductionOverviewState): ProductionCourtSlots {
+  switch (state.kind) {
+    case 'ready':
+    case 'refreshing':
+    case 'stale': return state.access.snapshot.courts;
+    case 'loading':
+    case 'forbidden':
+    case 'error': return [];
+    default: return assertNever(state);
+  }
 }
 
 function OverviewFeedback({ kind, retry }: {

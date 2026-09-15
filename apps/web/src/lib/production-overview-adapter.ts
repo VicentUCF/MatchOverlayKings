@@ -32,10 +32,17 @@ export const PRODUCTION_TABLES = [
 
 export type ProductionTable = (typeof PRODUCTION_TABLES)[number];
 const REALTIME_TABLES = [
+  'production_principals',
+  'production_principal_roles',
+  'courts',
+  'production_assignments',
+  'production_events',
+  'production_outputs',
   'production_desired_states',
   'production_observed_states',
   'production_operations',
   'production_operation_claims',
+  'score_states',
 ] as const;
 type RealtimeProductionTable = (typeof REALTIME_TABLES)[number];
 

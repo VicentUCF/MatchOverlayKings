@@ -25,7 +25,7 @@ Roles follow the production contracts:
 Information order is fixed:
 
 1. Existing admin top bar: KPL identity, signed-in role, refresh, sign out.
-2. Page header: `Producción · cuatro pistas`, one-sentence system summary, and last successful refresh time.
+2. Page header: `Producción`, one-sentence system summary, dynamic court inventory, and last successful refresh time.
 3. Four court cards in immutable DOM and visual order: `pista-1`, `pista-2`, `pista-3`, `pista-4`.
 4. Per-card order: court identity and assignment; score/event context; observed health; desired versus observed lifecycle; pending/conflict/deferred feedback; role-appropriate controls; existing route links; observation metadata.
 

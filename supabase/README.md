@@ -14,7 +14,8 @@ La migracion inicial crea el club `kpl`, 4 pistas (`pista-1` a `pista-4`), equip
 
 1. Crea un proyecto en Supabase.
 2. Aplica `supabase/migrations`.
-3. Activa Realtime para `public.score_states` si la migracion no lo ha podido anadir a `supabase_realtime`.
+3. Verifica que las migraciones han añadido a `supabase_realtime` el marcador y las tablas del
+   inventario de producción. Así, altas, bajas, permisos y asignaciones aparecen sin redesplegar.
 4. Crea el usuario del club en Auth con email/password.
 5. Entra una vez en `/admin`; `claim_default_club()` asocia el primer usuario autenticado al club `kpl`.
 6. Desactiva altas publicas si no quieres que alguien pueda registrar usuarios desde Auth.
@@ -35,7 +36,11 @@ El agente se autentica con una publishable key y `KPL_AGENT_ACCESS_TOKEN` de su 
 
 ## Control de produccion y `/admin`
 
-`/admin` muestra snapshots de las cuatro pistas. Un `viewer` puede observarlos. Un `operator` y un `production_admin` pueden solicitar reconciliacion de estados deseados. La respuesta de la consola confirma una solicitud, no una salida ya aplicada: el agente la reclama, reconcilia el snapshot, informa un estado observado con secuencia monotona y completa o falla la operacion.
+`/admin` obtiene de Supabase todas las pistas del club ordenadas por `display_order`. Un `viewer`
+puede observar el control plane. Un `operator` y un `production_admin` operan las emisiones en el
+runtime local unificado; una pista desactivada continúa visible, pero no puede prepararse ni
+iniciarse. Si Realtime se interrumpe se conserva el último inventario válido y se muestra una
+advertencia explícita.
 
 Solo un `production_admin` puede conceder o revocar roles humanos. El rol `operator` no administra roles. El primer usuario `admin` del club recibe `production_admin`; los usuarios `member` no reciben ese rol de forma automatica.
 
@@ -82,6 +87,6 @@ supabase db reset
 supabase test db
 ```
 
-Este repositorio no incluye Android, YouTube, camaras de red ni una UI de aprovisionamiento. No
-copies secretos, tokens ni valores `local://` con material sensible a migraciones, configuracion de
-Vite o registros.
+El runtime local incluye Android, YouTube y la operación de emisiones; Supabase conserva el
+inventario, acceso, identidad de partido y marcador autoritativos. No copies secretos, tokens ni
+valores `local://` con material sensible a migraciones, configuracion de Vite o registros.

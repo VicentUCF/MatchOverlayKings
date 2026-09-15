@@ -210,7 +210,7 @@ export class PilotService {
     }
     const existing = [...this.sessions.values()].find(({ public: session }) =>
       session.courtSlug === input.courtSlug && session.status !== 'stopped');
-    if (existing !== undefined) throw new PilotServiceError(409, 'CONFLICT', 'La pista ya tiene un piloto activo.');
+    if (existing !== undefined) throw new PilotServiceError(409, 'CONFLICT', 'La pista ya tiene una sesión activa.');
 
     if (!this.matchBinding) throw new PilotServiceError(503, 'NOT_READY', 'No se puede comprobar el partido del marcador.');
     const identity = await this.matchBinding.assertConfigured(input, authorization);
@@ -290,7 +290,7 @@ export class PilotService {
 
   public get(id: string): InternalPilotSession {
     const session = this.sessions.get(id);
-    if (session === undefined) throw new PilotServiceError(404, 'NOT_FOUND', 'No existe esa sesión de piloto.');
+    if (session === undefined) throw new PilotServiceError(404, 'NOT_FOUND', 'No existe esa sesión de emisión.');
     return session;
   }
 
@@ -651,13 +651,12 @@ function discoverSources(): readonly PilotSource[] {
 }
 
 function productionAssets(input: PreparePilotSessionInput) {
-  const courtNumber = Number(input.courtSlug.slice(-1));
   return createProductionAssets({
     leagueName: 'Kings Padel League',
     seasonLabel: input.seasonLabel,
     matchdayLabel: 'Jornada',
     matchdayNumber: input.matchdayNumber,
-    courtName: `Pista ${courtNumber}`,
+    courtName: courtNameFromSlug(input.courtSlug),
     home: { name: input.homeTeam },
     away: { name: input.awayTeam },
     scheduledAt: input.scheduledAt,
@@ -666,6 +665,13 @@ function productionAssets(input: PreparePilotSessionInput) {
     publicUrl: `https://live.kingspadelleague.es/live/${input.courtSlug}`,
     templateRevision: 'kpl-season-v2',
   });
+}
+
+function courtNameFromSlug(slug: string): string {
+  return slug
+    .split('-')
+    .map((part, index) => index === 0 ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : part)
+    .join(' ');
 }
 
 function ffmpegCommand(

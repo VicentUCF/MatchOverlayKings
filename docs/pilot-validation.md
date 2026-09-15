@@ -1,9 +1,9 @@
-# Validación del centro de control KPL
+# Validación del runtime de producción KPL
 
-El objetivo de este piloto no es demostrar todavía todo el producto. Debe responder, con el menor coste posible, a dos preguntas:
+Esta validación comprueba dos riesgos principales antes de una jornada real:
 
 1. ¿Puede este PC crear y mantener las emisiones sin depender de OBS?
-2. ¿Reduce suficiente trabajo operativo como para justificar completar cámaras, móvil y tres pistas?
+2. ¿Puede una sola persona operar tres emisiones y recuperarlas desde el mismo panel?
 
 ## Puerta 1 — capacidad del PC
 
@@ -19,7 +19,7 @@ Resultado de referencia obtenido en este PC (Ryzen 5 5600G, 32 GB): `3.04×`, `3
 
 ## Puerta 2 — recorrido de tres pistas
 
-1. Ejecutar `npm run pilot` y abrir `http://localhost:4310/admin`.
+1. Ejecutar `npm run production:local:foreground` y abrir `http://localhost:4310/admin`.
 2. Entrar en **Emisiones**, elegir simulación y guardar las tres pistas.
 3. Abrir **Mandos** o entregar al operador `http://localhost:4310/mandos`.
 4. Preparar las tres señales y comprobar sus títulos y miniaturas.
@@ -38,9 +38,9 @@ La puerta queda aprobada cuando:
 
 ## Puerta 3 — rentabilidad
 
-Comparar una jornada real hecha con OBS con una repetición privada usando el piloto. Registrar:
+Comparar una jornada real hecha con OBS con una repetición privada usando el runtime unificado. Registrar:
 
-| Medida | OBS actual | Piloto | Objetivo para continuar |
+| Medida | OBS actual | Runtime unificado | Objetivo para continuar |
 | --- | ---: | ---: | ---: |
 | Minutos de preparación total |  |  | reducción ≥ 50 % |
 | Personas necesarias |  |  | una sola persona |
@@ -59,4 +59,6 @@ Continuar si las tres puertas se aprueban y el retorno estimado encaja en el pla
 
 ## Alcance deliberadamente aplazado
 
-El piloto no incluye aún el móvil como tercera cámara, batería/telemetría, mezcla de varias cámaras, overlays dentro del vídeo ni recuperación automática completa. Esas piezas se construyen solo después de validar las tres salidas y la operación real de YouTube.
+Queda aplazado soportar una sesión Android independiente por pista y la mezcla de varias cámaras.
+El runtime ya incorpora overlays en vídeo, telemetría básica, persistencia y recuperación automática
+de FFmpeg con recuperación manual desde Mandos.

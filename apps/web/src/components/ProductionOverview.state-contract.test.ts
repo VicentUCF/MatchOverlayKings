@@ -25,7 +25,7 @@ function operatorAccess(value = snapshot()): OperatorProductionAccess {
 }
 
 function assignmentFrom(value: ProductionOverviewSnapshot): ProductionCourtAssignment {
-  const assignment = value.courts[0].assignment;
+  const assignment = firstCourt(value).assignment;
   if (assignment === null) throw new TypeError('Production overview fixture has no assignment');
   return assignment;
 }
@@ -40,7 +40,7 @@ function renderOverview(state: ProductionOverviewState): string {
 
 function renderAssignment(assignment: ProductionCourtAssignment): string {
   const value = snapshot();
-  const court: ProductionCourtSlot = { ...value.courts[0], assignment };
+  const court: ProductionCourtSlot = { ...firstCourt(value), assignment };
   return renderToStaticMarkup(createElement(ProductionCourtCardView, {
     court,
     access: operatorAccess(value),
@@ -49,6 +49,12 @@ function renderAssignment(assignment: ProductionCourtAssignment): string {
     stale: false,
     onReconcile: () => undefined,
   }));
+}
+
+function firstCourt(value: ProductionOverviewSnapshot): ProductionCourtSlot {
+  const court = value.courts[0];
+  if (court === undefined) throw new TypeError('Production overview fixture has no courts');
+  return court;
 }
 
 describe('production overview retained access', () => {

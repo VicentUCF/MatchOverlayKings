@@ -16,20 +16,26 @@ describe('production overview mapping', () => {
     expect(operator).toMatchObject({ kind: 'success', capability: 'operator' });
   });
 
-  it('maps validated production rows into fixed court order with no-assignment slots', () => {
-    const result = mapProductionOverviewData(USER_ID, productionDataset());
+  it('maps every configured court in authoritative display order with no-assignment slots', () => {
+    const dataset = productionDataset();
+    dataset.courts.push({
+      id: '80000000-0000-4000-8000-000000000005', club_id: CLUB_ID, slug: 'pista-central',
+      name: 'Pista central', display_order: 0, production_enabled: false,
+    });
+    const result = mapProductionOverviewData(USER_ID, dataset);
 
     expect(result.kind).toBe('success');
     if (result.kind !== 'success') return;
     expect(result.snapshot.courts.map((court) => court.slug)).toEqual([
+      'pista-central',
       'pista-1',
       'pista-2',
       'pista-3',
       'pista-4',
     ]);
-    expect(result.snapshot.courts[0].assignment?.desired.version).toBe(3);
-    expect(result.snapshot.courts[0].assignment?.latestOperationClaim?.operationId).toBe(OPERATION_ID);
-    expect(result.snapshot.courts.slice(1).every((court) => court.assignment === null)).toBe(true);
+    expect(result.snapshot.courts[1]?.assignment?.desired.version).toBe(3);
+    expect(result.snapshot.courts[1]?.assignment?.latestOperationClaim?.operationId).toBe(OPERATION_ID);
+    expect(result.snapshot.courts.filter(({ slug }) => slug !== 'pista-1').every((court) => court.assignment === null)).toBe(true);
   });
 
   it.each([
@@ -51,7 +57,7 @@ describe('production overview mapping', () => {
 
     expect(result.kind).toBe('success');
     if (result.kind !== 'success') return;
-    expect(result.snapshot.courts[0].assignment?.latestOperationClaim).toMatchObject({
+    expect(result.snapshot.courts.find(({ slug }) => slug === 'pista-1')?.assignment?.latestOperationClaim).toMatchObject({
       operationId: OPERATION_ID,
       status,
       result: claimResult,
@@ -78,8 +84,8 @@ describe('production overview mapping', () => {
 
     expect(result.kind).toBe('success');
     if (result.kind !== 'success') return;
-    expect(result.snapshot.courts[0].assignment?.latestOperation?.id).toBe(latestOperationId);
-    expect(result.snapshot.courts[0].assignment?.latestOperationClaim?.operationId).toBe(latestOperationId);
+    expect(result.snapshot.courts.find(({ slug }) => slug === 'pista-1')?.assignment?.latestOperation?.id).toBe(latestOperationId);
+    expect(result.snapshot.courts.find(({ slug }) => slug === 'pista-1')?.assignment?.latestOperationClaim?.operationId).toBe(latestOperationId);
   });
 
   it('does not attach an older claim when the latest operation is unclaimed', () => {
@@ -97,8 +103,8 @@ describe('production overview mapping', () => {
 
     expect(result.kind).toBe('success');
     if (result.kind !== 'success') return;
-    expect(result.snapshot.courts[0].assignment?.latestOperation?.id).toBe(latestOperationId);
-    expect(result.snapshot.courts[0].assignment?.latestOperationClaim).toBeNull();
+    expect(result.snapshot.courts.find(({ slug }) => slug === 'pista-1')?.assignment?.latestOperation?.id).toBe(latestOperationId);
+    expect(result.snapshot.courts.find(({ slug }) => slug === 'pista-1')?.assignment?.latestOperationClaim).toBeNull();
   });
 
   it('rejects the complete response when one production row is malformed', () => {

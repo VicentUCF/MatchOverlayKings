@@ -30,8 +30,9 @@ animaciones. Debe cerrar el ciclo completo:
   o interrumpida pendiente de recuperar o finalizar.
 - [x] Añadir smoke check de disponibilidad y un runbook específico para el fin de
   semana.
-- [ ] Completar la unificación arquitectónica con el reconciliador del agente de
-  producción, configuración dinámica de pistas y estado observado autoritativo.
+- [x] Completar la unificación operativa: un solo runtime para señal y emisión,
+  inventario dinámico autoritativo y retirada del ejecutable de producción
+  alternativo. El antiguo reconciliador queda archivado como referencia.
 - [ ] Soportar una cámara móvil independiente por pista; actualmente hay una sola
   sesión Android global.
 
@@ -58,53 +59,53 @@ animaciones. Debe cerrar el ciclo completo:
 
 Estas mejoras bloquean la consideración del sistema como producto de producción.
 
-### 1. Unificar piloto y agente de producción
+### 1. Unificar piloto y aplicación de producción
 
-- [ ] Eliminar la convivencia de dos centros de control con modelos operativos
+- [x] Eliminar la convivencia de dos centros de control con modelos operativos
   distintos.
-- [ ] Integrar en un mismo flujo las capacidades actuales del piloto —YouTube,
-  cámara móvil, miniaturas y overlays— y las del agente —reconciliación, estado
-  observado, operaciones y capacidad diferida—.
-- [ ] Hacer que administradores y operadores utilicen el mismo control plane, con
+- [x] Concentrar YouTube, cámara móvil, miniaturas, overlays, estado real de las
+  sesiones, recuperación y límite de capacidad en el mismo runtime operativo.
+- [x] Hacer que administradores y operadores utilicen el mismo control plane, con
   acciones limitadas según su rol.
-- [ ] Eliminar arrays de pistas, equipos y emparejamientos hardcodeados de la UI y
+- [x] Eliminar arrays de pistas, equipos y emparejamientos hardcodeados de la UI y
   los contratos.
-- [ ] Obtener las pistas y sus capacidades desde configuración autoritativa.
-- [ ] Resolver la diferencia actual entre el piloto de tres pistas y el agente de
-  producción de cuatro pistas.
-- [ ] Mantener una única identidad de partido para marcador, overlay, miniatura,
+- [x] Obtener las pistas y sus capacidades desde configuración autoritativa.
+- [x] Resolver la diferencia entre inventarios fijos de tres y cuatro pistas.
+- [x] Mantener una única identidad de partido para marcador, overlay, miniatura,
   metadatos y emisión.
 
 #### Criterios de aceptación
 
-- [ ] Una pista añadida o desactivada en configuración aparece correctamente sin
+- [x] Una pista añadida o desactivada en configuración aparece correctamente sin
   modificar y desplegar el frontend.
-- [ ] El administrador puede ver configuración, señal, marcador, salida y salud en
+- [x] El administrador puede ver configuración, señal, marcador, salida y salud en
   el mismo contexto de pista.
-- [ ] No existen rutas administrativas alternativas que representen estados
+- [x] No existen rutas administrativas alternativas que representen estados
   contradictorios de la misma emisión.
 
 ### 2. Persistencia y recuperación después de reinicios
 
-- [ ] Persistir sesiones, operaciones pendientes, destino remoto, configuración
-  aplicada y último estado observado.
+- [x] Persistir de forma atómica las sesiones, el destino remoto, la configuración
+  aplicada y el último estado de ejecución necesario para recuperarlas.
+- [ ] Persistir un registro independiente de operaciones pendientes y completadas.
 - [ ] Al arrancar, reconciliar el estado local con Supabase, MediaMTX, FFmpeg y
   YouTube antes de habilitar controles.
 - [ ] Detectar procesos huérfanos, emisiones remotas activas y sesiones locales
   incompletas.
-- [ ] Permitir recuperar o finalizar de forma segura una emisión que sobrevivió
+- [x] Permitir recuperar o finalizar de forma segura una emisión que sobrevivió
   parcialmente a un reinicio.
-- [ ] Evitar emisiones duplicadas al reintentar una operación.
+- [x] Reutilizar el broadcast y la entrada protegida existentes al recuperar, sin
+  preparar una segunda emisión.
 - [ ] Conservar un historial de acciones e incidentes por pista y jornada.
 
 #### Criterios de aceptación
 
-- [ ] Reiniciar el navegador no pierde ninguna operación ni sesión.
-- [ ] Reiniciar el contenedor durante una simulación recupera o cierra la sesión de
+- [x] Reiniciar el navegador no pierde ninguna configuración ni sesión.
+- [x] Reiniciar el contenedor durante una simulación recupera o cierra la sesión de
   manera determinista.
 - [ ] Reiniciar durante una emisión privada de YouTube no crea un segundo
   broadcast y muestra claramente si la emisión continúa, se recupera o se cierra.
-- [ ] La recuperación puede ejecutarse desde la interfaz sin terminal.
+- [x] La recuperación puede ejecutarse desde la interfaz sin terminal.
 
 ### 3. Recuperación automática de todas las fuentes
 
@@ -112,11 +113,12 @@ Estas mejoras bloquean la consideración del sistema como producto de producció
   overlay, MediaMTX, FFmpeg y salida remota.
 - [ ] Detectar vídeo congelado, pantalla negra, ausencia de audio, pérdida de
   frames, velocidad insuficiente y bitrate degradado.
-- [ ] Configurar límites de reintento, backoff y escalado de alertas.
+- [x] Configurar un límite de cinco reintentos, backoff y escalado visible a estado
+  `Fallida`.
 - [ ] Disponer de una fuente de respaldo o cartel de continuidad por pista.
-- [ ] Permitir una acción segura `Recuperar pista` cuando la autorrecuperación no
+- [x] Permitir una acción segura `Recuperar pista` cuando la autorrecuperación no
   sea suficiente.
-- [ ] Evitar bucles infinitos silenciosos y mostrar el último diagnóstico útil.
+- [x] Evitar bucles infinitos silenciosos y mostrar el último diagnóstico útil.
 
 #### Criterios de aceptación
 

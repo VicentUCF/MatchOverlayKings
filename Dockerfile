@@ -47,4 +47,4 @@ COPY --from=build /app/packages ./packages
 RUN mkdir -p /app/data && chmod 0770 /app/data
 EXPOSE 4310/tcp 8889/tcp 8189/udp
 VOLUME ["/app/data"]
-CMD ["node", "apps/server/dist/pilot-index.js"]
+CMD ["node", "apps/server/dist/production-index.js"]

@@ -32,10 +32,10 @@ function emptyInventory(): ProductionSetupInventory {
   return {
     eventDays: [], principals: [], devices: [], events: [], assignments: [], outputs: [],
     courts: [
-      { id: IDS.courts[0], clubId: IDS.club, slug: 'pista-1', name: 'Pista 1', productionEnabled: true },
-      { id: IDS.courts[1], clubId: IDS.club, slug: 'pista-2', name: 'Pista 2', productionEnabled: true },
-      { id: IDS.courts[2], clubId: IDS.club, slug: 'pista-3', name: 'Pista 3', productionEnabled: true },
-      { id: IDS.courts[3], clubId: IDS.club, slug: 'pista-4', name: 'Pista 4', productionEnabled: true },
+      { id: IDS.courts[0], clubId: IDS.club, slug: 'pista-1', name: 'Pista 1', displayOrder: 1, productionEnabled: true },
+      { id: IDS.courts[1], clubId: IDS.club, slug: 'pista-2', name: 'Pista 2', displayOrder: 2, productionEnabled: true },
+      { id: IDS.courts[2], clubId: IDS.club, slug: 'pista-3', name: 'Pista 3', displayOrder: 3, productionEnabled: true },
+      { id: IDS.courts[3], clubId: IDS.club, slug: 'pista-4', name: 'Pista 4', displayOrder: 4, productionEnabled: true },
     ],
   };
 }

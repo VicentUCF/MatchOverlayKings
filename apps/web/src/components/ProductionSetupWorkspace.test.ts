@@ -6,7 +6,9 @@ import { ProductionOverviewView } from './ProductionOverview.js';
 import { ProductionSetupWorkspaceView } from './ProductionSetupWorkspace.js';
 import { createProductionSetupDraft, type ProductionSetupInventory } from '../lib/production-setup-orchestrator.js';
 import type { ProductionOverviewState } from '../hooks/useProductionOverview.js';
-import { PRODUCTION_COURT_SLUGS, type ProductionOverviewAccess, type ProductionOverviewSnapshot } from '../lib/production-overview-types.js';
+import type { ProductionOverviewAccess, ProductionOverviewSnapshot } from '../lib/production-overview-types.js';
+
+const COURT_SLUGS = ['pista-1', 'pista-2', 'pista-3', 'pista-4', 'pista-central'] as const;
 
 const CLUB_ID = '10000000-0000-4000-8000-000000000001';
 const PRINCIPAL_ID = '20000000-0000-4000-8000-000000000001';
@@ -14,9 +16,9 @@ const PRINCIPAL_ID = '20000000-0000-4000-8000-000000000001';
 function inventory(): ProductionSetupInventory {
   return {
     eventDays: [], principals: [], devices: [], events: [], assignments: [], outputs: [],
-    courts: PRODUCTION_COURT_SLUGS.map((slug, index) => ({
+    courts: COURT_SLUGS.map((slug, index) => ({
       id: `30000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
-      clubId: CLUB_ID, slug, name: `Pista ${index + 1}`, productionEnabled: true,
+      clubId: CLUB_ID, slug, name: `Pista ${index + 1}`, displayOrder: index + 1, productionEnabled: true,
     })),
   };
 }
@@ -73,7 +75,7 @@ describe('production setup workspace', () => {
     expect(overviewHtml('viewer')).not.toContain('Mandos');
   });
 
-  it('renders one shared panel and exactly four fixed court forms in source order', () => {
+  it('renders one shared panel and every configured court in source order', () => {
     let sequence = 0;
     const currentInventory = inventory();
     const draft = createProductionSetupDraft(currentInventory, CLUB_ID, () =>
@@ -85,12 +87,12 @@ describe('production setup workspace', () => {
       onSubmit: () => undefined, onBack: () => undefined,
     }));
 
-    const positions = ['pista-1', 'pista-2', 'pista-3', 'pista-4'].map((slug) => html.indexOf(`data-setup-court="${slug}"`));
-    expect((html.match(/data-setup-court=/g) ?? []).length).toBe(4);
+    const positions = COURT_SLUGS.map((slug) => html.indexOf(`data-setup-court="${slug}"`));
+    expect((html.match(/data-setup-court=/g) ?? []).length).toBe(5);
     expect(positions).toEqual([...positions].sort((left, right) => left - right));
     expect((html.match(/name="agentAuthUserId"/g) ?? []).length).toBe(1);
     expect(html).toContain('aria-describedby="agent-auth-help"');
-    expect((html.match(/Agente compartido/g) ?? []).length).toBe(4);
+    expect((html.match(/Agente compartido/g) ?? []).length).toBe(5);
     expect(html).toContain('Formato requerido: local://captura/pista.');
     expect(html).toContain('SRT');
     expect(html).toContain('Programa');

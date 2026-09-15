@@ -5,8 +5,8 @@ import {
   SupabaseProductionEventRowSchema,
   SupabaseSafeDeviceRowSchema,
   SupabaseSafeOutputRowSchema,
+  PilotCourtSlugSchema,
 } from '@kpl/production-contracts';
-import { PRODUCTION_COURT_SLUGS } from './production-overview-types.js';
 import { supabase } from './supabase.js';
 import type {
   ProductionSetupInventoryAdapter,
@@ -40,12 +40,12 @@ const PrincipalRowsSchema = z.array(z.strictObject({
   displayName: row.display_name, active: row.active, version: row.version,
 }]));
 const CourtRowsSchema = z.array(z.strictObject({
-  id: z.uuid(), club_id: z.uuid(), slug: z.enum(PRODUCTION_COURT_SLUGS), name: z.string().trim().min(1),
+  id: z.uuid(), club_id: z.uuid(), slug: PilotCourtSlugSchema, name: z.string().trim().min(1),
   display_order: z.number().int(), production_enabled: z.boolean(),
 }).transform((row) => ({
   id: row.id, clubId: row.club_id, slug: row.slug, name: row.name,
-  productionEnabled: row.production_enabled,
-}))).length(4).readonly();
+  displayOrder: row.display_order, productionEnabled: row.production_enabled,
+}))).min(1).readonly();
 
 const DEFAULT_BACKEND: ProductionSetupInventoryBackend = Object.freeze({
   select: async (table, columns, clubId) => supabase.from(table).select(columns).eq('club_id', clubId),
@@ -79,7 +79,7 @@ export function createProductionSetupInventoryAdapter(
         return { kind: 'success', inventory: {
           principals: principals.value, eventDays: eventDays.value, devices: devices.value,
           courts: [...courts.value].sort((left, right) =>
-            PRODUCTION_COURT_SLUGS.indexOf(left.slug) - PRODUCTION_COURT_SLUGS.indexOf(right.slug)),
+            left.displayOrder - right.displayOrder || left.slug.localeCompare(right.slug)),
           events: events.value, assignments: assignments.value, outputs: outputs.value,
         } };
       } catch (error) {

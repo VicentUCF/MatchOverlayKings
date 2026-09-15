@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
-export const PilotCourtSlugSchema = z.enum(['pista-1', 'pista-2', 'pista-3']);
+// Kept as a compatibility name while the former pilot becomes the production
+// runtime. Court inventory is authoritative in Supabase, so slugs cannot be an
+// application-level fixed enum.
+export const PilotCourtSlugSchema = z.string().regex(/^pista-[a-z0-9-]+$/).max(80);
 export const PilotModeSchema = z.enum(['simulation', 'youtube']);
 export const PilotPrivacySchema = z.enum(['private', 'unlisted', 'public']);
 export const PilotSessionStatusSchema = z.enum([

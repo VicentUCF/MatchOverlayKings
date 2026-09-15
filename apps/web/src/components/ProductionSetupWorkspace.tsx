@@ -70,7 +70,7 @@ export function ProductionSetupWorkspaceView({
         <section className="production-setup-shared" aria-labelledby="setup-shared-title">
           <div className="production-setup-shared__heading">
             <div><p className="production-setup-court__eyebrow">Compartido</p><h2 id="setup-shared-title">Jornada y agente local</h2></div>
-            <strong>{completion.completeCourts}/4 pistas preparadas</strong>
+            <strong>{completion.completeCourts}/{state.draft.courts.length} pistas preparadas</strong>
           </div>
           <div className="production-setup-fields production-setup-fields--shared">
             <label htmlFor="setup-day-name">Nombre de la jornada</label>

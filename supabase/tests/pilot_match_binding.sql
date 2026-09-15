@@ -85,6 +85,25 @@ select pg_temp.assert_eq_text((select state->>'awayTeamId' from public.score_sta
 select pg_temp.assert_true((select (state->>'productionConfigured')::boolean from public.score_states where court_slug = 'pista-1'), 'control sees identity lock');
 select public.configure_pilot_match(pg_temp.binding_input(), false);
 
+reset role;
+update public.courts set production_enabled = false where slug = 'pista-1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000009999', true);
+do $$
+begin
+  begin
+    perform public.configure_pilot_match(pg_temp.binding_input(), false);
+    raise exception 'Assertion failed: disabled court must reject emission binding';
+  exception when others then
+    if sqlerrm not like '%producción de esta pista está desactivada%' then raise; end if;
+  end;
+end;
+$$;
+reset role;
+update public.courts set production_enabled = true where slug = 'pista-1';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000009999', true);
+
 do $$
 begin
   begin

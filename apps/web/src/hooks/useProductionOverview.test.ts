@@ -19,7 +19,7 @@ describe('production overview store', () => {
     await vi.waitFor(() => expect(store.getSnapshot().kind).toBe('ready'));
     cleanup();
 
-    expect(remove).toHaveBeenCalledTimes(4);
+    expect(remove).toHaveBeenCalledTimes(11);
   });
 
   it('preserves the complete operator access while refreshing and after refresh failure', async () => {
@@ -83,7 +83,7 @@ describe('production overview store', () => {
     await store.refresh();
 
     expect(store.getSnapshot()).toEqual({ kind: 'forbidden' });
-    expect(remove).toHaveBeenCalledTimes(4);
+    expect(remove).toHaveBeenCalledTimes(11);
 
     authorized = true;
     const reload = store.refresh();

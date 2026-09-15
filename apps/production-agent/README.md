@@ -1,5 +1,10 @@
 # Runbook del agente de produccion local
 
+> **Archivado:** este ejecutable ya no forma parte de la operación soportada. No debe arrancarse
+> junto a `@kpl/server`, porque crearía un segundo reconciliador para las mismas emisiones.
+> El paquete se conserva únicamente como referencia y banco de pruebas mientras sus garantías de
+> reconciliación se incorporan al runtime unificado descrito en el README raíz.
+
 Este agente Linux controla cuatro pistas configuradas con un MediaMTX compartido y cuatro
 pipelines `FfmpegCourtPipeline`. El supervisor admite como maximo tres pipelines activos
 (`KPL_AGENT_MAX_CONCURRENT_PIPELINES=3`). Si las cuatro pistas solicitan `preflight` o `running`,
@@ -84,16 +89,9 @@ MediaMTX genera una configuracion efimera con API autenticada solo en loopback, 
 publicacion y protocolos no usados desactivados. FFmpeg se inicia sin shell, con progreso por fd
 `3` y el overlay opcional por fd `4`.
 
-## Arranque, observacion y parada
+## Ejecución histórica (no soportada en producción)
 
-Desde la raiz del repositorio, construye y arranca con un unico argumento absoluto:
-
-```bash
-npm run build
-npm run start:production-agent -- /absolute/path/to/media-config.json
-```
-
-El proceso rechaza cero o mas de un argumento, rutas relativas, JSON invalido, variables invalidas
+El proceso histórico rechazaba cero o más de un argumento, rutas relativas, JSON inválido, variables inválidas
 o UUID de pistas que no coincidan. Al iniciar, MediaMTX debe informar exactamente los cuatro paths
 configurados antes de que el agente entre en reconciliacion.
 

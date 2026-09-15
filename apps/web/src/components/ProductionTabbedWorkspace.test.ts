@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { PilotSession } from '@kpl/production-contracts';
 import type { ProductionPilotController } from '../hooks/useProductionPilot.js';
+import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
 import { ProductionTabbedWorkspace } from './ProductionOverview.js';
 import { ProductionPilotWorkspaceView } from './ProductionPilotWorkspace.js';
 
@@ -29,16 +30,32 @@ const liveYoutubeSession: PilotSession = {
   stoppedAt: null, error: null,
 };
 
+const courts: readonly ProductionCourtSlot[] = [1, 2, 3].map((number) => ({
+  slug: `pista-${number}`,
+  courtId: `80000000-0000-4000-8000-00000000000${number}`,
+  name: `Pista ${number}`,
+  productionEnabled: true,
+  assignment: null,
+}));
+
 describe('tabbed production workspace', () => {
+  it('warns while operating with the last valid Supabase inventory', () => {
+    const html = renderToStaticMarkup(createElement(ProductionTabbedWorkspace, {
+      initialArea: 'dashboard', pilot, courts, inventoryStale: true, signOut: async () => undefined,
+    }));
+
+    expect(html).toContain('Se conserva la última configuración válida');
+  });
+
   it('keeps Inicio, Emisiones and Mandos mounted with one shared controller', () => {
     const html = renderToStaticMarkup(createElement(ProductionTabbedWorkspace, {
-      initialArea: 'dashboard', pilot, signOut: async () => undefined,
+      initialArea: 'dashboard', pilot, courts, signOut: async () => undefined,
     }));
 
     expect((html.match(/role="tabpanel"/g) ?? [])).toHaveLength(3);
     expect((html.match(/class="production-workspace-panel"/g) ?? [])).toHaveLength(3);
     expect((html.match(/role="tabpanel"[^>]*hidden=""/g) ?? [])).toHaveLength(2);
-    expect(html).toContain('Las tres pistas, en un solo sitio');
+    expect(html).toContain('Todas las pistas, en un solo sitio');
     expect(html).toContain('Cargando el centro de emisiones');
     expect(html).not.toContain('Sistema');
   });
@@ -69,7 +86,7 @@ describe('tabbed production workspace', () => {
       },
     };
     const html = renderToStaticMarkup(createElement(ProductionTabbedWorkspace, {
-      initialArea: 'controls', pilot: readyPilot, signOut: async () => undefined,
+      initialArea: 'controls', pilot: readyPilot, courts, signOut: async () => undefined,
     }));
 
     expect((html.match(/Ver directo en YouTube/g) ?? [])).toHaveLength(2);
@@ -113,7 +130,7 @@ describe('tabbed production workspace', () => {
     };
 
     const html = renderToStaticMarkup(createElement(ProductionPilotWorkspaceView, {
-      pilot: interruptedPilot, controlsOnly: true,
+      pilot: interruptedPilot, controlsOnly: true, courts,
     }));
 
     expect(html).toContain('Interrumpida');

@@ -2,7 +2,7 @@
 
 Este documento es la lista operativa para la primera jornada real. El objetivo
 es detectar los fallos antes de abrir el directo y recuperar la misma emisión si
-el agente local se reinicia, sin crear broadcasts duplicados.
+el runtime local se reinicia, sin crear broadcasts duplicados.
 
 ## Responsables y límites
 
@@ -79,7 +79,7 @@ el agente local se reinicia, sin crear broadcasts duplicados.
 
 ## Matriz de incidencias
 
-### El navegador no contacta con el agente
+### El navegador no contacta con el runtime
 
 1. No cerrar ni recrear el directo en YouTube.
 2. Abrir `http://localhost:4310/ready`.

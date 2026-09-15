@@ -82,7 +82,7 @@ export function PilotMobileCameraPanel({
     </div>
 
     {assignedElsewhere ? <p className="production-command-feedback">
-      El único móvil del piloto está asignado a {mobileCamera?.courtSlug}.
+      La cámara móvil disponible está asignada a {mobileCamera?.courtSlug}.
     </p> : owned === null ? <div className="pilot-mobile-camera__empty">
       <p>Genera un enlace temporal y ábrelo en Chrome desde el móvil de esta pista.</p>
       <button type="button" onClick={() => void onCreate()} disabled={pending || assignedElsewhere}>

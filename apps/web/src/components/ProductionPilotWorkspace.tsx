@@ -19,25 +19,17 @@ import {
 import type { Team } from '@kpl/shared';
 import { useProductionPilot, type ProductionPilotController } from '../hooks/useProductionPilot.js';
 import { youtubeWatchUrl } from '../lib/pilot-youtube-watch.js';
+import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
 import { ProductionNavigation, type ProductionNavigationRole } from './ProductionNavigation.js';
 import { PilotMobileCameraMonitor, PilotMobileCameraPanel } from './PilotMobileCameraPanel.js';
-
-const COURTS: readonly {
-  readonly slug: PilotCourtSlug;
-  readonly label: string;
-  readonly homeTeamId: string;
-  readonly awayTeamId: string;
-}[] = [
-  { slug: 'pista-1', label: 'Pista 1', homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' },
-  { slug: 'pista-2', label: 'Pista 2', homeTeamId: 'barbaridad-team', awayTeamId: 'magic-city' },
-  { slug: 'pista-3', label: 'Pista 3', homeTeamId: 'thormentadores', awayTeamId: 'titanics' },
-];
 
 const DEFAULT_BROADCAST_DESCRIPTION = 'Sigue en directo la jornada de Kings Padel League.';
 
 type PilotWorkspaceView = 'configuration' | 'controls';
 
 type ProductionPilotWorkspaceProps = {
+  readonly courts: readonly ProductionCourtSlot[];
+  readonly inventoryStale?: boolean;
   readonly initialView?: PilotWorkspaceView;
   readonly controlsOnly?: boolean;
   readonly navigationRole?: ProductionNavigationRole;
@@ -57,7 +49,7 @@ export function ProductionPilotWorkspace(props: ProductionPilotWorkspaceProps) {
 
 export function ProductionPilotWorkspaceView({
   pilot, initialView = 'configuration', controlsOnly = false, navigationRole = 'admin', onSignOut,
-  onOpenControls = () => window.location.assign('/mandos'), embedded = false,
+  onOpenControls = () => window.location.assign('/mandos'), embedded = false, courts, inventoryStale = false,
 }: ProductionPilotWorkspaceViewProps) {
   const view: PilotWorkspaceView = controlsOnly ? 'controls' : initialView;
   const [elapsedByCourt, setElapsedByCourt] = useState<Partial<Record<PilotCourtSlug, number>>>({});
@@ -78,7 +70,8 @@ export function ProductionPilotWorkspaceView({
     setElapsedByCourt((current) => ({ ...current, [court]: seconds ?? undefined }));
   }, []);
   const shell = (children: ReactNode) => (
-    <PilotShell view={view} navigationRole={navigationRole} onSignOut={onSignOut} embedded={embedded}>{children}</PilotShell>
+    <PilotShell view={view} navigationRole={navigationRole} onSignOut={onSignOut} embedded={embedded}
+      inventoryStale={inventoryStale}>{children}</PilotShell>
   );
 
   if (pilot.state.kind === 'loading') return shell(<p className="production-pilot-loading">Cargando el centro de emisiones…</p>);
@@ -91,9 +84,10 @@ export function ProductionPilotWorkspaceView({
   );
 
   const ready = pilot.state;
-  const sessions = COURTS.map(({ slug }) => latestSession(ready.sessions, slug));
+  const enabledCourts = courts.filter(({ productionEnabled }) => productionEnabled);
+  const sessions = enabledCourts.map(({ slug }) => latestSession(ready.sessions, slug));
   const activeCount = sessions.filter((session) => session && ['starting', 'live', 'reconnecting', 'stopping'].includes(session.status)).length;
-  const configuredCount = COURTS.filter(({ slug }) => ready.configurations.some((item) => item.courtSlug === slug)).length;
+  const configuredCount = enabledCourts.filter(({ slug }) => ready.configurations.some((item) => item.courtSlug === slug)).length;
   const unavailableSources = new Set(ready.sessions
     .filter((session) => session.source.kind === 'v4l2' && session.status !== 'stopped')
     .map((session) => session.source.id));
@@ -104,11 +98,12 @@ export function ProductionPilotWorkspaceView({
         <p className="production-kicker">{view === 'configuration' ? 'Administración · preparación' : 'Operación · directo'}</p>
         <h1 id={`pilot-${view}-title`}>{view === 'configuration' ? 'Configurar emisiones' : 'Mandos de emisión'}</h1>
         <p>{view === 'configuration'
-          ? 'Deja preparadas las tres pistas. Los cambios se guardan en este PC y aparecerán en Mandos.'
+          ? 'Configura las pistas habilitadas. Los cambios se guardan en este PC y aparecerán en Mandos.'
           : 'Controla las emisiones sin cambiar fuentes, títulos ni visibilidad.'}</p>
       </div>
       <div className="production-pilot-intro__actions">
-        <ReadinessSummary readiness={ready.readiness} activeCount={activeCount} configuredCount={configuredCount} />
+        <ReadinessSummary readiness={ready.readiness} activeCount={activeCount} configuredCount={configuredCount}
+          totalCourts={enabledCourts.length} />
         {view === 'configuration' ? <button className="production-pilot-settings-trigger" type="button"
           aria-label="Abrir ajustes generales" title="Ajustes generales"
           onClick={() => generalSettingsDialog.current?.showModal()}>
@@ -121,7 +116,7 @@ export function ProductionPilotWorkspaceView({
       <GeneralBroadcastSettingsDialog dialogRef={generalSettingsDialog}
         description={description} onDescriptionChange={setDescription} />
       <section className="production-pilot-courts" aria-label="Configuración de emisiones por pista">
-        {COURTS.map((court) => <PilotConfigurationPanel key={court.slug} court={court}
+        {courts.map((court) => <PilotConfigurationPanel key={court.slug} court={court}
           teams={ready.teams} description={description}
           readiness={ready.readiness} configuration={configurationFor(ready.configurations, court.slug)}
           session={latestSession(ready.sessions, court.slug)} pending={ready.pendingCourts.includes(court.slug)}
@@ -131,10 +126,10 @@ export function ProductionPilotWorkspaceView({
           onUpdateMobile={pilot.updateMobileCamera} onRevokeMobile={pilot.revokeMobileCamera}
           onSave={(input) => pilot.configure(input)} />)}
       </section>
-      <HandoffPanel configuredCount={configuredCount} onOpenControls={onOpenControls} />
+      <HandoffPanel configuredCount={configuredCount} totalCourts={enabledCourts.length} onOpenControls={onOpenControls} />
     </> : <>
       <section className="production-pilot-courts production-pilot-courts--controls" aria-label="Mandos por pista">
-        {COURTS.map((court) => <PilotControlPanel key={court.slug} court={court}
+        {courts.map((court) => <PilotControlPanel key={court.slug} court={court}
           configuration={configurationFor(ready.configurations, court.slug)}
           session={latestSession(ready.sessions, court.slug)} pending={ready.pendingCourts.includes(court.slug)}
           error={ready.courtErrors[court.slug] ?? null} onPrepare={(input) => void pilot.prepare(input)}
@@ -143,7 +138,8 @@ export function ProductionPilotWorkspaceView({
           mobileCamera={ready.mobileCamera?.courtSlug === court.slug ? ready.mobileCamera : null}
           onElapsed={recordElapsed} />)}
       </section>
-      <ValidationDecision readiness={ready.readiness} sessions={sessions} elapsedByCourt={elapsedByCourt} />
+      <ValidationDecision readiness={ready.readiness} sessions={sessions} courts={enabledCourts}
+        elapsedByCourt={elapsedByCourt} />
     </>}
   </>);
 }
@@ -178,7 +174,7 @@ function PilotConfigurationPanel({
   court, teams, description, readiness, configuration, session, pending, error, unavailableSources, mobileCamera,
   mobileConnectUrl, onCreateMobile, onUpdateMobile, onRevokeMobile, onSave,
 }: {
-  readonly court: (typeof COURTS)[number];
+  readonly court: ProductionCourtSlot;
   readonly teams: readonly Team[];
   readonly description: string;
   readonly readiness: PilotReadiness;
@@ -195,8 +191,10 @@ function PilotConfigurationPanel({
   readonly onSave: (input: PreparePilotSessionInput) => Promise<boolean>;
 }) {
   const [mode, setMode] = useState<PilotMode>(configuration?.mode ?? 'simulation');
-  const [homeTeam, setHomeTeam] = useState(configuration?.homeTeam ?? teamName(teams, court.homeTeamId));
-  const [awayTeam, setAwayTeam] = useState(configuration?.awayTeam ?? teamName(teams, court.awayTeamId));
+  const [homeTeam, setHomeTeam] = useState(configuration?.homeTeam
+    ?? teamName(teams, court.assignment?.score?.homeTeamId, 0));
+  const [awayTeam, setAwayTeam] = useState(configuration?.awayTeam
+    ?? teamName(teams, court.assignment?.score?.awayTeamId, 1));
   const [seasonLabel, setSeasonLabel] = useState(configuration?.seasonLabel ?? 'T2');
   const [matchdayNumber, setMatchdayNumber] = useState(configuration?.matchdayNumber ?? 1);
   const [scheduledAt, setScheduledAt] = useState(() => toLocalDateTime(configuration?.scheduledAt));
@@ -234,14 +232,14 @@ function PilotConfigurationPanel({
 
   return <article className="production-pilot-court" aria-labelledby={`pilot-config-title-${court.slug}`}>
     <header className="production-pilot-court__header">
-      <div><span className="production-court-card__slug">{court.slug}</span><h2 id={`pilot-config-title-${court.slug}`}>{court.label}</h2></div>
-      <span className={`production-status ${configuration ? 'success' : 'info'}`}>
+      <div><span className="production-court-card__slug">{court.slug}</span><h2 id={`pilot-config-title-${court.slug}`}>{court.name}</h2></div>
+      <span className={`production-status ${!court.productionEnabled ? 'warning' : configuration ? 'success' : 'info'}`}>
         {configuration ? <CircleCheck aria-hidden="true" /> : <Settings2 aria-hidden="true" />}
-        {configuration ? 'Configurada' : 'Pendiente'}
+        {!court.productionEnabled ? 'Producción desactivada' : configuration ? 'Configurada' : 'Pendiente'}
       </span>
     </header>
     <form className="production-pilot-form" onSubmit={(event) => void submit(event)} onChange={() => setSaved(false)}>
-      <fieldset disabled={pending || active}>
+      <fieldset disabled={pending || active || !court.productionEnabled}>
         <legend>Datos de la emisión</legend>
         <div className="production-pilot-mode">
           <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'simulation'} onChange={() => setMode('simulation')} />
@@ -288,7 +286,7 @@ function PilotConfigurationPanel({
           <small>Esta portada se subirá a YouTube al preparar la emisión. Se usará la descripción general.</small></div>
         <PilotThumbnailPreview homeTeam={homeTeam} awayTeam={awayTeam} matchdayNumber={matchdayNumber} />
         {active ? <p className="production-command-feedback">Hay una sesión en curso. Esta configuración se usará en la siguiente.</p> : null}
-        <button className="production-setup-submit" type="submit" disabled={youtubeUnavailable || pending}>
+        <button className="production-setup-submit" type="submit" disabled={youtubeUnavailable || pending || !court.productionEnabled}>
           {pending ? 'Guardando…' : saved ? 'Configuración guardada' : configuration ? 'Guardar cambios' : 'Guardar configuración'}
         </button>
       </fieldset>
@@ -304,7 +302,7 @@ function PilotConfigurationPanel({
 function PilotControlPanel({
   court, configuration, session, pending, error, mobileCamera, onPrepare, onStart, onRecover, onStop, onElapsed,
 }: {
-  readonly court: (typeof COURTS)[number];
+  readonly court: ProductionCourtSlot;
   readonly configuration: PilotConfiguration | null;
   readonly session: PilotSession | null;
   readonly pending: boolean;
@@ -325,10 +323,11 @@ function PilotControlPanel({
     onElapsed(court.slug, elapsed);
   }, [court.slug, elapsedSeconds, onElapsed, session?.status]);
 
-  const canPrepare = configuration !== null && (session === null || session.status === 'stopped');
+  const canPrepare = court.productionEnabled && configuration !== null
+    && (session === null || session.status === 'stopped');
   const prepare = () => {
     if (configuration === null) return;
-    if (configuration.mode === 'youtube' && !window.confirm(`Se creará el directo de ${court.label} en YouTube. ¿Continuar?`)) return;
+    if (configuration.mode === 'youtube' && !window.confirm(`Se creará el directo de ${court.name} en YouTube. ¿Continuar?`)) return;
     attemptStartedAt.current = performance.now();
     setElapsedSeconds(null);
     onElapsed(court.slug, null);
@@ -336,21 +335,21 @@ function PilotControlPanel({
   };
   const start = () => {
     if (session === null) return;
-    if (session.mode === 'youtube' && !window.confirm(`Se iniciará la emisión real de ${court.label}. ¿Continuar?`)) return;
+    if (session.mode === 'youtube' && !window.confirm(`Se iniciará la emisión real de ${court.name}. ¿Continuar?`)) return;
     if (attemptStartedAt.current === null) attemptStartedAt.current = performance.now();
     onStart(session);
   };
   const stop = () => {
     if (session === null) return;
     if (session.mode === 'youtube' && !window.confirm(session.status === 'prepared'
-      ? `Se cancelará la emisión programada de ${court.label} en YouTube. ¿Continuar?`
-      : `Se finalizará la emisión real de ${court.label}. ¿Continuar?`)) return;
+      ? `Se cancelará la emisión programada de ${court.name} en YouTube. ¿Continuar?`
+      : `Se finalizará la emisión real de ${court.name}. ¿Continuar?`)) return;
     onStop(session);
   };
   const recover = () => {
     if (session === null) return;
     if (session.mode === 'youtube' && !window.confirm(
-      `Se reutilizará el mismo directo de ${court.label} en YouTube. Comprueba primero que la cámara está disponible. ¿Recuperar emisión?`,
+      `Se reutilizará el mismo directo de ${court.name} en YouTube. Comprueba primero que la cámara está disponible. ¿Recuperar emisión?`,
     )) return;
     if (attemptStartedAt.current === null) attemptStartedAt.current = performance.now();
     onRecover(session);
@@ -358,11 +357,13 @@ function PilotControlPanel({
 
   return <article className="production-pilot-court production-pilot-control" aria-labelledby={`pilot-control-title-${court.slug}`}>
     <header className="production-pilot-court__header">
-      <div><span className="production-court-card__slug">{court.slug}</span><h2 id={`pilot-control-title-${court.slug}`}>{court.label}</h2></div>
-      <CourtStatus session={session} />
+      <div><span className="production-court-card__slug">{court.slug}</span><h2 id={`pilot-control-title-${court.slug}`}>{court.name}</h2></div>
+      <CourtStatus session={session} enabled={court.productionEnabled} />
     </header>
     <div className="production-pilot-control__body">
-      {configuration === null ? <div className="production-pilot-empty-state"><Settings2 aria-hidden="true" />
+      {!court.productionEnabled ? <div className="production-pilot-empty-state"><Settings2 aria-hidden="true" />
+        <h3>Producción desactivada</h3><p>Esta pista está deshabilitada en la configuración autoritativa.</p></div>
+        : configuration === null ? <div className="production-pilot-empty-state"><Settings2 aria-hidden="true" />
         <h3>Pista sin configurar</h3><p>Pide al administrador que complete esta pista. Desde Mandos no se pueden cambiar sus datos.</p></div> : <>
         <div className="production-pilot-control__summary"><span>{configuration.mode === 'youtube' ? 'YouTube' : 'Simulación'}</span>
           <h3>{configuration.homeTeam} vs {configuration.awayTeam}</h3>
@@ -386,7 +387,8 @@ function PilotControlPanel({
   </article>;
 }
 
-function CourtStatus({ session }: { readonly session: PilotSession | null }) {
+function CourtStatus({ session, enabled }: { readonly session: PilotSession | null; readonly enabled: boolean }) {
+  if (!enabled) return <span className="production-status warning">Producción desactivada</span>;
   const active = session && ['starting', 'live', 'reconnecting'].includes(session.status);
   const failed = session?.status === 'failed' || session?.status === 'interrupted';
   return <span className={`production-status ${failed ? 'danger' : active ? 'success' : 'info'}`} aria-live="polite">
@@ -432,16 +434,17 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover
   </div>;
 }
 
-function ReadinessSummary({ readiness, activeCount, configuredCount }: {
+function ReadinessSummary({ readiness, activeCount, configuredCount, totalCourts }: {
   readonly readiness: PilotReadiness;
   readonly activeCount: number;
   readonly configuredCount: number;
+  readonly totalCourts: number;
 }) {
   return <details className="production-pilot-readiness">
     <summary aria-label="Información de este PC" title="Información de este PC"><Info aria-hidden="true" /></summary>
     <aside><h2>Este PC</h2>
       <p>{readiness.ffmpeg.available ? '✓ FFmpeg disponible' : '✕ FFmpeg no disponible'}</p>
-      <p><strong>{configuredCount}/3</strong> pistas configuradas</p><p><strong>{activeCount}/3</strong> salidas activas</p>
+      <p><strong>{configuredCount}/{totalCourts}</strong> pistas configuradas</p><p><strong>{activeCount}/{totalCourts}</strong> salidas activas</p>
       <p>{readiness.sources.filter(({ kind }) => kind === 'v4l2').length} cámaras detectadas</p>
       <p>{readiness.youtube.authorized ? '✓ YouTube conectado' : 'YouTube pendiente'}</p>
       {!readiness.youtube.authorized && readiness.youtube.configured && readiness.youtube.authorizationUrl
@@ -450,18 +453,25 @@ function ReadinessSummary({ readiness, activeCount, configuredCount }: {
   </details>;
 }
 
-function HandoffPanel({ configuredCount, onOpenControls }: { readonly configuredCount: number; readonly onOpenControls: () => void }) {
+function HandoffPanel({ configuredCount, totalCourts, onOpenControls }: {
+  readonly configuredCount: number;
+  readonly totalCourts: number;
+  readonly onOpenControls: () => void;
+}) {
+  const missing = Math.max(0, totalCourts - configuredCount);
   return <section className="production-pilot-handoff" aria-labelledby="pilot-handoff-title"><div>
     <p className="production-kicker">Entrega al operador</p>
-    <h2 id="pilot-handoff-title">{configuredCount === 3 ? 'Las tres pistas están listas' : `Faltan ${3 - configuredCount} pistas por configurar`}</h2>
+    <h2 id="pilot-handoff-title">{totalCourts === 0 ? 'No hay pistas habilitadas'
+      : missing === 0 ? 'Todas las pistas están listas' : `Faltan ${missing} pistas por configurar`}</h2>
     <p>Mandos es una vista sin campos de configuración. También puedes abrirla directamente en <strong>/mandos</strong>.</p>
   </div><button className="production-setup-submit" type="button" disabled={configuredCount === 0} onClick={onOpenControls}>
     <SlidersHorizontal aria-hidden="true" />Abrir mandos</button></section>;
 }
 
-function ValidationDecision({ readiness, sessions, elapsedByCourt }: {
+function ValidationDecision({ readiness, sessions, courts, elapsedByCourt }: {
   readonly readiness: PilotReadiness;
   readonly sessions: readonly (PilotSession | null)[];
+  readonly courts: readonly ProductionCourtSlot[];
   readonly elapsedByCourt: Readonly<Partial<Record<PilotCourtSlug, number>>>;
 }) {
   const prepared = sessions.filter(Boolean).length;
@@ -470,34 +480,41 @@ function ValidationDecision({ readiness, sessions, elapsedByCourt }: {
     const health = session?.youtubeStreamStatus?.toLowerCase() ?? '';
     return session?.mode === 'youtube' && session.status === 'live' && health.includes('active') && health.includes('good');
   }).length;
-  const underTwoMinutes = COURTS.filter(({ slug }) => {
+  const underTwoMinutes = courts.filter(({ slug }) => {
     const elapsed = elapsedByCourt[slug];
     return elapsed !== undefined && elapsed <= 120;
   }).length;
-  const decision = youtubeHealthy === 3 ? 'Tres emisiones reales validadas'
-    : stable === 3 ? 'Tres motores locales validados; falta la prueba triple en YouTube' : 'Validación de tres pistas en curso';
+  const total = courts.length;
+  const decision = total > 0 && youtubeHealthy === total ? 'Todas las emisiones reales están validadas'
+    : total > 0 && stable === total ? 'Todos los motores locales están validados; falta la prueba en YouTube'
+      : 'Validación de pistas en curso';
   return <section className="production-pilot-decision" aria-labelledby="pilot-decision-title">
     <div><p className="production-kicker">Estado de la jornada</p><h2 id="pilot-decision-title">{decision}</h2>
       <p>El operador puede controlar cada pista de forma independiente.</p></div>
     <ul><li className={readiness.ffmpeg.available ? 'passed' : ''}>FFmpeg disponible</li>
-      <li className={prepared === 3 ? 'passed' : ''}>Emisiones preparadas: {prepared}/3</li>
-      <li className={stable === 3 ? 'passed' : ''}>Codificación estable: {stable}/3</li>
-      <li className={youtubeHealthy === 3 ? 'passed' : ''}>YouTube activo y saludable: {youtubeHealthy}/3</li>
-      <li className={underTwoMinutes === 3 ? 'passed' : ''}>Preparación menor de 2 minutos: {underTwoMinutes}/3</li></ul>
+      <li className={total > 0 && prepared === total ? 'passed' : ''}>Emisiones preparadas: {prepared}/{total}</li>
+      <li className={total > 0 && stable === total ? 'passed' : ''}>Codificación estable: {stable}/{total}</li>
+      <li className={total > 0 && youtubeHealthy === total ? 'passed' : ''}>YouTube activo y saludable: {youtubeHealthy}/{total}</li>
+      <li className={total > 0 && underTwoMinutes === total ? 'passed' : ''}>Preparación menor de 2 minutos: {underTwoMinutes}/{total}</li></ul>
   </section>;
 }
 
-function PilotShell({ children, view, navigationRole, onSignOut, embedded }: {
+function PilotShell({ children, view, navigationRole, onSignOut, embedded, inventoryStale }: {
   readonly children: ReactNode;
   readonly view: PilotWorkspaceView;
   readonly navigationRole: ProductionNavigationRole;
   readonly onSignOut?: (() => Promise<void>) | undefined;
   readonly embedded: boolean;
+  readonly inventoryStale: boolean;
 }) {
   if (embedded) return <>{children}</>;
   return <main className="home-page production-overview-page production-pilot-page">
     <ProductionNavigation active={view === 'configuration' ? 'emissions' : 'controls'} role={navigationRole}
       onSignOut={onSignOut ? () => void onSignOut() : undefined} />
+    {inventoryStale ? <div className="production-page-feedback danger" role="status">
+      No se pudo actualizar el inventario de Supabase. Se conserva la última configuración válida;
+      revisa las pistas antes de iniciar una emisión.
+    </div> : null}
     {children}
   </main>;
 }
@@ -510,8 +527,8 @@ function latestSession(sessions: readonly PilotSession[], courtSlug: PilotCourtS
   return [...sessions].filter((session) => session.courtSlug === courtSlug).at(-1) ?? null;
 }
 
-function teamName(teams: readonly Team[], teamId: string): string {
-  return teams.find((team) => team.id === teamId)?.name ?? teams[0]?.name ?? '';
+function teamName(teams: readonly Team[], teamId: string | undefined, fallbackIndex: number): string {
+  return teams.find((team) => team.id === teamId)?.name ?? teams[fallbackIndex]?.name ?? teams[0]?.name ?? '';
 }
 
 function inputFromConfiguration(configuration: PilotConfiguration): PreparePilotSessionInput {

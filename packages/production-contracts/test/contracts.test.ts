@@ -7,6 +7,7 @@ import {
   ObservedOutputStateSchema,
   OperationSchema,
   OutputSchema,
+  PilotCourtSlugSchema,
   PrincipalSchema,
   ProductionAssignmentSchema,
   ProductionEventDaySchema,
@@ -33,6 +34,11 @@ const ids = {
 const instant = '2026-09-09T10:00:00.000Z';
 
 describe('production scheduling contracts', () => {
+  it('accepts configured court slugs without fixing the inventory in code', () => {
+    expect(PilotCourtSlugSchema.parse('pista-central')).toBe('pista-central');
+    expect(PilotCourtSlugSchema.safeParse('central').success).toBe(false);
+  });
+
   it('parses an event day and scheduled event when the window is ordered', () => {
     // Given
     const eventDay = { id: ids.eventDay, clubId: ids.club, name: 'Finals', eventDate: '2026-09-09', timeZone: 'Europe/Madrid', status: 'active', version: 1 };

@@ -9,11 +9,10 @@ import type {
   ProductionAssignment,
   ProductionEvent,
   ObservedOutputState,
+  PilotCourtSlug,
 } from '@kpl/production-contracts';
 
-export const PRODUCTION_COURT_SLUGS = ['pista-1', 'pista-2', 'pista-3', 'pista-4'] as const;
-
-export type ProductionCourtSlug = (typeof PRODUCTION_COURT_SLUGS)[number];
+export type ProductionCourtSlug = PilotCourtSlug;
 
 export type ScoreSummary = {
   readonly title: string;
@@ -43,12 +42,7 @@ export type ProductionCourtSlot = {
   readonly assignment: ProductionCourtAssignment | null;
 };
 
-export type ProductionCourtSlots = readonly [
-  ProductionCourtSlot,
-  ProductionCourtSlot,
-  ProductionCourtSlot,
-  ProductionCourtSlot,
-];
+export type ProductionCourtSlots = readonly ProductionCourtSlot[];
 
 export type ProductionOverviewSnapshot = {
   readonly clubId: ClubId;

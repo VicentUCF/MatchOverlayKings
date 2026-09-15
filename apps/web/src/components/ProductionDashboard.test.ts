@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { PilotSession } from '@kpl/production-contracts';
 import type { PilotState } from '../hooks/useProductionPilot.js';
+import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
 import { ProductionDashboardView } from './ProductionDashboard.js';
 
 const state: PilotState = {
@@ -35,9 +36,17 @@ const liveYoutubeSession: PilotSession = {
   stoppedAt: null, error: null,
 };
 
+const courts: readonly ProductionCourtSlot[] = [1, 2, 3].map((number) => ({
+  slug: `pista-${number}`,
+  courtId: `80000000-0000-4000-8000-00000000000${number}`,
+  name: `Pista ${number}`,
+  productionEnabled: true,
+  assignment: null,
+}));
+
 describe('unified production dashboard', () => {
   it('groups stream state and visual overlay access by court', () => {
-    const html = renderToStaticMarkup(createElement(ProductionDashboardView, { state }));
+    const html = renderToStaticMarkup(createElement(ProductionDashboardView, { state, courts }));
 
     expect((html.match(/class="production-dashboard-court"/g) ?? [])).toHaveLength(3);
     expect((html.match(/<iframe/g) ?? [])).toHaveLength(3);
@@ -52,6 +61,7 @@ describe('unified production dashboard', () => {
   it('keeps visual control available when the local streaming agent fails', () => {
     const html = renderToStaticMarkup(createElement(ProductionDashboardView, {
       state: { kind: 'error', message: 'Agente desconectado' },
+      courts,
       localAdminUrl: 'http://127.0.0.1:4310/admin',
     }));
 
@@ -65,6 +75,7 @@ describe('unified production dashboard', () => {
   it('offers the YouTube live stream from Inicio once broadcasting has started', () => {
     const html = renderToStaticMarkup(createElement(ProductionDashboardView, {
       state: { ...state, sessions: [liveYoutubeSession] },
+      courts,
     }));
 
     expect(html).toContain('Ver directo en YouTube');
@@ -75,9 +86,26 @@ describe('unified production dashboard', () => {
   it('surfaces an interrupted broadcast as an incident instead of a finished session', () => {
     const html = renderToStaticMarkup(createElement(ProductionDashboardView, {
       state: { ...state, sessions: [{ ...liveYoutubeSession, status: 'interrupted' }] },
+      courts,
     }));
 
     expect(html).toContain('Interrumpida');
     expect(html).not.toContain('Finalizada');
+  });
+
+  it('uses dynamic inventory and keeps disabled courts visible but non-operable', () => {
+    const dynamicCourts: readonly ProductionCourtSlot[] = [
+      ...courts,
+      {
+        slug: 'pista-central', courtId: '80000000-0000-4000-8000-000000000004',
+        name: 'Pista central', productionEnabled: false, assignment: null,
+      },
+    ];
+    const html = renderToStaticMarkup(createElement(ProductionDashboardView, { state, courts: dynamicCourts }));
+
+    expect((html.match(/class="production-dashboard-court"/g) ?? [])).toHaveLength(4);
+    expect(html).toContain('Pista central');
+    expect(html).toContain('Producción desactivada');
+    expect(html).toContain('Configuradas</dt><dd>1/3');
   });
 });

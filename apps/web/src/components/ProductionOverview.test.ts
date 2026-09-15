@@ -27,9 +27,15 @@ function snapshot(role: 'operator' | 'viewer' = 'operator'): ProductionOverviewS
 }
 
 function assignmentFrom(value: ProductionOverviewSnapshot): ProductionCourtAssignment {
-  const assignment = value.courts[0].assignment;
+  const assignment = firstCourt(value).assignment;
   if (assignment === null) throw new TypeError('Production overview fixture has no assignment');
   return assignment;
+}
+
+function firstCourt(value: ProductionOverviewSnapshot): ProductionCourtSlot {
+  const court = value.courts[0];
+  if (court === undefined) throw new TypeError('Production overview fixture has no courts');
+  return court;
 }
 
 function renderOverview(state: ProductionOverviewState): string {
@@ -67,13 +73,12 @@ function renderCourt(
 }
 
 describe('production overview components', () => {
-  it('renders four fixed court positions in order while loading', () => {
+  it('does not invent fixed court identities while loading authoritative inventory', () => {
     const html = renderOverview({ kind: 'loading' });
 
-    const positions = ['pista-1', 'pista-2', 'pista-3', 'pista-4'].map((slug) => html.indexOf(slug));
-    expect((html.match(/<article/g) ?? []).length).toBe(4);
-    expect(positions.every((position) => position >= 0)).toBe(true);
-    expect(positions).toEqual([...positions].sort((left, right) => left - right));
+    expect((html.match(/<article/g) ?? []).length).toBe(1);
+    expect(html).toContain('Consultando la configuración autoritativa');
+    expect(html).not.toContain('pista-1');
   });
 
   it('keeps no-assignment slots inside the successful four-card overview', () => {
@@ -86,7 +91,7 @@ describe('production overview components', () => {
 
   it('omits mutation controls and Mandos for viewer access', () => {
     const value = snapshot('viewer');
-    const html = renderCourt(value.courts[0], viewerAccess(value));
+    const html = renderCourt(firstCourt(value), viewerAccess(value));
 
     expect(html).not.toContain('Mandos');
     expect(html).not.toContain('Solicitar estado');
@@ -96,7 +101,8 @@ describe('production overview components', () => {
 
   it('renders operator lifecycle controls and all existing destinations', () => {
     const value = snapshot();
-    const html = renderCourt(value.courts[0], operatorAccess(undefined, value));
+    const court = firstCourt(value);
+    const html = renderCourt(court, operatorAccess(undefined, value));
 
     expect(html).toContain('Solicitar estado');
     expect(html).toContain('Apagado');
@@ -104,14 +110,14 @@ describe('production overview components', () => {
     expect(html).toContain('En emisión');
     expect(html).toContain('Detenido');
     expect(html).toContain('Mandos');
-    expect(html).toContain(`/control/${value.courts[0].slug}`);
-    expect(html).toContain(`/overlay/${value.courts[0].slug}/scoreboard`);
-    expect(html).toContain(`/live/${value.courts[0].slug}`);
+    expect(html).toContain(`/control/${court.slug}`);
+    expect(html).toContain(`/overlay/${court.slug}/scoreboard`);
+    expect(html).toContain(`/live/${court.slug}`);
   });
 
   it('disables every lifecycle control while a request is pending', () => {
     const value = snapshot();
-    const court = value.courts[0];
+    const court = firstCourt(value);
     const html = renderCourt(court, operatorAccess(undefined, value), {
       kind: 'pending',
       baseVersion: assignmentFrom(value).desired.version,
@@ -130,12 +136,12 @@ describe('production overview components', () => {
   ] satisfies readonly (readonly [CourtCommandState, string])[])('shows command outcome %s', (commandState, text) => {
     const value = snapshot();
 
-    expect(renderCourt(value.courts[0], operatorAccess(undefined, value), commandState)).toContain(text);
+    expect(renderCourt(firstCourt(value), operatorAccess(undefined, value), commandState)).toContain(text);
   });
 
   it('renders capacity deferral from observed state without replacing desired or observed truth', () => {
     const value = snapshot();
-    const court = value.courts[0];
+    const court = firstCourt(value);
     const assignment = assignmentFrom(value);
     if (assignment.observed === null) throw new TypeError('Production fixture has no observation');
     const deferredCourt: ProductionCourtSlot = {
