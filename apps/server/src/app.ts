@@ -313,7 +313,9 @@ function mobileCors(request: FastifyRequest, reply: FastifyReply, allowedOrigin:
     throw new PilotMobileCameraError(403, 'FORBIDDEN', 'El origen de la cámara no está permitido.');
   }
   reply.header('Access-Control-Allow-Origin', allowedOrigin);
-  reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  // This path is shared by the Android long-poll (GET) and the production
+  // panel's desired-camera update (PUT). Keep both methods in the preflight.
+  reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
   reply.header('Access-Control-Allow-Private-Network', 'true');
   reply.header('Private-Network-Access-Name', 'kpl-production-agent');

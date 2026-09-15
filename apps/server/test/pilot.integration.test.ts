@@ -225,6 +225,19 @@ describe('production pilot', () => {
     expect(preflight.statusCode).toBe(204);
     expect(preflight.headers['access-control-allow-private-network']).toBe('true');
 
+    const desiredPreflight = await app.inject({
+      method: 'OPTIONS', url: `/api/pilot/mobile-camera/${created.session.id}/desired`,
+      headers: {
+        origin: mobileHeaders.origin,
+        'access-control-request-method': 'PUT',
+        'access-control-request-headers': 'content-type',
+        'access-control-request-private-network': 'true',
+      },
+    });
+    expect(desiredPreflight.statusCode).toBe(204);
+    expect(desiredPreflight.headers['access-control-allow-methods']).toContain('PUT');
+    expect(desiredPreflight.headers['access-control-allow-private-network']).toBe('true');
+
     const claimResponse = await app.inject({
       method: 'POST', url: `/api/pilot/mobile-camera/${created.session.id}/claim`, headers: mobileHeaders,
       payload: claimPayload,
