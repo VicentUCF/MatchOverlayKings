@@ -21,6 +21,7 @@
     "production:local:up": "./scripts/local-production.sh up",
     "production:local:down": "./scripts/local-production.sh down",
     "production:local:logs": "./scripts/local-production.sh logs",
+    "production:smoke": "node scripts/check-live-readiness.mjs",
     "start:production-agent": "npm run start -w @kpl/production-agent --",
     "start:server": "npm run start -w @kpl/server",
     "build": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/production-agent && npm run build -w @kpl/production-assets && npm run build -w @kpl/server && npm run build -w @kpl/web",

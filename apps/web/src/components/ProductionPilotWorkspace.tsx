@@ -95,7 +95,7 @@ export function ProductionPilotWorkspaceView({
   const activeCount = sessions.filter((session) => session && ['starting', 'live', 'reconnecting', 'stopping'].includes(session.status)).length;
   const configuredCount = COURTS.filter(({ slug }) => ready.configurations.some((item) => item.courtSlug === slug)).length;
   const unavailableSources = new Set(ready.sessions
-    .filter((session) => session.source.kind === 'v4l2' && !['stopped', 'failed'].includes(session.status))
+    .filter((session) => session.source.kind === 'v4l2' && session.status !== 'stopped')
     .map((session) => session.source.id));
 
   return shell(<>
@@ -138,7 +138,8 @@ export function ProductionPilotWorkspaceView({
           configuration={configurationFor(ready.configurations, court.slug)}
           session={latestSession(ready.sessions, court.slug)} pending={ready.pendingCourts.includes(court.slug)}
           error={ready.courtErrors[court.slug] ?? null} onPrepare={(input) => void pilot.prepare(input)}
-          onStart={(session) => void pilot.start(session)} onStop={(session) => void pilot.stop(session)}
+          onStart={(session) => void pilot.start(session)} onRecover={(session) => void pilot.recover(session)}
+          onStop={(session) => void pilot.stop(session)}
           mobileCamera={ready.mobileCamera?.courtSlug === court.slug ? ready.mobileCamera : null}
           onElapsed={recordElapsed} />)}
       </section>
@@ -220,7 +221,7 @@ function PilotConfigurationPanel({
   }, [configurationRevision]);
 
   const youtubeUnavailable = mode === 'youtube' && !readiness.youtube.authorized;
-  const active = session !== null && !['stopped', 'failed'].includes(session.status);
+  const active = session !== null && session.status !== 'stopped';
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (youtubeUnavailable || pending) return;
@@ -301,7 +302,7 @@ function PilotConfigurationPanel({
 }
 
 function PilotControlPanel({
-  court, configuration, session, pending, error, mobileCamera, onPrepare, onStart, onStop, onElapsed,
+  court, configuration, session, pending, error, mobileCamera, onPrepare, onStart, onRecover, onStop, onElapsed,
 }: {
   readonly court: (typeof COURTS)[number];
   readonly configuration: PilotConfiguration | null;
@@ -311,6 +312,7 @@ function PilotControlPanel({
   readonly mobileCamera: PilotMobileCameraSession | null;
   readonly onPrepare: (input: PreparePilotSessionInput) => void;
   readonly onStart: (session: PilotSession) => void;
+  readonly onRecover: (session: PilotSession) => void;
   readonly onStop: (session: PilotSession) => void;
   readonly onElapsed: (court: PilotCourtSlug, seconds: number | null) => void;
 }) {
@@ -323,7 +325,7 @@ function PilotControlPanel({
     onElapsed(court.slug, elapsed);
   }, [court.slug, elapsedSeconds, onElapsed, session?.status]);
 
-  const canPrepare = configuration !== null && (session === null || ['stopped', 'failed'].includes(session.status));
+  const canPrepare = configuration !== null && (session === null || session.status === 'stopped');
   const prepare = () => {
     if (configuration === null) return;
     if (configuration.mode === 'youtube' && !window.confirm(`Se creará el directo de ${court.label} en YouTube. ¿Continuar?`)) return;
@@ -345,6 +347,14 @@ function PilotControlPanel({
       : `Se finalizará la emisión real de ${court.label}. ¿Continuar?`)) return;
     onStop(session);
   };
+  const recover = () => {
+    if (session === null) return;
+    if (session.mode === 'youtube' && !window.confirm(
+      `Se reutilizará el mismo directo de ${court.label} en YouTube. Comprueba primero que la cámara está disponible. ¿Recuperar emisión?`,
+    )) return;
+    if (attemptStartedAt.current === null) attemptStartedAt.current = performance.now();
+    onRecover(session);
+  };
 
   return <article className="production-pilot-court production-pilot-control" aria-labelledby={`pilot-control-title-${court.slug}`}>
     <header className="production-pilot-court__header">
@@ -360,10 +370,10 @@ function PilotControlPanel({
           <p>{privacyLabel(configuration.privacyStatus)} · <time dateTime={configuration.scheduledAt}>{formatDate(configuration.scheduledAt)}</time></p></div>
         {configuration.sourceId === PILOT_MOBILE_SOURCE_ID && mobileCamera !== null
           ? <PilotMobileCameraMonitor mobileCamera={mobileCamera} /> : null}
-        {session !== null && !['stopped', 'failed'].includes(session.status)
-          ? <PilotSessionCard session={session} pending={pending} elapsedSeconds={elapsedSeconds} onStart={start} onStop={stop} />
-          : <div className="production-pilot-ready-action"><p>{session?.status === 'failed'
-            ? 'La última sesión falló. Puedes preparar una nueva.' : 'Configuración lista para preparar.'}</p>
+        {session !== null && session.status !== 'stopped'
+          ? <PilotSessionCard session={session} pending={pending} elapsedSeconds={elapsedSeconds}
+            onStart={start} onRecover={recover} onStop={stop} />
+          : <div className="production-pilot-ready-action"><p>Configuración lista para preparar.</p>
             <button className="production-setup-submit" type="button" disabled={!canPrepare || pending} onClick={prepare}>
               {pending ? 'Preparando…' : configuration.mode === 'youtube' ? 'Preparar en YouTube' : 'Preparar señal'}
             </button></div>}
@@ -378,18 +388,19 @@ function PilotControlPanel({
 
 function CourtStatus({ session }: { readonly session: PilotSession | null }) {
   const active = session && ['starting', 'live', 'reconnecting'].includes(session.status);
-  const failed = session?.status === 'failed';
+  const failed = session?.status === 'failed' || session?.status === 'interrupted';
   return <span className={`production-status ${failed ? 'danger' : active ? 'success' : 'info'}`} aria-live="polite">
     {active ? <CircleCheck aria-hidden="true" /> : failed ? <CircleX aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
     {session ? sessionStatus(session.status) : 'Sin preparar'}
   </span>;
 }
 
-function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onStop }: {
+function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover, onStop }: {
   readonly session: PilotSession;
   readonly pending: boolean;
   readonly elapsedSeconds: number | null;
   readonly onStart: () => void;
+  readonly onRecover: () => void;
   readonly onStop: () => void;
 }) {
   const active = ['starting', 'live', 'reconnecting'].includes(session.status);
@@ -408,7 +419,12 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onStop }:
       {session.error ? <p className="production-command-feedback danger" role="alert">{session.error}</p> : null}
       <div className="production-pilot-actions">
         {session.status === 'prepared' ? <button className="production-setup-submit" type="button" disabled={pending} onClick={onStart}>Emitir</button> : null}
-        {active || session.status === 'prepared' ? <button className="refresh-button danger" type="button" disabled={pending} onClick={onStop}>{session.status === 'prepared' ? 'Cancelar preparación' : 'Detener'}</button> : null}
+        {session.status === 'interrupted' || session.status === 'failed'
+          ? <button className="production-setup-submit" type="button" disabled={pending} onClick={onRecover}>Recuperar emisión</button> : null}
+        {active || ['prepared', 'interrupted', 'failed'].includes(session.status)
+          ? <button className="refresh-button danger" type="button" disabled={pending} onClick={onStop}>
+            {session.status === 'prepared' ? 'Cancelar preparación' : active ? 'Detener' : 'Finalizar sesión'}
+          </button> : null}
         {watchUrl ? <a className="production-setup-submit production-pilot-youtube-link" href={watchUrl}
           target="_blank" rel="noreferrer">Ver directo en YouTube <ExternalLink aria-hidden="true" /></a> : null}
       </div>
@@ -525,7 +541,8 @@ function sessionStatus(status: PilotSession['status']): string {
     case 'prepared': return 'Preparado';
     case 'starting': return 'Iniciando señal';
     case 'live': return 'Emitiendo';
-    case 'reconnecting': return 'Reconectando cámara';
+    case 'reconnecting': return 'Recuperando señal';
+    case 'interrupted': return 'Interrumpida';
     case 'stopping': return 'Deteniendo';
     case 'stopped': return 'Finalizado';
     case 'failed': return 'Fallido';

@@ -4,6 +4,7 @@ const WATCHABLE_STATUSES: ReadonlySet<PilotSession['status']> = new Set([
   'starting',
   'live',
   'reconnecting',
+  'interrupted',
   'stopping',
 ]);
 

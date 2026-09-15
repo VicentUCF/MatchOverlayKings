@@ -71,4 +71,13 @@ describe('unified production dashboard', () => {
     expect(html).toContain('href="https://www.youtube.com/watch?v=broadcast-1"');
     expect(html).toContain('target="_blank"');
   });
+
+  it('surfaces an interrupted broadcast as an incident instead of a finished session', () => {
+    const html = renderToStaticMarkup(createElement(ProductionDashboardView, {
+      state: { ...state, sessions: [{ ...liveYoutubeSession, status: 'interrupted' }] },
+    }));
+
+    expect(html).toContain('Interrumpida');
+    expect(html).not.toContain('Finalizada');
+  });
 });

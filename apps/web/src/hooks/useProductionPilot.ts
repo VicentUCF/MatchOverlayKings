@@ -194,6 +194,7 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
     revokeMobileCamera,
     prepare: (input: PreparePilotSessionInput) => mutate(input.courtSlug, () => adapter.prepare(input)),
     start: (session: PilotSession) => mutate(session.courtSlug, () => adapter.start(session.id)),
+    recover: (session: PilotSession) => mutate(session.courtSlug, () => adapter.recover(session.id)),
     stop: (session: PilotSession) => mutate(session.courtSlug, () => adapter.stop(session.id)),
   }), [adapter, configure, createMobileCamera, mutate, refresh, revokeMobileCamera, state, updateMobileCamera]);
 }

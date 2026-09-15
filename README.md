@@ -300,3 +300,24 @@ Una emisión preparada o activa bloquea su configuración. Para cambiar el parti
 cancela la preparación o detén la emisión; si el marcador sigue en juego, finaliza
 el partido desde el control visual. Cancelar una preparación de YouTube elimina
 esa emisión programada; si YouTube rechaza la cancelación, se mantiene el bloqueo.
+
+### Recuperación de la emisión
+
+El estado de las sesiones, la miniatura y las referencias protegidas de YouTube se
+guardan en `./data` con permisos `0600`. Si FFmpeg, una fuente o el compositor se
+interrumpen, el servicio intenta recuperar la misma sesión cinco veces con backoff.
+Si el contenedor o el PC se reinician, Mandos muestra la sesión como
+**Interrumpida**: comprueba la fuente y pulsa **Recuperar emisión**. Esta acción
+reutiliza el broadcast existente y evita crear un directo duplicado. Si no se debe
+continuar, usa **Finalizar sesión** antes de preparar otra.
+
+Para la primera jornada real sigue el
+[runbook de producción del fin de semana](docs/weekend-production-runbook.md),
+incluido su simulacro de reinicio obligatorio.
+
+Con el contenedor levantado, el smoke check comprueba el proceso, FFmpeg y sesiones
+pendientes. Para convertir YouTube y Android en requisitos obligatorios:
+
+```bash
+KPL_SMOKE_REQUIRE_YOUTUBE=true KPL_SMOKE_REQUIRE_MOBILE=true npm run production:smoke
+```

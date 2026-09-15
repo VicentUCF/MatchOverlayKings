@@ -6,6 +6,7 @@ import { dirname } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import { createProductionAssets } from '@kpl/production-assets';
 import {
+  PilotSourceSchema,
   PilotReadinessSchema,
   PilotConfigurationSchema,
   PilotConfigurationsSchema,
@@ -19,6 +20,7 @@ import {
   type PilotSource,
   type PreparePilotSessionInput,
 } from '@kpl/production-contracts';
+import { z } from 'zod';
 import type { PilotMatchBinding } from './pilot-match-binding.js';
 import { PilotYouTubeError } from './pilot-youtube.js';
 import type { PilotYouTubeGateway } from './pilot-youtube.js';
@@ -27,6 +29,26 @@ import type { PilotOverlayOptions, PilotOverlayRenderer } from './pilot-overlay.
 
 const MAX_ACTIVE_SESSIONS = 3;
 const MAX_DIAGNOSTIC_LENGTH = 2_000;
+const MAX_AUTOMATIC_RETRIES = 5;
+const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000] as const;
+
+const PersistedPilotSessionSchema = z.strictObject({
+  public: PilotSessionSchema,
+  thumbnailBase64: z.string(),
+  streamId: z.string().nullable(),
+  ingestUrl: z.string().nullable(),
+  source: PilotSourceSchema,
+  overlay: z.strictObject({
+    courtSlug: PilotSessionSchema.shape.courtSlug,
+    homeTeamId: z.string().min(1).optional(),
+    awayTeamId: z.string().min(1).optional(),
+  }),
+});
+
+const PersistedPilotSessionsSchema = z.strictObject({
+  version: z.literal(1),
+  sessions: z.array(PersistedPilotSessionSchema),
+});
 
 type InternalPilotSession = {
   public: PilotSession;
@@ -60,6 +82,8 @@ export class PilotService {
   private readonly configurationByCourt = new Map<PilotCourtSlug, PilotConfiguration>();
   private readonly changingCourts = new Set<string>();
   private ffmpegVersion: string | null = null;
+  private persistQueue: Promise<void> = Promise.resolve();
+  private shuttingDown = false;
 
   public constructor(
     private readonly ffmpegPath: string,
@@ -73,10 +97,12 @@ export class PilotService {
   public async initialize(): Promise<void> {
     await this.youtube.initialize();
     await this.loadConfigurations();
+    await this.loadSessions();
     const probe = spawnSync(this.ffmpegPath, ['-version'], { encoding: 'utf8', timeout: 5_000 });
     this.ffmpegVersion = probe.status === 0
       ? probe.stdout.split(/\r?\n/, 1)[0]?.trim() || null
       : null;
+    await this.persistSessions();
   }
 
   public configurations(): readonly PilotConfiguration[] {
@@ -145,7 +171,7 @@ export class PilotService {
   }
 
   private hasOpenSession(courtSlug: string): boolean {
-    return [...this.sessions.values()].some(({ public: session }) => session.courtSlug === courtSlug && !['stopped', 'failed'].includes(session.status));
+    return [...this.sessions.values()].some(({ public: session }) => session.courtSlug === courtSlug && session.status !== 'stopped');
   }
 
   private async changeCourt<T>(courtSlug: string, operation: () => Promise<T>): Promise<T> {
@@ -179,11 +205,11 @@ export class PilotService {
     }
     if (source.kind !== 'synthetic') {
       const sourceInUse = [...this.sessions.values()].some(({ public: session }) =>
-        session.source.id === source.id && !['stopped', 'failed'].includes(session.status));
+        session.source.id === source.id && session.status !== 'stopped');
       if (sourceInUse) throw new PilotServiceError(409, 'CONFLICT', 'La cámara seleccionada ya está asignada a otra pista.');
     }
     const existing = [...this.sessions.values()].find(({ public: session }) =>
-      session.courtSlug === input.courtSlug && !['stopped', 'failed'].includes(session.status));
+      session.courtSlug === input.courtSlug && session.status !== 'stopped');
     if (existing !== undefined) throw new PilotServiceError(409, 'CONFLICT', 'La pista ya tiene un piloto activo.');
 
     if (!this.matchBinding) throw new PilotServiceError(503, 'NOT_READY', 'No se puede comprobar el partido del marcador.');
@@ -245,6 +271,15 @@ export class PilotService {
       },
       overlayController: null,
     });
+    try {
+      await this.persistSessions();
+    } catch (error) {
+      this.sessions.delete(id);
+      if (youtubePrepared !== null) {
+        try { await this.youtube.cancelBroadcast(youtubePrepared.broadcastId); } catch { /* Preserve the storage failure. */ }
+      }
+      throw error;
+    }
     return session;
   }
 
@@ -259,7 +294,7 @@ export class PilotService {
     return session;
   }
 
-  public start(id: string): PilotSession {
+  public async start(id: string): Promise<PilotSession> {
     const session = this.get(id);
     if (session.public.status !== 'prepared') {
       throw new PilotServiceError(409, 'CONFLICT', 'La sesión no está preparada para emitir.');
@@ -272,6 +307,30 @@ export class PilotService {
     }
 
     this.spawnSessionProcess(session);
+    await this.persistSessions();
+    return session.public;
+  }
+
+  public async recover(id: string): Promise<PilotSession> {
+    const session = this.get(id);
+    if (!['interrupted', 'failed'].includes(session.public.status)) {
+      throw new PilotServiceError(409, 'CONFLICT', 'La sesión no necesita recuperación.');
+    }
+    this.assertCapacity(id);
+    const source = this.readiness().sources.find(({ id: sourceId }) => sourceId === session.public.source.id);
+    if (source === undefined) {
+      throw new PilotServiceError(409, 'NOT_READY', 'La fuente original no está disponible. Conéctala y vuelve a intentar.');
+    }
+    if (source.kind === 'mobile' && !this.mobileCamera?.isReadyForCourt(session.public.courtSlug)) {
+      throw new PilotServiceError(409, 'NOT_READY', 'La cámara móvil todavía no está lista para recuperar la emisión.');
+    }
+    if (session.public.mode === 'youtube' && session.ingestUrl === null) {
+      throw new PilotServiceError(409, 'NOT_READY', 'No se conservó la entrada protegida de YouTube. Finaliza esta sesión y prepara otra.');
+    }
+    session.retryAttempt = 0;
+    session.diagnostic = '';
+    this.spawnSessionProcess(session);
+    await this.persistSessions();
     return session.public;
   }
 
@@ -281,6 +340,9 @@ export class PilotService {
   }
 
   private spawnSessionProcess(session: InternalPilotSession): void {
+    if (this.overlayRenderer === undefined) {
+      throw new PilotServiceError(503, 'NOT_READY', 'El navegador del overlay no está disponible.');
+    }
     const usesMobileCamera = session.public.source.kind === 'mobile';
     const framesPerSecond = usesMobileCamera
       ? this.mobileCamera?.framesPerSecondForCourt(session.public.courtSlug) ?? 30
@@ -302,10 +364,6 @@ export class PilotService {
     session.overlayController?.abort();
     session.overlayController = new AbortController();
     const overlayInput = child.stdio[3] as Writable;
-    if (this.overlayRenderer === undefined) {
-      child.kill('SIGTERM');
-      throw new PilotServiceError(503, 'NOT_READY', 'El navegador del overlay no está disponible.');
-    }
     void this.overlayRenderer.start(
       overlayInput,
       { ...session.overlay, framesPerSecond },
@@ -321,43 +379,63 @@ export class PilotService {
       stoppedAt: null,
       error: null,
     });
-    attachProgress(session, child, (code) => this.handleUnexpectedClose(session, code));
+    attachProgress(
+      session,
+      child,
+      (code) => this.handleUnexpectedClose(session, code),
+      () => this.queuePersistSessions(),
+    );
   }
 
   private handleUnexpectedClose(session: InternalPilotSession, code: number | null): void {
-    if (session.public.source.kind !== 'mobile') {
+    if (this.shuttingDown) return;
+    if (code === 0) {
       session.public = PilotSessionSchema.parse({
         ...session.public,
-        status: code === 0 ? 'stopped' : 'failed',
+        status: 'stopped',
         stoppedAt: new Date().toISOString(),
-        error: code === 0 ? null : boundedDiagnostic(session.diagnostic, session.ingestUrl),
+        error: null,
       });
+      this.queuePersistSessions();
       return;
     }
     session.public = PilotSessionSchema.parse({
       ...session.public,
       status: 'reconnecting',
-      error: 'La cámara móvil perdió la conexión. Reintentando automáticamente.',
+      error: 'La señal se interrumpió. Reintentando automáticamente.',
     });
-    this.scheduleMobileRetry(session);
+    this.queuePersistSessions();
+    this.scheduleRetry(session);
   }
 
-  private scheduleMobileRetry(session: InternalPilotSession): void {
+  private scheduleRetry(session: InternalPilotSession): void {
     if (session.retryTimer !== null || session.public.status !== 'reconnecting') return;
-    const delays = [1_000, 2_000, 4_000, 8_000] as const;
-    const delay = delays[Math.min(session.retryAttempt, delays.length - 1)];
+    if (session.retryAttempt >= MAX_AUTOMATIC_RETRIES) {
+      session.public = PilotSessionSchema.parse({
+        ...session.public,
+        status: 'failed',
+        stoppedAt: new Date().toISOString(),
+        error: `${boundedDiagnostic(session.diagnostic, session.ingestUrl)} Recupera la emisión desde Mandos cuando la fuente esté lista.`,
+      });
+      this.queuePersistSessions();
+      return;
+    }
+    const delay = RETRY_DELAYS_MS[session.retryAttempt] ?? RETRY_DELAYS_MS.at(-1) ?? 15_000;
     session.retryAttempt += 1;
     session.retryTimer = setTimeout(() => {
       session.retryTimer = null;
       if (session.public.status !== 'reconnecting') return;
-      if (!this.mobileCamera?.isReadyForCourt(session.public.courtSlug)) {
-        this.scheduleMobileRetry(session);
+      const sourceAvailable = this.readiness().sources.some(({ id }) => id === session.public.source.id);
+      const mobileReady = session.public.source.kind !== 'mobile'
+        || this.mobileCamera?.isReadyForCourt(session.public.courtSlug) === true;
+      if (!sourceAvailable || !mobileReady) {
+        this.scheduleRetry(session);
         return;
       }
       try {
         this.spawnSessionProcess(session);
       } catch {
-        this.scheduleMobileRetry(session);
+        this.scheduleRetry(session);
       }
     }, delay);
     session.retryTimer.unref();
@@ -365,15 +443,17 @@ export class PilotService {
 
   public async stop(id: string): Promise<PilotSession> {
     const session = this.get(id);
-    if (!['prepared', 'starting', 'live', 'reconnecting'].includes(session.public.status)) {
+    if (!['prepared', 'starting', 'live', 'reconnecting', 'interrupted', 'failed'].includes(session.public.status)) {
       throw new PilotServiceError(409, 'CONFLICT', 'La sesión no está preparada ni emitiendo.');
     }
     const wasPrepared = session.public.status === 'prepared';
     session.public = PilotSessionSchema.parse({ ...session.public, status: 'stopping' });
+    await this.persistSessions();
     if (wasPrepared && session.public.broadcastId !== null) {
       try { await this.youtube.cancelBroadcast(session.public.broadcastId); }
       catch (error) {
         session.public = PilotSessionSchema.parse({ ...session.public, status: 'prepared' });
+        await this.persistSessions();
         throw mapYouTubeError(error);
       }
     }
@@ -404,6 +484,7 @@ export class PilotService {
         status: 'stopped',
         stoppedAt: new Date().toISOString(),
       });
+      await this.persistSessions();
     }
     return session.public;
   }
@@ -419,12 +500,92 @@ export class PilotService {
   }
 
   public async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    await this.persistSessions();
     for (const session of this.sessions.values()) {
       if (session.retryTimer !== null) clearTimeout(session.retryTimer);
       session.overlayController?.abort();
       session.process?.kill('SIGTERM');
     }
     await this.overlayRenderer?.close();
+  }
+
+  private assertCapacity(excludedSessionId?: string): void {
+    const active = [...this.sessions.entries()].filter(([id, { public: current }]) =>
+      id !== excludedSessionId && ['starting', 'live', 'reconnecting', 'stopping'].includes(current.status)).length;
+    if (active >= MAX_ACTIVE_SESSIONS) throw new PilotServiceError(409, 'CONFLICT', 'Ya hay tres salidas activas.');
+  }
+
+  private async loadSessions(): Promise<void> {
+    try {
+      const parsed = PersistedPilotSessionsSchema.parse(JSON.parse(await readFile(this.sessionPath(), 'utf8')));
+      for (const saved of parsed.sessions) {
+        const wasActive = ['starting', 'live', 'reconnecting', 'stopping'].includes(saved.public.status);
+        const publicSession = PilotSessionSchema.parse(wasActive ? {
+          ...saved.public,
+          status: 'interrupted',
+          encoder: null,
+          error: 'El servicio se reinició durante esta emisión. Comprueba la fuente y pulsa Recuperar emisión.',
+        } : saved.public);
+        this.sessions.set(publicSession.id, {
+          public: publicSession,
+          thumbnail: Buffer.from(saved.thumbnailBase64, 'base64'),
+          streamId: saved.streamId,
+          ingestUrl: saved.ingestUrl,
+          process: null,
+          retryTimer: null,
+          retryAttempt: 0,
+          diagnostic: '',
+          lastYouTubeCheckAt: 0,
+          overlay: {
+            courtSlug: saved.overlay.courtSlug,
+            ...(saved.overlay.homeTeamId === undefined ? {} : { homeTeamId: saved.overlay.homeTeamId }),
+            ...(saved.overlay.awayTeamId === undefined ? {} : { awayTeamId: saved.overlay.awayTeamId }),
+          },
+          overlayController: null,
+        });
+      }
+    } catch (error) {
+      if (isMissingFile(error)) return;
+      throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo recuperar el estado guardado de las emisiones.');
+    }
+  }
+
+  private sessionPath(): string {
+    return `${this.configurationPath}.sessions`;
+  }
+
+  private queuePersistSessions(): void {
+    this.persistQueue = this.persistQueue.then(() => this.writeSessions(), () => this.writeSessions());
+    void this.persistQueue.catch(() => undefined);
+  }
+
+  private async persistSessions(): Promise<void> {
+    this.queuePersistSessions();
+    await this.persistQueue;
+  }
+
+  private async writeSessions(): Promise<void> {
+    const path = this.sessionPath();
+    const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+    const payload = PersistedPilotSessionsSchema.parse({
+      version: 1,
+      sessions: [...this.sessions.values()].map((session) => ({
+        public: session.public,
+        thumbnailBase64: Buffer.from(session.thumbnail).toString('base64'),
+        streamId: session.streamId,
+        ingestUrl: session.ingestUrl,
+        source: session.public.source,
+        overlay: session.overlay,
+      })),
+    });
+    try {
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+      await writeFile(temporaryPath, `${JSON.stringify(payload)}\n`, { mode: 0o600 });
+      await rename(temporaryPath, path);
+    } catch {
+      throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo guardar el estado recuperable de las emisiones.');
+    }
   }
 
   private async refreshYouTubeHealth(session: InternalPilotSession): Promise<void> {
@@ -560,6 +721,7 @@ function attachProgress(
   session: InternalPilotSession,
   child: PilotChildProcess,
   onUnexpectedClose: (code: number | null) => void,
+  onStatusChange: () => void,
 ): void {
   let progress: Record<string, string> = {};
   let pending = '';
@@ -575,6 +737,7 @@ function attachProgress(
       if (line === 'progress=continue' || line === 'progress=end') {
         const encoder = encoderHealth(progress);
         if (encoder.frame > 0) session.retryAttempt = 0;
+        const previousStatus = session.public.status;
         const status = session.public.status === 'starting'
           && session.public.mode === 'simulation'
           && encoder.frame > 0
@@ -586,6 +749,7 @@ function attachProgress(
           error: null,
           encoder,
         });
+        if (status !== previousStatus) onStatusChange();
         progress = {};
       }
     }
@@ -607,6 +771,7 @@ function attachProgress(
         stoppedAt: new Date().toISOString(),
         error: null,
       });
+      onStatusChange();
       return;
     }
     onUnexpectedClose(code);

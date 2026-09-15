@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { PilotSession } from '@kpl/production-contracts';
 import type { ProductionPilotController } from '../hooks/useProductionPilot.js';
 import { ProductionTabbedWorkspace } from './ProductionOverview.js';
+import { ProductionPilotWorkspaceView } from './ProductionPilotWorkspace.js';
 
 const pilot: ProductionPilotController = {
   state: { kind: 'loading' },
@@ -15,6 +16,7 @@ const pilot: ProductionPilotController = {
   revokeMobileCamera: async () => false,
   prepare: async () => undefined,
   start: async () => undefined,
+  recover: async () => undefined,
   stop: async () => undefined,
 };
 
@@ -80,5 +82,43 @@ describe('tabbed production workspace', () => {
     expect((html.match(/id="pilot-home-pista-/g) ?? [])).toHaveLength(3);
     expect(html).toContain('<option value="Kings of Favar">Kings of Favar</option>');
     expect(html).toContain('<option value="Red Lions">Red Lions</option>');
+  });
+
+  it('offers recovery and finalization without creating another broadcast', () => {
+    const interruptedPilot: ProductionPilotController = {
+      ...pilot,
+      state: {
+        kind: 'ready',
+        readiness: {
+          ffmpeg: { available: true, version: 'ffmpeg test' },
+          youtube: { configured: true, authorized: true, authorizationUrl: '/oauth' },
+          sources: [{ id: 'synthetic', kind: 'synthetic', label: 'Señal de prueba' }],
+          limitations: [],
+        },
+        teams: [],
+        configurations: [{
+          courtSlug: 'pista-1', mode: 'youtube', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
+          matchdayNumber: 2, seasonLabel: 'T2', scheduledAt: '2026-09-14T18:00:00.000Z', privacyStatus: 'private',
+          updatedAt: '2026-09-14T16:00:00.000Z',
+        }],
+        sessions: [{
+          ...liveYoutubeSession,
+          status: 'interrupted',
+          encoder: null,
+          error: 'El servicio se reinició durante esta emisión.',
+        }],
+        mobileCamera: null, mobileConnectUrl: null, refreshing: false,
+        pendingCourts: [], courtErrors: {}, error: null,
+      },
+    };
+
+    const html = renderToStaticMarkup(createElement(ProductionPilotWorkspaceView, {
+      pilot: interruptedPilot, controlsOnly: true,
+    }));
+
+    expect(html).toContain('Interrumpida');
+    expect(html).toContain('Recuperar emisión');
+    expect(html).toContain('Finalizar sesión');
+    expect(html).toContain('El servicio se reinició durante esta emisión.');
   });
 });

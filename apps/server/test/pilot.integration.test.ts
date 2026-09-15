@@ -193,6 +193,67 @@ describe('production pilot', () => {
     await waitForSessions(app, ids, (session) => session.status === 'stopped', 'three stopped sessions');
   }, 25_000);
 
+  it('restores an interrupted session after a service restart and recovers the same session', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kpl-pilot-recovery-'));
+    await writeFile(join(dataDir, 'teams.json'), JSON.stringify([{
+      id: 'kings-of-favar', name: 'Kings of Favar', shortName: 'Kings', logoUrl: '/logos/kings.png',
+      primaryColor: '#D1007A', secondaryColor: '#0F1115',
+    }]));
+    const config = {
+      host: '127.0.0.1', port: 0, dataDir, webDistDir: join(dataDir, 'missing-web'), controlPin: null,
+      pilot: {
+        ffmpegPath: '/bin/ffmpeg', controlOrigins: ['https://live.kingspadelleague.es'],
+        youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
+      },
+    } as const;
+    const dependencies = {
+      pilotOverlayRenderer: testOverlayRenderer(),
+      pilotMatchBinding: {
+        configure: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
+        assertConfigured: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
+      },
+    };
+    const first = await buildApp(config, dependencies);
+    let second: Awaited<ReturnType<typeof buildApp>> | null = null;
+    let firstClosed = false;
+    cleanups.push(async () => {
+      if (second !== null) await second.app.close();
+      if (!firstClosed) await first.app.close();
+      await rm(dataDir, { recursive: true, force: true });
+    });
+
+    const payload = {
+      courtSlug: 'pista-1', mode: 'simulation', sourceId: 'synthetic',
+      homeTeam: 'Kings', awayTeam: 'Red Lions', matchdayNumber: 1, seasonLabel: 'T2',
+      scheduledAt: new Date(Date.now() + 60 * 60_000).toISOString(), privacyStatus: 'private',
+    } as const;
+    const preparedResponse = await first.app.inject({ method: 'POST', url: '/api/pilot/sessions', payload });
+    const prepared = PilotSessionSchema.parse(preparedResponse.json().session);
+    await first.app.inject({ method: 'POST', url: `/api/pilot/sessions/${prepared.id}/start` });
+    await waitForSession(first.app, prepared.id, (session) => session.status === 'live', 'live before restart');
+    await first.app.close();
+    firstClosed = true;
+
+    second = await buildApp(config, dependencies);
+    const restored = PilotSessionSchema.parse((await second.app.inject({
+      method: 'GET', url: '/api/pilot/sessions',
+    })).json().sessions[0]);
+    expect(restored).toMatchObject({ id: prepared.id, status: 'interrupted', broadcastId: null });
+    expect(restored.error).toContain('servicio se reinició');
+    expect((await second.app.inject({
+      method: 'GET', url: `/api/pilot/sessions/${prepared.id}/thumbnail`,
+    })).statusCode).toBe(200);
+
+    const recoveredResponse = await second.app.inject({
+      method: 'POST', url: `/api/pilot/sessions/${prepared.id}/recover`,
+    });
+    expect(recoveredResponse.statusCode).toBe(200);
+    expect(PilotSessionSchema.parse(recoveredResponse.json().session).id).toBe(prepared.id);
+    await waitForSession(second.app, prepared.id, (session) => session.status === 'live', 'live after recovery');
+    await second.app.inject({ method: 'POST', url: `/api/pilot/sessions/${prepared.id}/stop` });
+    await waitForSession(second.app, prepared.id, (session) => session.status === 'stopped', 'stopped after recovery');
+  }, 25_000);
+
   it('pairs one authenticated Android client and revokes its secret without exposing it', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kpl-pilot-mobile-'));
     const mediaMtxPath = join(dataDir, 'fake-mediamtx.mjs');

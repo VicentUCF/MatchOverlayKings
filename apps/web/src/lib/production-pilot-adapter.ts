@@ -151,10 +151,11 @@ export function createProductionPilotAdapter(
         : result;
     },
     start: (id: string) => sessionMutation(id, 'start'),
+    recover: (id: string) => sessionMutation(id, 'recover'),
     stop: (id: string) => sessionMutation(id, 'stop'),
   });
 
-  async function sessionMutation(id: string, action: 'start' | 'stop'): Promise<PilotApiResult<PilotSession>> {
+  async function sessionMutation(id: string, action: 'start' | 'recover' | 'stop'): Promise<PilotApiResult<PilotSession>> {
     const result = await request(`/api/pilot/sessions/${encodeURIComponent(id)}/${action}`, SessionEnvelopeSchema, {
       method: 'POST',
     });

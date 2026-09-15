@@ -8,6 +8,7 @@ export const PilotSessionStatusSchema = z.enum([
   'starting',
   'live',
   'reconnecting',
+  'interrupted',
   'stopping',
   'stopped',
   'failed',

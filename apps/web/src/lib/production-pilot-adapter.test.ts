@@ -97,4 +97,22 @@ describe('production pilot adapter', () => {
       }],
     });
   });
+
+  it('requests recovery without preparing a second session', async () => {
+    const interrupted = {
+      ...session,
+      status: 'interrupted' as const,
+      error: 'El servicio se reinició durante esta emisión.',
+    };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ session: interrupted }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    const adapter = createProductionPilotAdapter(fetcher as typeof fetch);
+
+    await expect(adapter.recover(session.id)).resolves.toEqual({ kind: 'success', value: interrupted });
+    expect(fetcher).toHaveBeenCalledWith(
+      `/api/pilot/sessions/${session.id}/recover`,
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
 });

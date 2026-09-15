@@ -235,7 +235,12 @@ export async function buildApp(
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/start', async (request) => {
     requireLocalPilot(request.ip);
-    return { session: pilot.start(request.params.sessionId) };
+    return { session: await pilot.start(request.params.sessionId) };
+  });
+
+  app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/recover', async (request) => {
+    requireLocalPilot(request.ip);
+    return { session: await pilot.recover(request.params.sessionId) };
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/stop', async (request) => {
