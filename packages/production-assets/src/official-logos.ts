@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
 
 // The season's approved assets are bundled so rendering also works offline.
+// Use PNG copies: the pinned Resvg renderer silently skips embedded WebP images.
 const files: Readonly<Record<string, string>> = {
   'kings of favar': 'kings.png', kings: 'kings.png',
   'red lions': 'red-lions.png',
-  'barbaridad team': 'barbaridad.webp', barbaridad: 'barbaridad.webp',
-  'magic city': 'magic-city.webp', magic: 'magic-city.webp',
+  'barbaridad team': 'barbaridad.png', barbaridad: 'barbaridad.png',
+  'magic city': 'magic-city.png', magic: 'magic-city.png',
   thormentadores: 'thormentadores.png', titanics: 'titanics.png',
 };
 const cache = new Map<string, string>();

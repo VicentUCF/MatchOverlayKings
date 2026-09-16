@@ -25,6 +25,7 @@ const assets = createProductionAssets(untrustedMetadata, {
 - The template palette is defined in this package and does not copy colors from repository logo files. Team colors are parsed from caller metadata and become part of the generated content hash.
 - The user authorized use of the official KPL and team assets for this season. `assets/` bundles unchanged copies from `apps/web/public/logos/` for offline rendering. The KPL wordmark is always embedded; the six official team names (and existing short aliases) resolve to their crests. Caller-supplied logos take precedence. The KOF mark was updated on 2026-09-15 from `Pictures/KOF/ticket_web/editable-model/assets/kof-logo.png` and is used for Kings of Favar.
 - Caller-supplied logo bytes remain the caller's rights responsibility. Only PNG, JPEG, and WebP bytes up to 2 MiB are accepted; local references must resolve to bytes matching their extension. SVG logos and remote URLs are rejected.
+- Barbaridad Team and Magic City use PNG copies converted from their bundled WebP originals on 2026-09-16, preserving dimensions, decoded RGBA pixels and transparency. The pinned Resvg renderer silently skips embedded WebP images; the browser assets remain in their original format.
 - The SHA-256 covers the generated title, description, key, template revision, SVG, and PNG bytes. It changes for material metadata, template, color, or resolved-logo changes and is independent of ambient system fonts.
 
 ## Season template kpl-season-v2

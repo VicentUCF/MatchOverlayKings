@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Resvg } from '@resvg/resvg-js';
 import { createProductionAssets, renderLiveScoreboardPng, renderLiveScoreboardRgba } from '../src/index.js';
 import { baseInput, onePixelPng } from './fixture.js';
 
@@ -50,6 +51,16 @@ describe('livestream production assets', () => {
       expect(assets.svg).toContain(name.toUpperCase());
       expect(assets.svg).toContain('JORNADA 3');
       expect(assets.pngBytes.length).toBeLessThan(2 * 1024 * 1024);
+
+      // An embedded image can be silently skipped by the PNG renderer.
+      // Render each image alone so the background cannot mask a missing crest.
+      for (const [image] of assets.svg.matchAll(/<image\b[^>]*\/>/g)) {
+        const pixels = new Resvg(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720">${image}</svg>`,
+          { font: { loadSystemFonts: false } },
+        ).render().pixels;
+        expect(pixels.some((channel, index) => index % 4 === 3 && channel > 0)).toBe(true);
+      }
     },
   );
 
