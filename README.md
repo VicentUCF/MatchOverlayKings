@@ -172,6 +172,50 @@ con token y origen HTTPS.
 Para apagarlo sin borrar datos: `npm run production:local:down`. Para actualizar la imagen, repite
 `npm run production:local:up`.
 
+### Codificación automática por GPU
+
+Al arrancar, el runtime prueba los codificadores de hardware disponibles con vídeo real
+1080p30 y 1080p60, usando los mismos ajustes de salida que las emisiones. Solo selecciona
+una GPU para los perfiles que hayan superado la prueba. El orden es NVIDIA NVENC;
+en Windows nativo, AMD AMF e Intel Quick Sync; en Linux, los dispositivos VAAPI
+AMD/Intel. Si ninguno funciona, mantiene CPU (x264). La prueba detecta compatibilidad,
+no garantiza capacidad para varias pistas simultáneas: valida la carga con simulaciones.
+
+El arranque habitual `npm run production:local:up` expone automáticamente NVIDIA cuando
+hay controlador y runtime Docker compatibles, o los dispositivos `/dev/dri/renderD*`
+en Linux con sus grupos de acceso. La imagen incluye los controladores VAAPI Mesa e
+Intel. Para NVIDIA en Linux instala también NVIDIA Container Toolkit y configura su
+runtime Docker. No se requiere ejecutar el contenedor con privilegios.
+
+`KPL_PILOT_GPU=auto` es el valor predeterminado en `.env.pilot.docker`; `nvidia` o
+`vaapi` fuerzan el tipo de acceso a dispositivos y `off` lo desactiva. Estos valores
+configuran el lanzador Docker, no sustituyen la prueba de FFmpeg. Si usas directamente
+`docker compose up`, debes configurar el acceso a dispositivos tú mismo; usa el script
+de arranque para conservar la detección automática.
+
+En Windows con Docker Desktop/WSL 2, el acceso documentado es NVIDIA. AMD/Intel mediante
+AMF/Quick Sync se detectan al ejecutar FFmpeg en Windows nativo; esto no convierte el
+resto del runtime Linux en una instalación Windows nativa validada. No se debe asumir
+que una GPU visible en Windows esté disponible dentro del contenedor.
+
+**Este PC** muestra las GPU que pasaron la prueba y sus FPS disponibles. Cada sesión
+en **Emisiones** e **Inicio** indica el codificador utilizado. Si FFmpeg informa de un
+fallo de hardware, la recuperación descarta ese codificador para la sesión y prueba
+otro disponible o CPU, conservando el mismo directo de YouTube y un aviso visible.
+La recuperación puede interrumpir brevemente el vídeo y la CPU debe tener margen.
+
+Esta aceleración se aplica a la codificación H.264. La composición del marcador,
+el escalado y Chromium siguen usando CPU. No garantiza mayor calidad de imagen ni
+elimina toda la carga del procesador. Reconstruye la imagen para incorporar el cambio;
+no hay migraciones de Supabase y las sesiones guardadas anteriores siguen siendo legibles.
+Si utilizas el panel publicado en Vercel, actualiza también esa web junto con el runtime:
+los contratos de estado incorporan la información del codificador. El panel local ya
+se actualiza al reconstruir la imagen.
+
+Referencias de instalación: [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+[GPU en Docker Desktop](https://docs.docker.com/desktop/features/gpu/) y
+[AMD AMF](https://github.com/GPUOpen-LibrariesAndSDKs/AMF).
+
 La aplicación separa la preparación y la operación de todas las pistas habilitadas. La navegación del
 administrador mantiene cargadas tres pestañas: Inicio en `/admin`, preparación en
 `/admin/emisiones` y Mandos en `/mandos`. Cambiar entre ellas no recarga la página ni reinicia su

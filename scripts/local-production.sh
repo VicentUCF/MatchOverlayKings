@@ -67,10 +67,93 @@ case "$REPLY" in
   localhost|127.*|::1) fail 'KPL_PILOT_LAN_HOST debe ser la IP o el hostname LAN del PC' ;;
 esac
 
-compose=(docker compose --project-directory "$repo_dir")
+compose=(docker compose --project-directory "$repo_dir" -f "$repo_dir/docker-compose.yml")
 for source in "${env_files[@]}"; do
   compose+=(--env-file "$source")
 done
+
+# GPU access is optional. Keep the base Compose usable on hosts without devices
+# or NVIDIA Container Toolkit. FFmpeg performs the actual encoding test inside
+# the container; a device advertised by Docker alone is not enough.
+gpu_override=''
+trap 'if [[ -n "$gpu_override" ]]; then rm -f "$gpu_override"; fi' EXIT
+if [[ "$action" == up || "$action" == check ]]; then
+  REPLY=''
+  read_env_value KPL_PILOT_GPU
+  gpu_mode="${KPL_PILOT_GPU:-${REPLY:-auto}}"
+  gpu_preference="$gpu_mode"
+  case "$gpu_mode" in auto|nvidia|vaapi|off) ;; *) fail 'KPL_PILOT_GPU debe ser auto, nvidia, vaapi u off' ;; esac
+  if [[ "$gpu_mode" == auto ]]; then
+    gpu_mode=off
+    nvidia_available=false
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+      nvidia_available=true
+    elif [[ -x /usr/lib/wsl/lib/nvidia-smi ]] && /usr/lib/wsl/lib/nvidia-smi -L >/dev/null 2>&1; then
+      nvidia_available=true
+    fi
+    if [[ "$nvidia_available" == true ]]; then
+      docker_gpu_info="$(docker info --format '{{json .Runtimes}} {{.OperatingSystem}}' 2>/dev/null || true)"
+      if [[ "$docker_gpu_info" == *nvidia* || "$docker_gpu_info" == *'Docker Desktop'* ]]; then
+        gpu_mode=nvidia
+      else
+        printf 'NVIDIA detectada sin runtime Docker compatible; se comprobarán otras GPU o CPU.\n'
+      fi
+    fi
+    if [[ "$gpu_mode" == off ]]; then
+      for device in /dev/dri/renderD*; do
+        if [[ -c "$device" ]]; then gpu_mode=vaapi; break; fi
+      done
+    fi
+  fi
+  if [[ "$gpu_mode" == nvidia ]]; then
+    gpu_override="$(mktemp)"
+    cat > "$gpu_override" <<'YAML'
+services:
+  kpl-pilot:
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,video,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+YAML
+  fi
+  # In automatic mode also expose integrated/secondary GPUs, so the runtime can
+  # use VAAPI if NVIDIA is present but cannot encode the requested stream.
+  if [[ "$gpu_mode" == vaapi || "$gpu_preference" == auto ]]; then
+    render_devices=()
+    device_groups=()
+    for device in /dev/dri/renderD*; do
+      [[ -c "$device" ]] || continue
+      [[ "$device" =~ ^/dev/dri/renderD[0-9]+$ ]] || continue
+      render_devices+=("$device")
+      device_groups+=("$(stat -c '%g' "$device")")
+    done
+    if [[ "$gpu_mode" == vaapi && ${#render_devices[@]} -eq 0 ]]; then
+      fail 'No hay dispositivos /dev/dri/renderD* para VAAPI'
+    fi
+    if [[ ${#render_devices[@]} -gt 0 ]]; then
+      if [[ -z "$gpu_override" ]]; then
+        gpu_override="$(mktemp)"
+        printf 'services:\n  kpl-pilot:\n' > "$gpu_override"
+      fi
+      printf '    devices:\n' >> "$gpu_override"
+      for device in "${render_devices[@]}"; do
+        printf '      - "%s:%s"\n' "$device" "$device" >> "$gpu_override"
+      done
+      printf '    group_add:\n' >> "$gpu_override"
+      printf '%s\n' "${device_groups[@]}" | sort -u | while read -r device_group; do
+        printf '      - "%s"\n' "$device_group" >> "$gpu_override"
+      done
+      if [[ "$gpu_mode" == nvidia ]]; then gpu_mode=nvidia+vaapi; fi
+    fi
+  fi
+  if [[ -n "$gpu_override" ]]; then compose+=(-f "$gpu_override"); fi
+  printf 'Acceso GPU de Docker: %s. El runtime verificará la codificación antes de usarla.\n' "$gpu_mode"
+fi
 
 case "$action" in
   check)

@@ -18,6 +18,7 @@ import {
   type PilotReadiness,
   type PilotSession,
   type PilotSource,
+  type PilotVideoEncoder,
   type PreparePilotSessionInput,
 } from '@kpl/production-contracts';
 import { z } from 'zod';
@@ -26,6 +27,10 @@ import { PilotYouTubeError } from './pilot-youtube.js';
 import type { PilotYouTubeGateway } from './pilot-youtube.js';
 import type { PilotMobileCameraService } from './pilot-mobile-camera.js';
 import type { PilotOverlayOptions, PilotOverlayRenderer } from './pilot-overlay.js';
+import {
+  CPU_ENCODER, detectVideoEncoders, encoderFilter, encoderInputArguments, encoderKey,
+  encoderOutputArguments, ffmpegEnvironment, isHardwareEncoderFailure, selectVideoEncoder,
+} from './pilot-video-encoder.js';
 
 const MAX_ACTIVE_SESSIONS = 3;
 const MAX_DIAGNOSTIC_LENGTH = 2_000;
@@ -38,6 +43,7 @@ const PersistedPilotSessionSchema = z.strictObject({
   streamId: z.string().nullable(),
   ingestUrl: z.string().nullable(),
   source: PilotSourceSchema,
+  rejectedEncoders: z.array(z.string()).optional(),
   overlay: z.strictObject({
     courtSlug: PilotSessionSchema.shape.courtSlug,
     homeTeamId: z.string().min(1).optional(),
@@ -62,6 +68,7 @@ type InternalPilotSession = {
   lastYouTubeCheckAt: number;
   readonly overlay: Omit<PilotOverlayOptions, 'framesPerSecond'>;
   overlayController: AbortController | null;
+  readonly rejectedEncoders: Set<string>;
 };
 
 type PilotChildProcess = ChildProcessByStdio<null, Readable, Readable>;
@@ -82,6 +89,7 @@ export class PilotService {
   private readonly configurationByCourt = new Map<PilotCourtSlug, PilotConfiguration>();
   private readonly changingCourts = new Set<string>();
   private ffmpegVersion: string | null = null;
+  private videoEncoders: readonly PilotVideoEncoder[] = [CPU_ENCODER];
   private persistQueue: Promise<void> = Promise.resolve();
   private shuttingDown = false;
 
@@ -102,6 +110,7 @@ export class PilotService {
     this.ffmpegVersion = probe.status === 0
       ? probe.stdout.split(/\r?\n/, 1)[0]?.trim() || null
       : null;
+    if (this.ffmpegVersion !== null) this.videoEncoders = await detectVideoEncoders(this.ffmpegPath);
     await this.persistSessions();
   }
 
@@ -146,8 +155,11 @@ export class PilotService {
     else if (!this.youtube.isAuthorized) limitations.push('La cuenta de YouTube todavía no está conectada.');
     const mobileLimitation = this.mobileCamera?.limitation() ?? 'La cámara móvil no está configurada.';
     if (mobileLimitation !== null) limitations.push(mobileLimitation);
+    if (this.ffmpegVersion !== null && !this.videoEncoders.some(({ hardware }) => hardware)) {
+      limitations.push('Codificación por CPU: ninguna GPU ha superado la prueba. Comprueba los controladores y el acceso a la GPU desde Docker.');
+    }
     return PilotReadinessSchema.parse({
-      ffmpeg: { available: this.ffmpegVersion !== null, version: this.ffmpegVersion },
+      ffmpeg: { available: this.ffmpegVersion !== null, version: this.ffmpegVersion, encoders: this.videoEncoders },
       youtube: {
         configured: this.youtube.configured,
         authorized: this.youtube.isAuthorized,
@@ -251,6 +263,8 @@ export class PilotService {
       watchUrl: youtubePrepared?.watchUrl ?? null,
       youtubeStreamStatus: null,
       encoder: null,
+      videoEncoding: null,
+      encodingWarning: null,
       startedAt: null,
       stoppedAt: null,
       error: null,
@@ -270,6 +284,7 @@ export class PilotService {
         ...identity,
       },
       overlayController: null,
+      rejectedEncoders: new Set(),
     });
     try {
       await this.persistSessions();
@@ -347,6 +362,7 @@ export class PilotService {
     const framesPerSecond = usesMobileCamera
       ? this.mobileCamera?.framesPerSecondForCourt(session.public.courtSlug) ?? 30
       : 30;
+    const videoEncoding = selectVideoEncoder(this.videoEncoders, framesPerSecond, session.rejectedEncoders);
     const command = ffmpegCommand(
       this.ffmpegPath,
       session.public.source,
@@ -354,11 +370,13 @@ export class PilotService {
       usesMobileCamera ? this.mobileCamera?.rtspUrl() ?? null : null,
       usesMobileCamera ? this.mobileCamera?.audioAvailableForCourt(session.public.courtSlug) ?? false : false,
       framesPerSecond,
+      videoEncoding,
     );
     const child = spawn(command.executable, command.argv, {
       stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
-      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C' },
+      env: ffmpegEnvironment(),
       shell: false,
+      windowsHide: true,
     }) as unknown as PilotChildProcess;
     session.process = child;
     session.overlayController?.abort();
@@ -372,12 +390,15 @@ export class PilotService {
       if (session.process === child) child.kill('SIGTERM');
     });
     session.retryTimer = null;
+    session.diagnostic = '';
     session.public = PilotSessionSchema.parse({
       ...session.public,
       status: 'starting',
       startedAt: new Date().toISOString(),
       stoppedAt: null,
       error: null,
+      encoder: null,
+      videoEncoding,
     });
     attachProgress(
       session,
@@ -399,10 +420,14 @@ export class PilotService {
       this.queuePersistSessions();
       return;
     }
+    const encoding = session.public.videoEncoding;
+    const gpuFailed = encoding?.hardware && isHardwareEncoderFailure(session.diagnostic);
+    if (gpuFailed) session.rejectedEncoders.add(encoderKey(encoding));
     session.public = PilotSessionSchema.parse({
       ...session.public,
       status: 'reconnecting',
       error: 'La señal se interrumpió. Reintentando automáticamente.',
+      ...(gpuFailed ? { encodingWarning: `${encoding.label} falló. Se ha descartado para esta sesión; se utilizará otro codificador disponible o CPU.` } : {}),
     });
     this.queuePersistSessions();
     this.scheduleRetry(session);
@@ -543,6 +568,7 @@ export class PilotService {
             ...(saved.overlay.awayTeamId === undefined ? {} : { awayTeamId: saved.overlay.awayTeamId }),
           },
           overlayController: null,
+          rejectedEncoders: new Set(saved.rejectedEncoders ?? []),
         });
       }
     } catch (error) {
@@ -576,6 +602,7 @@ export class PilotService {
         streamId: session.streamId,
         ingestUrl: session.ingestUrl,
         source: session.public.source,
+        rejectedEncoders: [...session.rejectedEncoders],
         overlay: session.overlay,
       })),
     });
@@ -681,6 +708,7 @@ function ffmpegCommand(
   mobileRtspUrl: string | null,
   mobileAudioAvailable: boolean,
   outputFramesPerSecond: 30 | 60,
+  videoEncoding: PilotVideoEncoder,
 ) {
   const input = source.kind === 'synthetic'
     ? ['-re', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo']
@@ -696,27 +724,22 @@ function ffmpegCommand(
   const audioInput = source.kind === 'mobile' && mobileAudioAvailable ? '0:a:0' : '1:a:0';
   const overlayInputIndex = source.kind === 'mobile' && mobileAudioAvailable ? 1 : 2;
   const baseVideo = source.kind === 'mobile'
-    ? `[0:v]scale=1920:1080:flags=lanczos[base];[base][${overlayInputIndex}:v]overlay=0:0:format=auto[vout]`
-    : `[0:v][${overlayInputIndex}:v]overlay=0:0:format=auto[vout]`;
+    ? `[0:v]scale=1920:1080:flags=lanczos[base];[base][${overlayInputIndex}:v]overlay=0:0:format=auto[composite]`
+    : `[0:v][${overlayInputIndex}:v]overlay=0:0:format=auto[composite]`;
+  const videoFilter = `${baseVideo};[composite]${encoderFilter(videoEncoding)}[vout]`;
   const output = ingestUrl === null
-    ? ['-f', 'null', '/dev/null']
+    ? ['-f', 'null', '-']
     : ['-f', 'flv', ingestUrl];
-  const videoBitrateKbps = outputFramesPerSecond === 60 ? 9_000 : 6_000;
   return {
     executable,
     argv: [
       '-nostdin', '-hide_banner', '-loglevel', 'warning', '-progress', 'pipe:1', '-stats_period', '1',
+      ...encoderInputArguments(videoEncoding),
       ...input,
       '-thread_queue_size', '64', '-f', 'image2pipe', '-vcodec', 'png',
       '-framerate', `${outputFramesPerSecond}`, '-i', 'pipe:3',
-      '-filter_complex', baseVideo, '-map', '[vout]', '-map', audioInput,
-      '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p',
-      '-profile:v', 'high', '-level:v', outputFramesPerSecond === 60 ? '4.2' : '4.1',
-      '-r', `${outputFramesPerSecond}`, '-fps_mode', 'cfr',
-      '-b:v', `${videoBitrateKbps}k`, '-minrate', `${videoBitrateKbps}k`,
-      '-maxrate', `${videoBitrateKbps}k`, '-bufsize', `${videoBitrateKbps * 2}k`,
-      '-x264-params', 'nal-hrd=cbr:force-cfr=1',
-      '-g', `${outputFramesPerSecond * 2}`, '-keyint_min', `${outputFramesPerSecond * 2}`, '-sc_threshold', '0',
+      '-filter_complex', videoFilter, '-map', '[vout]', '-map', audioInput,
+      ...encoderOutputArguments(videoEncoding, outputFramesPerSecond),
       '-c:a', 'aac', '-b:a', '128k', '-ar', '48000',
       ...output,
     ],

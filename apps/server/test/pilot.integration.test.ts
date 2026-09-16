@@ -24,6 +24,45 @@ afterEach(async () => {
 });
 
 describe('production pilot', () => {
+  it('recovers the same session on CPU when a GPU passes detection but fails during streaming', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'kpl-gpu-failure-'));
+    cleanups.push(() => rm(directory, { recursive: true, force: true }));
+    const executable = join(directory, 'ffmpeg');
+    await writeFile(executable, `#!/usr/bin/env bash
+case " $* " in
+  *' -version '*) exec /bin/ffmpeg -version ;;
+  *' -encoders '*) printf ' V..... h264_nvenc\\n'; exit 0 ;;
+  *' -frames:v '*) exit 0 ;;
+  *' h264_nvenc '*) printf '[h264_nvenc] OpenEncodeSessionEx failed\\n' >&2; exit 1 ;;
+esac
+exec /bin/ffmpeg "$@"
+`, { mode: 0o700 });
+    const app = await createPilotApp(executable, directory);
+    const readiness = (await app.inject({ method: 'GET', url: '/api/pilot/readiness' })).json();
+    expect(readiness.ffmpeg.encoders[0].name).toBe('h264_nvenc');
+    const response = await app.inject({ method: 'POST', url: '/api/pilot/sessions', payload: {
+      courtSlug: 'pista-1', mode: 'simulation', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
+      matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: new Date().toISOString(), privacyStatus: 'private',
+    } });
+    expect(response.statusCode).toBe(201);
+    const { id } = response.json().session;
+    const started = await app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/start` });
+    expect(started.json().session.videoEncoding.name).toBe('h264_nvenc');
+    const live = await waitForSession(app, id, (session) => session.status === 'live'
+      && session.videoEncoding?.name === 'libx264' && (session.encoder?.frame ?? 0) > 0, 'CPU fallback');
+    expect(live.encodingWarning).toContain('NVIDIA');
+    expect((await app.inject({ method: 'GET', url: '/api/pilot/sessions' })).json().sessions).toHaveLength(1);
+    await app.close();
+    const restarted = await createPilotApp(executable, directory);
+    const recovered = await restarted.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/recover` });
+    expect(recovered.statusCode).toBe(200);
+    expect(recovered.json().session.videoEncoding.name).toBe('libx264');
+    expect(recovered.json().session.encodingWarning).toContain('NVIDIA');
+    await waitForSession(restarted, id, (session) => session.status === 'live', 'CPU after restart');
+    await restarted.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/stop` });
+    await waitForSession(restarted, id, (session) => session.status === 'stopped', 'stopped');
+  }, 20_000);
+
   it('reports process liveness and FFmpeg readiness separately', async () => {
     const app = await createPilotApp();
 
@@ -469,8 +508,8 @@ describe('production pilot', () => {
   });
 });
 
-async function createPilotApp() {
-  const dataDir = await mkdtemp(join(tmpdir(), 'kpl-pilot-'));
+async function createPilotApp(ffmpegPath = '/bin/ffmpeg', dataDir = '') {
+  if (!dataDir) dataDir = await mkdtemp(join(tmpdir(), 'kpl-pilot-'));
   await writeFile(join(dataDir, 'teams.json'), JSON.stringify([{
     id: 'kings-of-favar',
     name: 'Kings of Favar',
@@ -482,7 +521,7 @@ async function createPilotApp() {
   const { app } = await buildApp({
     host: '127.0.0.1', port: 0, dataDir, webDistDir: join(dataDir, 'missing-web'), controlPin: null,
     pilot: {
-      ffmpegPath: '/bin/ffmpeg',
+      ffmpegPath,
       controlOrigins: ['https://live.kingspadelleague.es'],
       youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
     },

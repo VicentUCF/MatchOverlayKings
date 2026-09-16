@@ -45,6 +45,12 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps ./apps
 COPY --from=build /app/packages ./packages
 RUN mkdir -p /app/data && chmod 0770 /app/data
+# Keep GPU drivers in a separate final layer so upgrading an existing runtime
+# does not rebuild Chromium, FFmpeg and the dependency layers unnecessarily.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends mesa-va-drivers \
+  && if [ "$(dpkg --print-architecture)" = amd64 ]; then apt-get install -y --no-install-recommends intel-media-va-driver; fi \
+  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 EXPOSE 4310/tcp 8889/tcp 8189/udp
 VOLUME ["/app/data"]
 CMD ["node", "apps/server/dist/production-index.js"]

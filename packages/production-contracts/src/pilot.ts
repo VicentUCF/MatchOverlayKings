@@ -142,10 +142,19 @@ export const PilotSourceSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
+export const PilotVideoEncoderSchema = z.strictObject({
+  name: z.enum(['libx264', 'h264_nvenc', 'h264_amf', 'h264_vaapi', 'h264_qsv']),
+  label: z.string().min(1),
+  hardware: z.boolean(),
+  device: z.string().nullable(),
+  frameRates: z.array(z.union([z.literal(30), z.literal(60)])),
+});
+
 export const PilotReadinessSchema = z.strictObject({
   ffmpeg: z.strictObject({
     available: z.boolean(),
     version: z.string().nullable(),
+    encoders: z.array(PilotVideoEncoderSchema).optional(),
   }),
   youtube: z.strictObject({
     configured: z.boolean(),
@@ -195,6 +204,8 @@ export const PilotSessionSchema = z.strictObject({
   watchUrl: z.string().url().nullable(),
   youtubeStreamStatus: z.string().nullable(),
   encoder: PilotEncoderHealthSchema.nullable(),
+  videoEncoding: PilotVideoEncoderSchema.nullable().optional(),
+  encodingWarning: z.string().nullable().optional(),
   startedAt: z.iso.datetime({ offset: true }).nullable(),
   stoppedAt: z.iso.datetime({ offset: true }).nullable(),
   error: z.string().nullable(),
@@ -210,6 +221,7 @@ export type PilotReadiness = z.infer<typeof PilotReadinessSchema>;
 export type PreparePilotSessionInput = z.infer<typeof PreparePilotSessionInputSchema>;
 export type PilotConfiguration = z.infer<typeof PilotConfigurationSchema>;
 export type PilotEncoderHealth = z.infer<typeof PilotEncoderHealthSchema>;
+export type PilotVideoEncoder = z.infer<typeof PilotVideoEncoderSchema>;
 export type PilotSession = z.infer<typeof PilotSessionSchema>;
 export type PilotMobileVideoProfile = z.infer<typeof PilotMobileVideoProfileSchema>;
 export type PilotMobileCameraState = z.infer<typeof PilotMobileCameraStateSchema>;

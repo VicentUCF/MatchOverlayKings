@@ -45,6 +45,17 @@ const courts: readonly ProductionCourtSlot[] = [1, 2, 3].map((number) => ({
 }));
 
 describe('unified production dashboard', () => {
+  it('shows the actual encoder and preserves the GPU fallback warning', () => {
+    const html = renderToStaticMarkup(createElement(ProductionDashboardView, {
+      state: { ...state, sessions: [{ ...liveYoutubeSession,
+        videoEncoding: { name: 'libx264', label: 'CPU (x264)', hardware: false, device: null, frameRates: [30, 60] },
+        encodingWarning: 'La GPU falló; emisión recuperada con CPU.',
+      }] }, courts,
+    }));
+    expect(html).toContain('CPU (x264)');
+    expect(html).toContain('La GPU falló; emisión recuperada con CPU.');
+  });
+
   it('groups stream state and visual overlay access by court', () => {
     const html = renderToStaticMarkup(createElement(ProductionDashboardView, { state, courts }));
 

@@ -410,6 +410,8 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover
   return <div className="production-pilot-session">
     <div className="production-pilot-thumbnail"><img src={session.thumbnailUrl} alt={`Miniatura de ${session.title}`} /></div>
     <div className="production-pilot-session__copy"><h3>{session.title}</h3><p>{session.source.label} · {session.mode === 'youtube' ? 'YouTube' : 'Salida local'}</p>
+      {session.videoEncoding ? <p>Codificación: <strong>{session.videoEncoding.label}</strong></p> : null}
+      {session.encodingWarning ? <p className="production-command-feedback warning" role="status">{session.encodingWarning}</p> : null}
       {session.encoder ? <dl className="production-pilot-metrics">
         <div><dt>FPS</dt><dd>{session.encoder.framesPerSecond.toFixed(1)}</dd></div>
         <div><dt>Bitrate</dt><dd>{Math.round(session.encoder.bitrateKbps)} kb/s</dd></div>
@@ -444,6 +446,8 @@ function ReadinessSummary({ readiness, activeCount, configuredCount, totalCourts
     <summary aria-label="Información de este PC" title="Información de este PC"><Info aria-hidden="true" /></summary>
     <aside><h2>Este PC</h2>
       <p>{readiness.ffmpeg.available ? '✓ FFmpeg disponible' : '✕ FFmpeg no disponible'}</p>
+      {readiness.ffmpeg.encoders?.filter(({ hardware }) => hardware).map((encoder) =>
+        <p key={`${encoder.name}:${encoder.device}`}>✓ {encoder.label} disponible · {encoder.frameRates.join('/')} FPS</p>)}
       <p><strong>{configuredCount}/{totalCourts}</strong> pistas configuradas</p><p><strong>{activeCount}/{totalCourts}</strong> salidas activas</p>
       <p>{readiness.sources.filter(({ kind }) => kind === 'v4l2').length} cámaras detectadas</p>
       <p>{readiness.youtube.authorized ? '✓ YouTube conectado' : 'YouTube pendiente'}</p>

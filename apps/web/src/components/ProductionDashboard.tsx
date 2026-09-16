@@ -115,6 +115,8 @@ function UnifiedCourtCard({ court, configuration, session, loading, onOpenConfig
         <div className="production-dashboard-match"><span>{configuration.mode === 'youtube' ? 'YouTube' : 'Simulación'}</span>
           <strong>{configuration.homeTeam} <small>vs</small> {configuration.awayTeam}</strong>
           <p>Jornada {configuration.matchdayNumber} · {privacyLabel(configuration.privacyStatus)}</p></div>
+        {session?.videoEncoding ? <p>Codificación: <strong>{session.videoEncoding.label}</strong></p> : null}
+        {session?.encodingWarning ? <p role="status">{session.encodingWarning}</p> : null}
         {session?.encoder ? <dl className="production-dashboard-health">
           <div><dt>FPS</dt><dd>{session.encoder.framesPerSecond.toFixed(1)}</dd></div>
           <div><dt>Bitrate</dt><dd>{Math.round(session.encoder.bitrateKbps)} kb/s</dd></div>
