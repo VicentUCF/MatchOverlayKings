@@ -7,6 +7,9 @@ begin
 end;
 $$;
 
+-- Test helpers need explicit access after default function privileges are hardened.
+grant execute on function pg_temp.assert_true(boolean, text) to anon, authenticated;
+
 create or replace function pg_temp.use_principal(p_user_id uuid)
 returns void language plpgsql as $$
 begin
@@ -17,6 +20,9 @@ begin
   )::text, true);
 end;
 $$;
+
+-- Test helpers need explicit access after default function privileges are hardened.
+grant execute on function pg_temp.use_principal(uuid) to anon, authenticated;
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,

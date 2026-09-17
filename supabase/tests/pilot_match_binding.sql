@@ -11,6 +11,9 @@ begin
 end;
 $$;
 
+-- Test helpers need explicit access after default function privileges are hardened.
+grant execute on function pg_temp.assert_true(boolean, text) to anon, authenticated;
+
 create or replace function pg_temp.assert_eq_int(p_actual int, p_expected int, p_label text)
 returns void
 language plpgsql
@@ -22,6 +25,9 @@ begin
 end;
 $$;
 
+-- Test helpers need explicit access after default function privileges are hardened.
+grant execute on function pg_temp.assert_eq_int(int, int, text) to anon, authenticated;
+
 create or replace function pg_temp.assert_eq_text(p_actual text, p_expected text, p_label text)
 returns void
 language plpgsql
@@ -32,6 +38,9 @@ begin
   end if;
 end;
 $$;
+
+-- Test helpers need explicit access after default function privileges are hardened.
+grant execute on function pg_temp.assert_eq_text(text, text, text) to anon, authenticated;
 
 insert into auth.users (
   instance_id,
@@ -79,6 +88,9 @@ select public.update_match_meta('pista-1', (select version from public.score_sta
 create function pg_temp.binding_input() returns jsonb language sql as $$
   select '{"courtSlug":"pista-1","homeTeam":"Kings of Favar","awayTeam":"Red Lions","matchdayNumber":1,"seasonLabel":"T2"}'::jsonb;
 $$;
+
+-- Test helpers need explicit access after default function privileges are hardened.
+grant execute on function pg_temp.binding_input() to anon, authenticated;
 select public.configure_pilot_match(pg_temp.binding_input(), true);
 select pg_temp.assert_eq_text((select state->>'homeTeamId' from public.score_states where court_slug = 'pista-1'), 'kings-of-favar', 'admin assigns home team');
 select pg_temp.assert_eq_text((select state->>'awayTeamId' from public.score_states where court_slug = 'pista-1'), 'red-lions', 'admin assigns away team');

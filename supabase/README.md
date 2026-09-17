@@ -62,6 +62,35 @@ VITE_SUPABASE_PUBLISHABLE_KEY=...
 - Las RPCs de marcador revocan ejecucion publica y conceden solo a `authenticated`.
 - Cada RPC valida membresia, bloquea la fila con `FOR UPDATE`, comprueba `expected_version`, usa `command_id` para idempotencia y escribe `score_events`.
 
+### Avisos del Security Advisor
+
+La migracion `20260916120000_harden_function_security.sql` corrige los 52 avisos
+`function_search_path_mutable` del informe del 16/09/2026 con un `search_path` vacio
+y referencias de aplicacion ya cualificadas. Tambien revoca la ejecucion para
+`PUBLIC`, `anon` y `authenticated` de cinco helpers internos:
+`kpl_load_command_context`, `kpl_require_club_member`, `kpl_store_state`,
+`production_prepare_command` y `production_require_human_admin`. Esto elimina los
+cinco avisos de acceso anonimo y cinco de los 41 avisos de acceso autenticado.
+`kpl_store_state` debe permanecer interno porque confia en la autorizacion de la
+RPC que lo llama. Las nuevas funciones no reciben permisos de cliente por defecto
+cuando se crean con el mismo rol que ejecuta la migracion, en cualquier esquema:
+se retiran tanto los defaults globales como los de `public`. Cada nueva RPC debe
+conceder `EXECUTE` explicitamente al rol correspondiente.
+
+Los 36 avisos restantes de `authenticated_security_definer_function_executable`
+corresponden a acceso intencional: RPCs de marcador y produccion, bootstrap del
+club y helpers usados por RLS. Las RPCs comprueban membresia, rol o asignacion;
+`claim_default_club` permite el alta inicial solo mientras el club no tiene usuarios.
+No se deben revocar sus permisos ni cambiar a `SECURITY INVOKER` sin redisenar
+el acceso: las escrituras directas siguen bloqueadas y los helpers RLS necesitan
+leer las tablas de autorizacion sin recursion. Revisar estos avisos por funcion;
+no ocultar indiscriminadamente todos los avisos de esta categoria.
+
+`auth_leaked_password_protection` se configura fuera de las migraciones SQL:
+activar la proteccion de contrasenas filtradas en los ajustes de Supabase Auth.
+Segun la [documentacion de Supabase](https://supabase.com/docs/guides/auth/password-security),
+requiere un plan Pro o superior.
+
 ## Tests
 
 `supabase/tests/score_rpc.sql` cubre:
@@ -86,6 +115,10 @@ supabase start
 supabase db reset
 supabase test db
 ```
+
+`supabase/tests/function_security.sql` verifica rutas de busqueda fijas, ausencia
+de ejecucion anonima de funciones privilegiadas, bloqueo de los cinco helpers
+internos para ambos roles y permisos por defecto de futuras funciones.
 
 El runtime local incluye Android, YouTube y la operación de emisiones; Supabase conserva el
 inventario, acceso, identidad de partido y marcador autoritativos. No copies secretos, tokens ni
