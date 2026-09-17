@@ -23,6 +23,78 @@ if [[ -f "$web_env_file" ]]; then
 fi
 env_files+=("$env_file")
 
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  if sed -n "/^${key}=/p" "$env_file" | head -n 1 | grep -q .; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+  else
+    printf '\n%s=%s\n' "$key" "$value" >> "$env_file"
+  fi
+}
+
+ipv4_network() {
+  local address="$1"
+  local prefix="$2"
+  local a b c d ip mask network
+  IFS=. read -r a b c d <<< "$address"
+  [[ "$a" =~ ^[0-9]+$ && "$b" =~ ^[0-9]+$ && "$c" =~ ^[0-9]+$ && "$d" =~ ^[0-9]+$ ]] || return 1
+  (( prefix >= 0 && prefix <= 32 )) || return 1
+  ip=$(( (a << 24) | (b << 16) | (c << 8) | d ))
+  if (( prefix == 0 )); then mask=0; else mask=$(( (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF )); fi
+  network=$(( ip & mask ))
+  printf '%d.%d.%d.%d/%d' \
+    $(( (network >> 24) & 255 )) $(( (network >> 16) & 255 )) \
+    $(( (network >> 8) & 255 )) $(( network & 255 )) "$prefix"
+}
+
+detect_lan() {
+  local detected=''
+  if command -v powershell.exe >/dev/null 2>&1; then
+    detected="$(powershell.exe -NoProfile -Command '
+      $config = Get-NetIPConfiguration |
+        Where-Object { $_.NetAdapter.Status -eq "Up" -and $null -ne $_.IPv4DefaultGateway -and $_.InterfaceAlias -notmatch "^(vEthernet|Docker|Loopback)" } |
+        Sort-Object { $_.NetIPv4Interface.InterfaceMetric } |
+        Select-Object -First 1
+      $address = $config.IPv4Address | Where-Object { $_.IPAddress -notlike "169.254.*" } | Select-Object -First 1
+      if ($null -ne $address) { Write-Output "$($address.IPAddress)/$($address.PrefixLength)" }
+    ' 2>/dev/null | tr -d '\r' | tail -n 1)"
+  fi
+  if [[ ! "$detected" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$ ]] && command -v ip >/dev/null 2>&1; then
+    local route address prefix
+    route="$(ip -4 route get 1.1.1.1 2>/dev/null | head -n 1 || true)"
+    address="$(awk '{ for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit } }' <<< "$route")"
+    prefix="$(ip -o -4 address show 2>/dev/null | awk -v address="$address" '$4 ~ ("^" address "/") { split($4, parts, "/"); print parts[2]; exit }')"
+    if [[ -n "$address" && -n "$prefix" ]]; then detected="$address/$prefix"; fi
+  fi
+  [[ "$detected" =~ ^([^/]+)/([0-9]+)$ ]] || return 1
+  local address="${BASH_REMATCH[1]}"
+  local prefix="${BASH_REMATCH[2]}"
+  local cidr
+  cidr="$(ipv4_network "$address" "$prefix")" || return 1
+  REPLY="$address|$cidr"
+}
+
+auto_lan="$(sed -n 's/^KPL_PILOT_AUTO_LAN=//p' "$env_file" | tail -n 1)"
+auto_lan="${KPL_PILOT_AUTO_LAN:-${auto_lan:-1}}"
+if [[ "$action" == up || "$action" == check ]] && [[ "$auto_lan" != 0 ]]; then
+  if detect_lan; then
+    detected_host="${REPLY%%|*}"
+    detected_cidr="${REPLY#*|}"
+    current_host="$(sed -n 's/^KPL_PILOT_LAN_HOST=//p' "$env_file" | tail -n 1)"
+    current_cidr="$(sed -n 's/^KPL_PILOT_LAN_CIDR=//p' "$env_file" | tail -n 1)"
+    if [[ "$current_host" != "$detected_host" || "$current_cidr" != "$detected_cidr" ]]; then
+      set_env_value KPL_PILOT_LAN_HOST "$detected_host"
+      set_env_value KPL_PILOT_LAN_CIDR "$detected_cidr"
+      printf 'Red local actualizada: %s (%s).\n' "$detected_host" "$detected_cidr"
+    else
+      printf 'Red local detectada: %s (%s).\n' "$detected_host" "$detected_cidr"
+    fi
+  else
+    fail 'no se pudo detectar la red activa; define KPL_PILOT_LAN_HOST y KPL_PILOT_LAN_CIDR manualmente'
+  fi
+fi
+
 read_env_value() {
   local key="$1"
   local candidate=''

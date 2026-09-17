@@ -26,6 +26,7 @@ const SessionsEnvelopeSchema = z.strictObject({ sessions: PilotSessionsSchema })
 const ConfigurationEnvelopeSchema = z.strictObject({ configuration: PilotConfigurationSchema });
 const ConfigurationsEnvelopeSchema = z.strictObject({ configurations: PilotConfigurationsSchema });
 const MobileCameraEnvelopeSchema = z.strictObject({ mobileCamera: PilotMobileCameraSessionSchema.nullable() });
+const MobileCamerasEnvelopeSchema = z.strictObject({ mobileCameras: z.array(PilotMobileCameraSessionSchema) });
 const TeamSchema = z.strictObject({
   id: z.string().min(1), name: z.string().min(1), shortName: z.string().min(1),
   logoUrl: z.string(), primaryColor: z.string(), secondaryColor: z.string(),
@@ -96,9 +97,9 @@ export function createProductionPilotAdapter(
       const result = await request('/api/teams', TeamsEnvelopeSchema);
       return result.kind === 'success' ? { kind: 'success', value: result.value.teams } : result;
     },
-    mobileCamera: async (): Promise<PilotApiResult<PilotMobileCameraSession | null>> => {
-      const result = await request('/api/pilot/mobile-camera', MobileCameraEnvelopeSchema);
-      return result.kind === 'success' ? { kind: 'success', value: result.value.mobileCamera } : result;
+    mobileCameras: async (): Promise<PilotApiResult<readonly PilotMobileCameraSession[]>> => {
+      const result = await request('/api/pilot/mobile-cameras', MobileCamerasEnvelopeSchema);
+      return result.kind === 'success' ? { kind: 'success', value: result.value.mobileCameras } : result;
     },
     createMobileCamera: (courtSlug: PilotCourtSlug) => request('/api/pilot/mobile-camera', PilotMobileCameraLinkSchema, {
       method: 'POST',

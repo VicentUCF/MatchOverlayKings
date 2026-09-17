@@ -18,8 +18,8 @@ export type ReadyPilotState = {
   readonly configurations: readonly PilotConfiguration[];
   readonly teams: readonly Team[];
   readonly sessions: readonly PilotSession[];
-  readonly mobileCamera: PilotMobileCameraSession | null;
-  readonly mobileConnectUrl: string | null;
+  readonly mobileCameras: readonly PilotMobileCameraSession[];
+  readonly mobileConnectUrls: Readonly<Record<string, string>>;
   readonly refreshing: boolean;
   readonly pendingCourts: readonly PilotCourtSlug[];
   readonly courtErrors: Readonly<Partial<Record<PilotCourtSlug, string>>>;
@@ -42,8 +42,8 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
   const refresh = useCallback(async (quiet = false) => {
     const requestId = ++refreshSequence.current;
     if (!quiet) setState((current) => current.kind === 'ready' ? { ...current, refreshing: true, error: null } : current);
-    const [readiness, sessions, configurations, teams, mobileCamera] = await Promise.all([
-      adapter.readiness(), adapter.sessions(), adapter.configurations(), adapter.teams(), adapter.mobileCamera(),
+    const [readiness, sessions, configurations, teams, mobileCameras] = await Promise.all([
+      adapter.readiness(), adapter.sessions(), adapter.configurations(), adapter.teams(), adapter.mobileCameras(),
     ]);
     if (requestId !== refreshSequence.current) return;
     const failure = readiness.kind === 'error'
@@ -52,7 +52,7 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
         ? sessions.message
         : configurations.kind === 'error' ? configurations.message
           : teams.kind === 'error' ? teams.message
-          : mobileCamera.kind === 'error' ? mobileCamera.message : null;
+          : mobileCameras.kind === 'error' ? mobileCameras.message : null;
     if (failure !== null) {
       setState((current) => current.kind === 'ready'
         ? { ...current, refreshing: false, error: failure }
@@ -60,17 +60,18 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
       return;
     }
     if (readiness.kind !== 'success' || sessions.kind !== 'success'
-      || configurations.kind !== 'success' || teams.kind !== 'success' || mobileCamera.kind !== 'success') return;
+      || configurations.kind !== 'success' || teams.kind !== 'success' || mobileCameras.kind !== 'success') return;
     setState((current): PilotState => current.kind === 'ready'
       ? {
         ...current, readiness: readiness.value, sessions: sessions.value,
-        configurations: configurations.value, teams: teams.value, mobileCamera: mobileCamera.value,
+        configurations: configurations.value, teams: teams.value, mobileCameras: mobileCameras.value,
+        mobileConnectUrls: activeMobileLinks(current.mobileConnectUrls, mobileCameras.value),
         refreshing: false, error: null,
       }
       : {
         kind: 'ready', readiness: readiness.value, sessions: sessions.value,
         configurations: configurations.value, teams: teams.value, refreshing: false,
-        mobileCamera: mobileCamera.value, mobileConnectUrl: null,
+        mobileCameras: mobileCameras.value, mobileConnectUrls: {},
         pendingCourts: [], courtErrors: {}, error: null,
       });
   }, [adapter]);
@@ -78,7 +79,7 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
   useEffect(() => { void refresh(); }, [refresh]);
   const needsLivePolling = state.kind === 'ready'
     && (state.sessions.some(({ status }) => ['starting', 'live', 'reconnecting', 'stopping'].includes(status))
-      || (state.mobileCamera !== null && state.mobileCamera.state !== 'revoked'));
+      || state.mobileCameras.some(({ state }) => state !== 'revoked'));
   useEffect(() => {
     const interval = window.setInterval(() => { void refresh(true); }, needsLivePolling ? 2_000 : 10_000);
     return () => window.clearInterval(interval);
@@ -141,6 +142,7 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
       courtErrors: { ...current.courtErrors, [courtSlug]: undefined },
     } : current);
     const result = await adapter.createMobileCamera(courtSlug);
+    refreshSequence.current += 1;
     if (result.kind === 'error') {
       setState((current) => current.kind === 'ready' ? {
         ...current, pendingCourts: removeCourt(current.pendingCourts, courtSlug),
@@ -150,8 +152,12 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
     }
     setState((current) => current.kind === 'ready' ? {
       ...current,
-      mobileCamera: result.value.session,
-      mobileConnectUrl: result.value.connectUrl,
+      mobileCameras: replaceMobileCamera(current.mobileCameras, result.value.session),
+      mobileConnectUrls: activeMobileLinks(
+        { ...current.mobileConnectUrls, [result.value.session.id]: result.value.connectUrl },
+        replaceMobileCamera(current.mobileCameras, result.value.session),
+      ),
+      refreshing: false,
       pendingCourts: removeCourt(current.pendingCourts, courtSlug),
     } : current);
     return result.value;
@@ -162,24 +168,30 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
     input: UpdatePilotMobileCameraDesiredInput,
   ): Promise<boolean> => {
     const result = await adapter.updateMobileCamera(id, input);
+    refreshSequence.current += 1;
     if (result.kind === 'error') {
       setState((current) => current.kind === 'ready' ? { ...current, error: result.message } : current);
       return false;
     }
     setState((current) => current.kind === 'ready'
-      ? { ...current, mobileCamera: result.value, error: null }
+      ? { ...current, mobileCameras: replaceMobileCamera(current.mobileCameras, result.value), refreshing: false, error: null }
       : current);
     return true;
   }, [adapter]);
 
   const revokeMobileCamera = useCallback(async (id: string): Promise<boolean> => {
     const result = await adapter.revokeMobileCamera(id);
+    refreshSequence.current += 1;
     if (result.kind === 'error') {
       setState((current) => current.kind === 'ready' ? { ...current, error: result.message } : current);
       return false;
     }
     setState((current) => current.kind === 'ready'
-      ? { ...current, mobileCamera: result.value, mobileConnectUrl: null, error: null }
+      ? {
+        ...current, mobileCameras: replaceMobileCamera(current.mobileCameras, result.value),
+        mobileConnectUrls: Object.fromEntries(Object.entries(current.mobileConnectUrls).filter(([key]) => key !== id)),
+        refreshing: false, error: null,
+      }
       : current);
     return true;
   }, [adapter]);
@@ -204,6 +216,15 @@ function replaceConfiguration(
   configuration: PilotConfiguration,
 ): readonly PilotConfiguration[] {
   return [...configurations.filter(({ courtSlug }) => courtSlug !== configuration.courtSlug), configuration];
+}
+
+function replaceMobileCamera(sessions: readonly PilotMobileCameraSession[], session: PilotMobileCameraSession) {
+  return [...sessions.filter(({ courtSlug }) => courtSlug !== session.courtSlug), session];
+}
+
+function activeMobileLinks(links: Readonly<Record<string, string>>, sessions: readonly PilotMobileCameraSession[]) {
+  const activeIds = new Set(sessions.filter(({ state }) => state !== 'revoked').map(({ id }) => id));
+  return Object.fromEntries(Object.entries(links).filter(([id]) => activeIds.has(id)));
 }
 
 function addCourt(courts: readonly PilotCourtSlug[], court: PilotCourtSlug): readonly PilotCourtSlug[] {

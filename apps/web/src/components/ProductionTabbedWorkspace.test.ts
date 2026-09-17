@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { PilotSession } from '@kpl/production-contracts';
+import { PilotMobileCameraSessionSchema, type PilotSession } from '@kpl/production-contracts';
 import type { ProductionPilotController } from '../hooks/useProductionPilot.js';
 import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
 import { ProductionTabbedWorkspace } from './ProductionOverview.js';
@@ -39,6 +39,33 @@ const courts: readonly ProductionCourtSlot[] = [1, 2, 3].map((number) => ({
 }));
 
 describe('tabbed production workspace', () => {
+  it('keeps each mobile link in its own court and leaves another mobile source available', () => {
+    const mobileCameras = [1, 2].map((number) => PilotMobileCameraSessionSchema.parse({
+      id: `20000000-0000-4000-8000-00000000000${number}`, courtSlug: `pista-${number}`,
+      state: 'waiting_permission', desired: { revision: 1, cameraId: null, profile: '1080p30', audioEnabled: true },
+      applied: null, capabilities: null, metrics: null, claimed: false, lastHeartbeatAt: null,
+      expiresAt: '2026-09-18T12:00:00.000Z', error: null, previewUrl: null,
+    }));
+    const readyPilot: ProductionPilotController = { ...pilot, state: {
+      kind: 'ready', readiness: {
+        ffmpeg: { available: true, version: 'test' }, youtube: { configured: false, authorized: false, authorizationUrl: null },
+        sources: [{ id: 'mobile:pilot', kind: 'mobile', label: 'Móvil Android' }], limitations: [],
+      }, teams: [], configurations: courts.map(({ slug }) => ({
+        courtSlug: slug, sourceId: 'mobile:pilot', mode: 'simulation', homeTeam: 'Kings', awayTeam: 'Lions',
+        matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: '2026-09-18T12:00:00.000Z',
+        privacyStatus: 'private', updatedAt: '2026-09-17T12:00:00.000Z',
+      })), sessions: [], mobileCameras,
+      mobileConnectUrls: Object.fromEntries(mobileCameras.map(({ id, courtSlug }) => [id, `https://live.kingspadelleague.es/camera/pilot#${courtSlug}`])),
+      refreshing: false, pendingCourts: [], courtErrors: {}, error: null,
+    } };
+    const html = renderToStaticMarkup(createElement(ProductionPilotWorkspaceView, { pilot: readyPilot, courts }));
+    expect(html).toContain('id="mobile-link-pista-1" readOnly="" value="https://live.kingspadelleague.es/camera/pilot#pista-1"');
+    expect(html).toContain('id="mobile-link-pista-2" readOnly="" value="https://live.kingspadelleague.es/camera/pilot#pista-2"');
+    expect((html.match(/Generar enlace/g) ?? [])).toHaveLength(1);
+    expect(html).not.toContain('asignada a');
+    expect(html).not.toMatch(/<option[^>]*disabled/);
+  });
+
   it('warns while operating with the last valid Supabase inventory', () => {
     const html = renderToStaticMarkup(createElement(ProductionTabbedWorkspace, {
       initialArea: 'dashboard', pilot, courts, inventoryStale: true, signOut: async () => undefined,
@@ -81,7 +108,7 @@ describe('tabbed production workspace', () => {
           scheduledAt: '2026-09-14T18:00:00.000Z', privacyStatus: 'public',
           updatedAt: '2026-09-14T16:00:00.000Z',
         }],
-        sessions: [liveYoutubeSession], mobileCamera: null, mobileConnectUrl: null,
+        sessions: [liveYoutubeSession], mobileCameras: [], mobileConnectUrls: {},
         refreshing: false, pendingCourts: [], courtErrors: {}, error: null,
       },
     };
@@ -124,7 +151,7 @@ describe('tabbed production workspace', () => {
           encoder: null,
           error: 'El servicio se reinició durante esta emisión.',
         }],
-        mobileCamera: null, mobileConnectUrl: null, refreshing: false,
+        mobileCameras: [], mobileConnectUrls: {}, refreshing: false,
         pendingCourts: [], courtErrors: {}, error: null,
       },
     };

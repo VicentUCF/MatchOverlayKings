@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { PilotMobileCameraSessionSchema } from '@kpl/production-contracts';
 import { createProductionPilotAdapter } from './production-pilot-adapter.js';
 
 const readiness = {
@@ -18,6 +19,20 @@ const session = {
 } as const;
 
 describe('production pilot adapter', () => {
+  it('loads all court cameras through the local agent without collapsing them into one', async () => {
+    const mobileCameras = [1, 2].map((n) => PilotMobileCameraSessionSchema.parse({
+      id: `20000000-0000-4000-8000-00000000000${n}`, courtSlug: `pista-${n}`, state: 'waiting_permission',
+      desired: { revision: 1, cameraId: null, profile: '1080p30', audioEnabled: true },
+      applied: null, capabilities: null, metrics: null, claimed: false, lastHeartbeatAt: null,
+      expiresAt: '2026-09-18T12:00:00.000Z', error: null, previewUrl: null,
+    }));
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ mobileCameras }), { status: 200 }));
+    const adapter = createProductionPilotAdapter(fetcher as typeof fetch, 'http://127.0.0.1:4310');
+    await expect(adapter.mobileCameras()).resolves.toEqual({ kind: 'success', value: mobileCameras });
+    expect(fetcher).toHaveBeenCalledWith('http://127.0.0.1:4310/api/pilot/mobile-cameras',
+      expect.objectContaining({ targetAddressSpace: 'loopback' }));
+  });
+
   it('loads and validates readiness from the local agent', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify(readiness), {
       status: 200, headers: { 'content-type': 'application/json' },

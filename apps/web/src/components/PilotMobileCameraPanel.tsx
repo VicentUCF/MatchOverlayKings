@@ -23,7 +23,6 @@ export function PilotMobileCameraPanel({
   courtSlug, mobileCamera, connectUrl, active, pending, onCreate, onUpdate, onRevoke,
 }: MobileCameraPanelProps) {
   const owned = mobileCamera?.courtSlug === courtSlug && mobileCamera.state !== 'revoked' ? mobileCamera : null;
-  const assignedElsewhere = mobileCamera !== null && mobileCamera.state !== 'revoked' && mobileCamera.courtSlug !== courtSlug;
   const [cameraId, setCameraId] = useState(owned?.desired.cameraId ?? '');
   const [profile, setProfile] = useState<PilotMobileVideoProfile>(owned?.desired.profile ?? '1080p30');
   const [audioEnabled, setAudioEnabled] = useState(owned?.desired.audioEnabled ?? true);
@@ -81,11 +80,9 @@ export function PilotMobileCameraPanel({
       {owned === null ? null : <CameraState state={owned.state} />}
     </div>
 
-    {assignedElsewhere ? <p className="production-command-feedback">
-      La cámara móvil disponible está asignada a {mobileCamera?.courtSlug}.
-    </p> : owned === null ? <div className="pilot-mobile-camera__empty">
+    {owned === null ? <div className="pilot-mobile-camera__empty">
       <p>Genera un enlace temporal y ábrelo en Chrome desde el móvil de esta pista.</p>
-      <button type="button" onClick={() => void onCreate()} disabled={pending || assignedElsewhere}>
+      <button type="button" onClick={() => void onCreate()} disabled={pending || active}>
         <Link2 aria-hidden="true" />Generar enlace
       </button>
     </div> : <>

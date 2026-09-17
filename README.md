@@ -137,7 +137,7 @@ En un equipo nuevo con Docker Compose y acceso a Internet:
 
 ```bash
 cp .env.pilot.docker.example .env.pilot.docker
-# Edita Supabase, KPL_PILOT_LAN_HOST y KPL_PILOT_LAN_CIDR con los valores reales.
+# Edita las credenciales de Supabase; la red LAN se detecta al arrancar.
 npm run production:local:up
 npm run production:local:logs
 ```
@@ -148,12 +148,14 @@ UDP `8189`. La API MediaMTX y RTSP no se publican al host: permanecen en loopbac
 contenedor. La carpeta `./data` conserva la configuración local y el token OAuth si se usa YouTube;
 `.env.pilot.docker` no se versiona.
 
-En este PC la interfaz LAN tiene la IP `192.168.68.55` y la red es `192.168.68.0/22`. El archivo
-local `.env.pilot.docker` ha quedado configurado con esos dos valores. Como UFW está activo,
-autoriza solamente esa red con una única orden (pedirá la contraseña de administrador):
+`npm run production:local:up` y `npm run production:local:check` detectan la interfaz con ruta
+predeterminada de Windows y actualizan `KPL_PILOT_LAN_HOST` y `KPL_PILOT_LAN_CIDR` en el archivo
+local `.env.pilot.docker`. En Linux nativo usan la ruta IPv4 predeterminada. Para fijar valores
+manualmente configura `KPL_PILOT_AUTO_LAN=0`. Dentro de WSL, si UFW está activo, autoriza la red
+detectada (el arranque la muestra en pantalla):
 
 ```bash
-./scripts/configure-pilot-firewall.sh 192.168.68.0/22
+./scripts/configure-pilot-firewall.sh CIDR_DETECTADO
 ```
 
 El script es idempotente y abre `4310/tcp`, `8889/tcp` y `8189/udp` únicamente para la LAN. No
@@ -161,9 +163,77 @@ activa UFW si estaba apagado, para no poner en riesgo un acceso SSH. No se deben
 `9998`, ni crear redirecciones de estos puertos en el router: el teléfono y el PC deben compartir
 la misma red privada. En otro PC, sustituye la IP y el CIDR por los que muestre `ip -4 address`.
 
-Después de levantar Compose, comprueba desde el PC `curl http://192.168.68.55:4310/health` y desde
-el Android abre `http://192.168.68.55:4310`. La página de cámara final seguirá llegando mediante
-el enlace HTTPS temporal generado por el panel.
+Después de levantar Compose, usa la IP que muestra el arranque para comprobar `/health` desde el
+PC y desde el dispositivo de cámara. La página de cámara seguirá llegando mediante el enlace HTTPS
+temporal generado por el panel en `live.kingspadelleague.es`.
+
+#### WSL 2 en Windows: red reflejada y firewalls
+
+El reenvío a `localhost` del modo NAT de WSL no expone de forma fiable a la LAN los puertos TCP y
+UDP publicados por Docker. En Windows 11 22H2 o posterior con WSL 2.0.9 o posterior, usa red
+reflejada y autoriza el tráfico en Windows Firewall y Hyper-V Firewall. No intentes abrir el script
+mediante `\\wsl.localhost`: una consola elevada puede no tener acceso a ese proveedor UNC.
+
+Abre **PowerShell como administrador** con la misma cuenta de Windows que usa WSL y pega esta línea:
+
+```powershell
+wsl.exe -d Ubuntu-26.04 --exec cat /home/vciscar/projects/MatchOverlayKings/scripts/configure-wsl-camera.ps1 | powershell.exe -NoProfile -ExecutionPolicy Bypass -Command -
+```
+
+Si la elevación se hace con otra cuenta de Windows, esa consola no verá las distribuciones WSL del
+usuario habitual. Primero confirma `wsl --list --verbose` sin elevar y comprueba que
+`Ubuntu-26.04` muestra `VERSION 2`. Después ejecuta desde PowerShell elevado la copia del script
+guardada en Windows, omitiendo únicamente la comprobación ya realizada y señalando el perfil
+propietario de `.wslconfig`:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'C:\Users\VicentCiscarAlmiñana\Documents\Codex\2026-09-17\necesito-solucionar-el-acceso-de-la\work\MatchOverlayKings\scripts\configure-wsl-camera.ps1' -SkipDistroCheck -WslUserProfile 'C:\Users\VicentCiscarAlmiñana'
+```
+
+El script comprueba la elevación, que `Ubuntu-26.04` exista y use WSL 2, y que Windows y WSL
+admitan `networkingMode=mirrored`. Detecta la interfaz activa, actualiza
+`%USERPROFILE%\.wslconfig` conservando una copia del archivo anterior y crea o actualiza dos reglas
+KPL para `LocalSubnet`: TCP `4310,8889` y UDP `8189`. Las reglas se adaptan cuando cambia la red y
+se aplican también al firewall Hyper-V de WSL.
+
+Guarda el trabajo abierto en cualquier distribución y aplica el cambio de red:
+
+```powershell
+wsl --shutdown
+```
+
+Abre de nuevo `Ubuntu-26.04`, levanta Compose y genera un enlace nuevo; el reinicio invalida los
+enlaces de cámara anteriores. No abras `8554` ni `9998` y no configures port forwarding en el
+router.
+
+Comprobaciones desde PowerShell:
+
+```powershell
+wsl --version
+wsl --list --verbose
+Get-Content "$env:USERPROFILE\.wslconfig"
+Get-NetFirewallRule KPL-Camera-TCP,KPL-Camera-UDP | Get-NetFirewallPortFilter
+Get-NetFirewallRule KPL-Camera-TCP,KPL-Camera-UDP | Get-NetFirewallAddressFilter
+Get-NetFirewallHyperVRule KPL-Camera-HyperV-TCP,KPL-Camera-HyperV-UDP | Format-List Name,Protocol,LocalPorts,RemoteAddresses
+$kplIp = (Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -First 1).IPv4Address.IPAddress
+Test-NetConnection $kplIp -Port 4310
+Test-NetConnection $kplIp -Port 8889
+```
+
+Comprobaciones desde WSL, en el directorio del proyecto:
+
+```bash
+grep -E '^KPL_PILOT_LAN_(HOST|CIDR)=' .env.pilot.docker
+docker compose ps
+curl --fail http://127.0.0.1:4310/health
+ss -lnt | grep -E ':(4310|8889)\b'
+ss -lnu | grep -E ':8189\b'
+```
+
+En el dispositivo de cámara, conectado a la misma LAN, abre `http://IP_DETECTADA:4310/health`.
+Después abre el enlace HTTPS nuevo de `live.kingspadelleague.es`, pulsa **Preparar cámara** y
+verifica que el panel muestre **Lista**: esa última prueba valida el POST WHIP por TCP `8889` y el
+candidato ICE por UDP `8189`, que no se puede validar con `Test-NetConnection`.
 
 El Compose usa una red bridge privada fija (`172.30.0.0/24`): solo su gateway `172.30.0.1` puede
 usar las rutas administrativas, mientras que el teléfono sigue limitado a los endpoints móviles
@@ -251,12 +321,15 @@ Los perfiles `production_admin` ven configuración y mandos; los perfiles `opera
 directamente a Mandos, sin campos editables. El runtime mezcla automáticamente el marcador KPL
 sobre la señal antes de enviarla a YouTube. La capa conserva transparencia real, refresca el
 estado público de la pista desde Supabase cada segundo y mantiene el último frame válido si la
-lectura falla, sin cortar el vídeo. Actualmente admite un único Android como cámara WebRTC,
-asignable a cualquiera de las pistas. Instala MediaMTX `1.21.0`, configura las variables `KPL_PILOT_MEDIAMTX_*`
+lectura falla, sin cortar el vídeo. Admite una cámara Android WebRTC independiente por pista,
+con varias pistas conectadas a la vez. Instala MediaMTX `1.21.0`, configura las variables `KPL_PILOT_MEDIAMTX_*`
 y `KPL_PILOT_LAN_*` del ejemplo y permite desde la LAN TCP `4310/8889` y UDP `8189`. RTSP `8554` y
 la API `9998` permanecen ligados a `127.0.0.1`.
 
-En **Emisiones**, selecciona **Móvil Android** y genera el enlace temporal. El enlace contiene el
+En **Emisiones**, selecciona **Móvil Android** en cada pista y genera su enlace temporal.
+Abre cada enlace en el dispositivo de esa pista; crear, cambiar o revocar una cámara no modifica
+las cámaras de las demás pistas. Los enlaces mantienen la página `https://live.kingspadelleague.es/camera/pilot`.
+El enlace contiene el
 secreto únicamente en el fragmento de URL, caduca a las 12 horas y deja de funcionar al revocarlo
 o reiniciar el runtime. Ábrelo en Chrome Android actualizado, pulsa **Preparar cámara** y concede los
 permisos solicitados. El panel habilita solamente las cámaras y los perfiles `720p30`, `720p60`,

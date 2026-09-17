@@ -121,7 +121,8 @@ export function ProductionPilotWorkspaceView({
           readiness={ready.readiness} configuration={configurationFor(ready.configurations, court.slug)}
           session={latestSession(ready.sessions, court.slug)} pending={ready.pendingCourts.includes(court.slug)}
           error={ready.courtErrors[court.slug] ?? null} unavailableSources={unavailableSources}
-          mobileCamera={ready.mobileCamera} mobileConnectUrl={ready.mobileConnectUrl}
+          mobileCamera={ready.mobileCameras.find(({ courtSlug }) => courtSlug === court.slug) ?? null}
+          mobileConnectUrl={ready.mobileConnectUrls[ready.mobileCameras.find(({ courtSlug }) => courtSlug === court.slug)?.id ?? ''] ?? null}
           onCreateMobile={() => pilot.createMobileCamera(court.slug)}
           onUpdateMobile={pilot.updateMobileCamera} onRevokeMobile={pilot.revokeMobileCamera}
           onSave={(input) => pilot.configure(input)} />)}
@@ -135,7 +136,7 @@ export function ProductionPilotWorkspaceView({
           error={ready.courtErrors[court.slug] ?? null} onPrepare={(input) => void pilot.prepare(input)}
           onStart={(session) => void pilot.start(session)} onRecover={(session) => void pilot.recover(session)}
           onStop={(session) => void pilot.stop(session)}
-          mobileCamera={ready.mobileCamera?.courtSlug === court.slug ? ready.mobileCamera : null}
+          mobileCamera={ready.mobileCameras.find(({ courtSlug }) => courtSlug === court.slug) ?? null}
           onElapsed={recordElapsed} />)}
       </section>
       <ValidationDecision readiness={ready.readiness} sessions={sessions} courts={enabledCourts}
@@ -253,10 +254,8 @@ function PilotConfigurationPanel({
           <select id={`pilot-source-${court.slug}`} value={sourceId} onChange={(event) => setSourceId(event.currentTarget.value)}>
             {readiness.sources.map((source) => {
               const inUse = source.kind === 'v4l2' && unavailableSources.has(source.id) && session?.source.id !== source.id;
-              const mobileElsewhere = source.kind === 'mobile' && mobileCamera !== null
-                && mobileCamera.state !== 'revoked' && mobileCamera.courtSlug !== court.slug;
-              return <option value={source.id} key={source.id} disabled={inUse || mobileElsewhere}>
-                {source.label}{inUse || mobileElsewhere ? ' · en uso' : ''}
+              return <option value={source.id} key={source.id} disabled={inUse}>
+                {source.label}{inUse ? ' · en uso' : ''}
               </option>;
             })}
           </select>

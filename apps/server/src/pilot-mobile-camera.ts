@@ -27,7 +27,6 @@ const HEARTBEAT_STALE_MS = 6_000;
 const HEARTBEAT_OFFLINE_MS = 20_000;
 const MEDIA_MTX_VERSION = '1.21.0';
 const MOBILE_PATH = 'mobile-pilot';
-const WHIP_USER = 'camera';
 
 type InternalSession = {
   readonly id: string;
@@ -45,6 +44,7 @@ type InternalSession = {
 };
 
 type DesiredWaiter = {
+  readonly sessionId: string;
   readonly resolve: (desired: PilotMobileCameraDesired) => void;
   readonly reject: (error: PilotMobileCameraError) => void;
   readonly timer: NodeJS.Timeout;
@@ -72,11 +72,12 @@ export class PilotMobileCameraError extends Error {
 
 export class PilotMobileCameraService {
   private readonly waiters = new Set<DesiredWaiter>();
-  private session: InternalSession | null = null;
+  private readonly sessions = new Map<string, InternalSession>();
   private process: ChildProcess | null = null;
   private runtimePath: string | null = null;
   private mediaMtxVersion: string | null = null;
-  private expirationTimer: NodeJS.Timeout | null = null;
+  private readonly expirationTimers = new Map<string, NodeJS.Timeout>();
+  private mutation: Promise<unknown> = Promise.resolve();
   private diagnostic = '';
 
   public constructor(
@@ -86,6 +87,7 @@ export class PilotMobileCameraService {
     private readonly readinessProbe: (port: number, child: ChildProcess) => Promise<void> = waitForMediaMtx,
     private readonly versionProbe: (executable: string) => boolean = hasExpectedMediaMtxVersion,
     private readonly now: () => number = Date.now,
+    private readonly apiMutation: typeof mutateMediaMtx = mutateMediaMtx,
   ) {}
 
   public initialize(): void {
@@ -114,23 +116,34 @@ export class PilotMobileCameraService {
     return null;
   }
 
-  public current(): PilotMobileCameraSession | null {
-    return this.session === null ? null : this.publicSession(this.session);
+  public current(id?: string): PilotMobileCameraSession | null {
+    const session = id === undefined ? [...this.sessions.values()].at(-1) : this.sessions.get(id);
+    return session === undefined ? null : this.publicSession(session);
   }
 
-  public async create(rawInput: unknown): Promise<PilotMobileCameraLink> {
+  public list(): PilotMobileCameraSession[] {
+    return [...this.sessions.values()].map((session) => this.publicSession(session));
+  }
+
+  public create(rawInput: unknown): Promise<PilotMobileCameraLink> {
+    return this.serialize(() => this.createSession(rawInput));
+  }
+
+  private async createSession(rawInput: unknown): Promise<PilotMobileCameraLink> {
     const input = CreatePilotMobileCameraInputSchema.safeParse(rawInput);
     if (!input.success) throw new PilotMobileCameraError(400, 'INVALID_INPUT', 'La pista móvil no es válida.');
     if (!this.available() || this.config === undefined) {
       throw new PilotMobileCameraError(503, 'NOT_READY', 'La entrada móvil no está configurada.');
     }
-    if (this.session !== null && !this.session.revoked && Date.parse(this.session.expiresAt) > this.now()) {
-      throw new PilotMobileCameraError(409, 'CONFLICT', 'Ya existe un enlace de cámara móvil activo.');
+    const previous = this.sessionForCourt(input.data.courtSlug);
+    if (previous !== undefined && !previous.revoked && Date.parse(previous.expiresAt) > this.now()) {
+      throw new PilotMobileCameraError(409, 'CONFLICT', 'Esta pista ya tiene un enlace de cámara móvil activo.');
     }
 
-    await this.stopMediaMtx();
-    this.rejectWaiters(new PilotMobileCameraError(410, 'EXPIRED', 'El enlace móvil anterior ya no está activo.'));
-    if (this.expirationTimer !== null) clearTimeout(this.expirationTimer);
+    if (previous !== undefined) {
+      await this.revokeSession(previous.id);
+      this.sessions.delete(previous.id);
+    }
     const token = randomBytes(32).toString('base64url');
     const session: InternalSession = {
       id: randomUUID(),
@@ -151,16 +164,30 @@ export class PilotMobileCameraService {
       revoked: false,
       error: null,
     };
-    this.session = session;
+    this.sessions.set(session.id, session);
+    const starting = this.process === null;
     try {
-      await this.startMediaMtx(token);
+      if (starting) {
+        await this.stopMediaMtx();
+        await this.startMediaMtx();
+      } else {
+        await this.syncCredentials();
+        await this.apiMutation(this.config.apiPort, 'POST', `/v3/config/paths/add/${mediaPath(session.id)}`, {
+          source: 'publisher', overridePublisher: false,
+        });
+      }
     } catch (error) {
       session.error = boundedError(error, this.diagnostic);
       session.revoked = true;
+      if (starting) await this.stopMediaMtx();
+      else await this.revokeSession(session.id).catch(() => undefined);
       throw new PilotMobileCameraError(500, 'RUNTIME_ERROR', 'No se pudo iniciar MediaMTX para el móvil.');
     }
-    this.expirationTimer = setTimeout(() => { void this.expireSession(session.id); }, TOKEN_TTL_MS);
-    this.expirationTimer.unref();
+    const timer = setTimeout(() => {
+      void this.revoke(session.id).catch(() => { session.error = 'No se pudo retirar la entrada móvil caducada.'; });
+    }, TOKEN_TTL_MS);
+    timer.unref();
+    this.expirationTimers.set(session.id, timer);
     return PilotMobileCameraLinkSchema.parse({
       session: this.publicSession(session),
       connectUrl: this.connectUrl(session.id, token),
@@ -194,11 +221,11 @@ export class PilotMobileCameraService {
       audioEnabled: session.desired.audioEnabled && input.data.capabilities.audioAvailable,
     });
     session.lastHeartbeatAt = new Date(this.now()).toISOString();
-    this.flushWaiters(session.desired);
+    this.flushWaiters(session.id, session.desired);
     return {
       desired: session.desired,
-      whipUrl: this.whipUrl(),
-      whipUser: WHIP_USER,
+      whipUrl: this.whipUrl(session.id),
+      whipUser: mediaUser(session.id),
     };
   }
 
@@ -210,6 +237,7 @@ export class PilotMobileCameraService {
     if (session.desired.revision > afterRevision) return session.desired;
     return new Promise((resolve, reject) => {
       const waiter: DesiredWaiter = {
+        sessionId: session.id,
         resolve,
         reject,
         timer: setTimeout(() => {
@@ -244,7 +272,7 @@ export class PilotMobileCameraService {
     if (!input.success) throw new PilotMobileCameraError(400, 'INVALID_INPUT', 'La configuración móvil no es válida.');
     if (session.revoked || Date.parse(session.expiresAt) <= this.now()) {
       session.revoked = true;
-      void this.stopMediaMtx().catch(() => undefined);
+      void this.revoke(session.id).catch(() => undefined);
       throw new PilotMobileCameraError(410, 'EXPIRED', 'El enlace móvil ya no está activo.');
     }
     if (input.data.expectedRevision !== session.desired.revision) {
@@ -264,43 +292,58 @@ export class PilotMobileCameraService {
       audioEnabled: input.data.audioEnabled,
     });
     session.degradedSamples = 0;
-    this.flushWaiters(session.desired);
+    this.flushWaiters(session.id, session.desired);
     return this.publicSession(session);
   }
 
-  public async revoke(id: string): Promise<PilotMobileCameraSession> {
+  public revoke(id: string): Promise<PilotMobileCameraSession> {
+    return this.serialize(() => this.revokeSession(id));
+  }
+
+  private async revokeSession(id: string): Promise<PilotMobileCameraSession> {
     const session = this.requireSession(id);
+    if (this.process !== null && this.config !== undefined) {
+      // Removing this path closes only its publisher and readers, including existing WebRTC sessions.
+      await this.apiMutation(this.config.apiPort, 'DELETE', `/v3/config/paths/delete/${mediaPath(id)}`);
+    }
     session.revoked = true;
     session.error = null;
-    if (this.expirationTimer !== null) clearTimeout(this.expirationTimer);
-    this.expirationTimer = null;
-    this.rejectWaiters(new PilotMobileCameraError(410, 'EXPIRED', 'El enlace móvil ha sido revocado.'));
-    await this.stopMediaMtx();
+    clearTimeout(this.expirationTimers.get(id));
+    this.expirationTimers.delete(id);
+    this.rejectWaiters(new PilotMobileCameraError(410, 'EXPIRED', 'El enlace móvil ha sido revocado.'), id);
+    if (this.process !== null && this.config !== undefined) {
+      await this.syncCredentials();
+    }
     return this.publicSession(session);
   }
 
   public isReadyForCourt(courtSlug: string): boolean {
-    const current = this.current();
+    const session = this.sessionForCourt(courtSlug);
+    const current = session === undefined ? null : this.publicSession(session);
     return current?.courtSlug === courtSlug && ['ready', 'degraded'].includes(current.state);
   }
 
   public audioAvailableForCourt(courtSlug: string): boolean {
-    return this.session?.courtSlug === courtSlug && this.session.capabilities?.audioAvailable === true;
+    return this.sessionForCourt(courtSlug)?.capabilities?.audioAvailable === true;
   }
 
   public framesPerSecondForCourt(courtSlug: string): 30 | 60 {
-    if (this.session?.courtSlug !== courtSlug) return 30;
-    return this.session.desired.profile.endsWith('60') ? 60 : 30;
+    return this.sessionForCourt(courtSlug)?.desired.profile.endsWith('60') ? 60 : 30;
   }
 
-  public rtspUrl(): string {
+  public rtspUrl(courtSlug: string): string {
     if (this.config === undefined) throw new PilotMobileCameraError(503, 'NOT_READY', 'MediaMTX no está configurado.');
-    return `rtsp://127.0.0.1:${this.config.rtspPort}/${MOBILE_PATH}`;
+    const session = this.sessionForCourt(courtSlug);
+    if (session === undefined || session.revoked || Date.parse(session.expiresAt) <= this.now()) {
+      throw new PilotMobileCameraError(409, 'NOT_READY', 'La pista no tiene una entrada móvil activa.');
+    }
+    return `rtsp://127.0.0.1:${this.config.rtspPort}/${mediaPath(session.id)}`;
   }
 
   public async shutdown(): Promise<void> {
-    if (this.expirationTimer !== null) clearTimeout(this.expirationTimer);
-    this.expirationTimer = null;
+    await this.mutation;
+    for (const timer of this.expirationTimers.values()) clearTimeout(timer);
+    this.expirationTimers.clear();
     this.rejectWaiters(new PilotMobileCameraError(410, 'EXPIRED', 'El piloto se ha detenido.'));
     await this.stopMediaMtx();
   }
@@ -316,10 +359,11 @@ export class PilotMobileCameraService {
   }
 
   private requireSession(id: string): InternalSession {
-    if (this.session === null || this.session.id !== id) {
+    const session = this.sessions.get(id);
+    if (session === undefined) {
       throw new PilotMobileCameraError(404, 'NOT_FOUND', 'No existe esa cámara móvil.');
     }
-    return this.session;
+    return session;
   }
 
   private authorize(id: string, token: string): InternalSession {
@@ -330,7 +374,7 @@ export class PilotMobileCameraService {
     }
     if (session.revoked || Date.parse(session.expiresAt) <= this.now()) {
       session.revoked = true;
-      void this.stopMediaMtx().catch(() => undefined);
+      void this.revoke(session.id).catch(() => undefined);
       throw new PilotMobileCameraError(410, 'EXPIRED', 'El enlace móvil ha caducado.');
     }
     return session;
@@ -350,7 +394,7 @@ export class PilotMobileCameraService {
       lastHeartbeatAt: session.lastHeartbeatAt,
       expiresAt: session.expiresAt,
       error: session.error,
-      previewUrl: state === 'revoked' ? null : this.previewUrl(),
+      previewUrl: state === 'revoked' ? null : this.previewUrl(session.id),
     });
   }
 
@@ -365,18 +409,18 @@ export class PilotMobileCameraService {
     return url.toString();
   }
 
-  private whipUrl(): string {
+  private whipUrl(id: string): string {
     if (this.config?.lanHost === null || this.config === undefined) throw new TypeError('LAN host unavailable');
-    return `http://${formatHost(this.config.lanHost)}:${this.config.webRtcPort}/${MOBILE_PATH}/whip`;
+    return `http://${formatHost(this.config.lanHost)}:${this.config.webRtcPort}/${mediaPath(id)}/whip`;
   }
 
-  private previewUrl(): string | null {
+  private previewUrl(id: string): string | null {
     return this.config === undefined
       ? null
-      : `http://127.0.0.1:${this.config.webRtcPort}/${MOBILE_PATH}/whep`;
+      : `http://127.0.0.1:${this.config.webRtcPort}/${mediaPath(id)}/whep`;
   }
 
-  private async startMediaMtx(token: string): Promise<void> {
+  private async startMediaMtx(): Promise<void> {
     if (this.config?.mediaMtxPath === null || this.config?.lanHost === null
       || this.config?.lanCidr === null || this.config === undefined) {
       throw new TypeError('MediaMTX configuration unavailable');
@@ -384,7 +428,7 @@ export class PilotMobileCameraService {
     await mkdir(this.dataDir, { recursive: true, mode: 0o700 });
     const runtimePath = await mkdtemp(join(this.dataDir, 'pilot-mobile-mediamtx-'));
     const configPath = join(runtimePath, 'mediamtx.yml');
-    const configuration = buildPilotMediaMtxConfiguration(this.config, digest(token));
+    const configuration = buildPilotMediaMtxConfiguration(this.config, this.activeSessions());
     await writeFile(configPath, `${JSON.stringify(configuration, null, 2)}\n`, { mode: 0o600 });
     this.runtimePath = runtimePath;
     this.diagnostic = '';
@@ -403,13 +447,11 @@ export class PilotMobileCameraService {
     child.once('close', () => {
       if (this.process === child) {
         this.process = null;
-        if (this.session !== null && !this.session.revoked) {
-          this.session.error = 'MediaMTX se detuvo de forma inesperada.';
-        }
+        for (const session of this.activeSessions()) session.error = 'MediaMTX se detuvo de forma inesperada.';
       }
     });
     child.once('error', () => {
-      if (this.session !== null) this.session.error = 'No se pudo ejecutar MediaMTX.';
+      for (const session of this.activeSessions()) session.error = 'No se pudo ejecutar MediaMTX.';
     });
     await this.readinessProbe(this.config.apiPort, child);
   }
@@ -435,28 +477,42 @@ export class PilotMobileCameraService {
     if (runtimePath !== null) await rm(runtimePath, { recursive: true, force: true });
   }
 
-  private flushWaiters(desired: PilotMobileCameraDesired): void {
+  private flushWaiters(id: string, desired: PilotMobileCameraDesired): void {
     for (const waiter of this.waiters) {
+      if (waiter.sessionId !== id) continue;
       clearTimeout(waiter.timer);
       waiter.resolve(desired);
+      this.waiters.delete(waiter);
     }
-    this.waiters.clear();
   }
 
-  private rejectWaiters(error: PilotMobileCameraError): void {
+  private rejectWaiters(error: PilotMobileCameraError, id?: string): void {
     for (const waiter of this.waiters) {
+      if (id !== undefined && waiter.sessionId !== id) continue;
       clearTimeout(waiter.timer);
       waiter.reject(error);
+      this.waiters.delete(waiter);
     }
-    this.waiters.clear();
   }
 
-  private async expireSession(id: string): Promise<void> {
-    if (this.session === null || this.session.id !== id || this.session.revoked) return;
-    this.session.revoked = true;
-    this.expirationTimer = null;
-    this.rejectWaiters(new PilotMobileCameraError(410, 'EXPIRED', 'El enlace móvil ha caducado.'));
-    await this.stopMediaMtx();
+  private sessionForCourt(courtSlug: string): InternalSession | undefined {
+    return [...this.sessions.values()].find((session) => session.courtSlug === courtSlug);
+  }
+
+  private activeSessions(): InternalSession[] {
+    return [...this.sessions.values()].filter((session) => !session.revoked && Date.parse(session.expiresAt) > this.now());
+  }
+
+  private async syncCredentials(): Promise<void> {
+    if (this.config === undefined) return;
+    const { authInternalUsers } = buildPilotMediaMtxConfiguration(this.config, this.activeSessions());
+    await this.apiMutation(this.config.apiPort, 'PATCH', '/v3/config/global/patch', { authInternalUsers });
+  }
+
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.mutation.then(operation);
+    this.mutation = result.catch(() => undefined);
+    return result;
   }
 }
 
@@ -493,7 +549,10 @@ function profileDimensions(profile: PilotMobileCameraDesired['profile']) {
   }
 }
 
-export function buildPilotMediaMtxConfiguration(config: PilotMobileCameraRuntimeConfig, tokenDigest: Buffer) {
+export function buildPilotMediaMtxConfiguration(
+  config: PilotMobileCameraRuntimeConfig,
+  sessions: readonly Pick<InternalSession, 'id' | 'tokenDigest'>[],
+) {
   const previewReaderIps = [...new Set([
     '127.0.0.1',
     '::1',
@@ -526,15 +585,38 @@ export function buildPilotMediaMtxConfiguration(config: PilotMobileCameraRuntime
       user: 'any',
       pass: '',
       ips: previewReaderIps,
-      permissions: [{ action: 'api' }, { action: 'read', path: MOBILE_PATH }],
-    }, {
-      user: WHIP_USER,
+      permissions: [{ action: 'api' }, ...sessions.map(({ id }) => ({ action: 'read', path: mediaPath(id) }))],
+    }, ...sessions.map(({ id, tokenDigest }) => ({
+      user: mediaUser(id),
       pass: `sha256:${tokenDigest.toString('base64')}`,
       ips: [config.lanCidr],
-      permissions: [{ action: 'publish', path: MOBILE_PATH }],
-    }],
-    paths: { [MOBILE_PATH]: { source: 'publisher', overridePublisher: false } },
+      permissions: [{ action: 'publish', path: mediaPath(id) }],
+    }))],
+    paths: Object.fromEntries(sessions.map(({ id }) => [mediaPath(id), { source: 'publisher', overridePublisher: false }])),
   };
+}
+
+function mediaPath(id: string): string { return `${MOBILE_PATH}-${id}`; }
+function mediaUser(id: string): string { return `camera-${id}`; }
+
+async function mutateMediaMtx(port: number, method: string, path: string, body?: unknown): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const active = request({
+      host: '127.0.0.1', port, method, path, timeout: 3_000,
+      headers: { 'Content-Type': 'application/json' },
+    }, (response) => {
+      response.resume();
+      response.once('error', reject);
+      response.once('end', () => {
+        const status = response.statusCode ?? 500;
+        if ((status >= 200 && status < 300) || (method === 'DELETE' && status === 404)) resolve();
+        else reject(new Error(`MediaMTX ${method} failed (${status})`));
+      });
+    });
+    active.once('timeout', () => active.destroy(new Error('MediaMTX API timed out')));
+    active.once('error', reject);
+    active.end(body === undefined ? undefined : JSON.stringify(body));
+  });
 }
 
 async function waitForMediaMtx(port: number, child: ChildProcess): Promise<void> {

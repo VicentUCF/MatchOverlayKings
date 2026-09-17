@@ -22,6 +22,7 @@ export async function buildApp(
     readonly mobileCameraReadinessProbe?: ConstructorParameters<typeof PilotMobileCameraService>[3];
     readonly mobileCameraVersionProbe?: ConstructorParameters<typeof PilotMobileCameraService>[4];
     readonly mobileCameraNow?: ConstructorParameters<typeof PilotMobileCameraService>[5];
+    readonly mobileCameraApiMutation?: ConstructorParameters<typeof PilotMobileCameraService>[6];
     readonly pilotOverlayRenderer?: PilotOverlayRenderer;
     readonly pilotMatchBinding?: PilotMatchBinding;
     readonly productionAccessGuard?: ProductionAccessGuard;
@@ -40,6 +41,7 @@ export async function buildApp(
     dependencies.mobileCameraReadinessProbe,
     dependencies.mobileCameraVersionProbe,
     dependencies.mobileCameraNow,
+    dependencies.mobileCameraApiMutation,
   );
   mobileCamera.initialize();
   const browserPath = chromiumExecutablePath();
@@ -166,6 +168,11 @@ export async function buildApp(
     return { mobileCamera: mobileCamera.current() };
   });
 
+  app.get('/api/pilot/mobile-cameras', async (request) => {
+    requireLocalPilot(request.ip);
+    return { mobileCameras: mobileCamera.list() };
+  });
+
   app.post('/api/pilot/mobile-camera', async (request, reply) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'production_admin');
@@ -176,7 +183,7 @@ export async function buildApp(
   app.put<{ Params: { sessionId: string } }>('/api/pilot/mobile-camera/:sessionId/desired', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'production_admin');
-    const current = mobileCamera.current();
+    const current = mobileCamera.current(request.params.sessionId);
     if (current !== null && current.id === request.params.sessionId && pilot.isCourtActive(current.courtSlug)) {
       throw new PilotMobileCameraError(409, 'CONFLICT', 'Detén la emisión antes de cambiar cámara, FPS o audio.');
     }
@@ -186,7 +193,7 @@ export async function buildApp(
   app.delete<{ Params: { sessionId: string } }>('/api/pilot/mobile-camera/:sessionId', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'production_admin');
-    const current = mobileCamera.current();
+    const current = mobileCamera.current(request.params.sessionId);
     if (current !== null && current.id === request.params.sessionId && pilot.isCourtActive(current.courtSlug)) {
       throw new PilotMobileCameraError(409, 'CONFLICT', 'Detén la emisión antes de revocar la cámara.');
     }

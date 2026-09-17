@@ -316,6 +316,7 @@ exec /bin/ffmpeg "$@"
       mobileCameraReadinessProbe: async () => undefined,
       mobileCameraVersionProbe: () => true,
       mobileCameraNow: () => now,
+      mobileCameraApiMutation: async () => undefined,
       productionAccessGuard: allowProductionAccess,
     });
     cleanups.push(async () => { await app.close(); await rm(dataDir, { recursive: true, force: true }); });
@@ -379,7 +380,7 @@ exec /bin/ffmpeg "$@"
     expect(claimResponse.statusCode).toBe(200);
     const claim = ClaimPilotMobileCameraResponseSchema.parse(claimResponse.json());
     expect(claim.desired).toMatchObject({ cameraId: 'rear', profile: '1080p30', audioEnabled: true });
-    expect(claim.whipUrl).toBe('http://192.168.1.20:8889/mobile-pilot/whip');
+    expect(claim.whipUrl).toBe(`http://192.168.1.20:8889/mobile-pilot-${created.session.id}/whip`);
 
     const secondClaim = await app.inject({
       method: 'POST', url: `/api/pilot/mobile-camera/${created.session.id}/claim`, headers: mobileHeaders,
@@ -470,6 +471,58 @@ exec /bin/ffmpeg "$@"
     expect(expired.statusCode).toBe(410);
   });
 
+  it('lists three mobile cameras and prepares an independent broadcast for each court', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kpl-multi-mobile-'));
+    const mediaMtxPath = join(dataDir, 'mediamtx');
+    await writeFile(mediaMtxPath, fakeMediaMtxSource(), { mode: 0o700 });
+    const { app } = await buildApp({
+      host: '127.0.0.1', port: 4310, dataDir, webDistDir: join(dataDir, 'missing-web'), controlPin: null,
+      pilot: {
+        ffmpegPath: '/bin/ffmpeg',
+        youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
+        mobileCamera: { mediaMtxPath, lanHost: '192.168.1.20', lanCidr: '192.168.1.0/24',
+          cameraPageOrigin: 'https://live.kingspadelleague.es',
+          webRtcPort: 8889, webRtcUdpPort: 8189, rtspPort: 8554, apiPort: 9998 },
+      },
+    }, {
+      mobileCameraReadinessProbe: async () => undefined, mobileCameraVersionProbe: () => true,
+      mobileCameraApiMutation: async () => undefined, productionAccessGuard: allowProductionAccess,
+      pilotOverlayRenderer: testOverlayRenderer(), pilotMatchBinding: {
+        configure: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
+        assertConfigured: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
+      },
+    });
+    cleanups.push(async () => { await app.close(); await rm(dataDir, { recursive: true, force: true }); });
+    const links = await Promise.all([1, 2, 3].map(async (number) => {
+      const response = await app.inject({ method: 'POST', url: '/api/pilot/mobile-camera', payload: { courtSlug: `pista-${number}` } });
+      expect(response.statusCode).toBe(201);
+      return PilotMobileCameraLinkSchema.parse(response.json());
+    }));
+    expect((await app.inject({ method: 'GET', url: '/api/pilot/mobile-cameras', remoteAddress: '192.168.1.40' })).statusCode).toBe(403);
+    const listed = (await app.inject({ method: 'GET', url: '/api/pilot/mobile-cameras' })).json().mobileCameras;
+    expect(listed.map((session: { courtSlug: string }) => session.courtSlug).sort()).toEqual(['pista-1', 'pista-2', 'pista-3']);
+    for (const link of links) {
+      const token = new URLSearchParams(new URL(link.connectUrl).hash.slice(1)).get('token');
+      const headers = { origin: 'https://live.kingspadelleague.es', authorization: `Bearer ${token}` };
+      const clientId = link.session.id;
+      expect((await app.inject({ method: 'POST', url: `/api/pilot/mobile-camera/${link.session.id}/claim`, headers,
+        payload: { clientId, capabilities: { cameras: [{ id: 'rear', label: 'Trasera', facingMode: 'environment',
+          maxWidth: 1280, maxHeight: 720, maxFramesPerSecond: 30, supportedProfiles: ['720p30'] }], audioAvailable: false } },
+      })).statusCode).toBe(200);
+      expect((await app.inject({ method: 'POST', url: `/api/pilot/mobile-camera/${link.session.id}/status`, headers,
+        payload: { clientId, state: 'ready', applied: null, metrics: null, error: null },
+      })).statusCode).toBe(200);
+      const prepared = await app.inject({ method: 'POST', url: '/api/pilot/sessions', payload: {
+        courtSlug: link.session.courtSlug, mode: 'simulation', sourceId: 'mobile:pilot',
+        homeTeam: 'Kings', awayTeam: 'Lions', matchdayNumber: 1, seasonLabel: 'T2',
+        scheduledAt: new Date().toISOString(), privacyStatus: 'private',
+      } });
+      expect(prepared.statusCode).toBe(201);
+    }
+    expect((await app.inject({ method: 'GET', url: '/api/pilot/sessions' })).json().sessions).toHaveLength(3);
+    expect((await app.inject({ method: 'POST', url: '/api/pilot/mobile-camera', payload: { courtSlug: 'pista-1' } })).statusCode).toBe(409);
+  }, 15_000);
+
   it('keeps mobile disabled when MediaMTX or LAN settings are absent', async () => {
     const app = await createPilotApp();
     const readiness = PilotReadinessSchema.parse((await app.inject({ method: 'GET', url: '/api/pilot/readiness' })).json());
@@ -486,7 +539,7 @@ exec /bin/ffmpeg "$@"
       adminHost: '172.30.0.1',
       cameraPageOrigin: 'https://live.kingspadelleague.es',
       webRtcPort: 8889, webRtcUdpPort: 8189, rtspPort: 8554, apiPort: 9998,
-    }, Buffer.alloc(32, 7));
+    }, [{ id: 'first', tokenDigest: Buffer.alloc(32, 7) }, { id: 'second', tokenDigest: Buffer.alloc(32, 8) }]);
 
     expect(configuration).toMatchObject({
       apiAddress: '127.0.0.1:9998',
@@ -495,16 +548,22 @@ exec /bin/ffmpeg "$@"
       webrtcAddress: ':8889',
       webrtcLocalUDPAddress: ':8189',
       webrtcAdditionalHosts: ['192.168.50.10'],
-      paths: { 'mobile-pilot': { source: 'publisher', overridePublisher: false } },
+      paths: {
+        'mobile-pilot-first': { source: 'publisher', overridePublisher: false },
+        'mobile-pilot-second': { source: 'publisher', overridePublisher: false },
+      },
     });
     expect(configuration.authInternalUsers[0]).toMatchObject({
       ips: ['127.0.0.1', '::1', '172.30.0.1'],
-      permissions: [{ action: 'api' }, { action: 'read', path: 'mobile-pilot' }],
+      permissions: [{ action: 'api' }, { action: 'read', path: 'mobile-pilot-first' }, { action: 'read', path: 'mobile-pilot-second' }],
     });
     expect(configuration.authInternalUsers[1]).toMatchObject({
-      user: 'camera', ips: ['192.168.50.0/24'], permissions: [{ action: 'publish', path: 'mobile-pilot' }],
+      user: 'camera-first', ips: ['192.168.50.0/24'], permissions: [{ action: 'publish', path: 'mobile-pilot-first' }],
     });
     expect(configuration.authInternalUsers[1]?.pass).toMatch(/^sha256:/);
+    expect(configuration.authInternalUsers[2]).toMatchObject({
+      user: 'camera-second', ips: ['192.168.50.0/24'], permissions: [{ action: 'publish', path: 'mobile-pilot-second' }],
+    });
   });
 });
 
@@ -591,15 +650,17 @@ async function waitForSessions(
   expected: string,
 ) {
   const deadline = Date.now() + 12_000;
+  let diagnostics = '';
   while (Date.now() < deadline) {
     const response = await app.inject({ method: 'GET', url: '/api/pilot/sessions' });
     const sessions = (response.json().sessions as unknown[])
       .map((value) => PilotSessionSchema.parse(value))
       .filter((session) => ids.includes(session.id));
+    diagnostics = JSON.stringify(sessions.map(({ courtSlug, status, encoder, error }) => ({ courtSlug, status, encoder, error })));
     if (sessions.length === ids.length && sessions.every(matches)) return sessions;
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
-  throw new Error(`Pilot sessions did not reach ${expected}`);
+  throw new Error(`Pilot sessions did not reach ${expected}: ${diagnostics}`);
 }
 
 function fakeMediaMtxSource(): string {

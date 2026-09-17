@@ -215,7 +215,7 @@ export class PilotService {
     if (source.kind === 'mobile' && !this.mobileCamera?.isReadyForCourt(input.courtSlug)) {
       throw new PilotServiceError(409, 'NOT_READY', 'Prepara primero la cámara móvil para esta pista.');
     }
-    if (source.kind !== 'synthetic') {
+    if (source.kind === 'v4l2') {
       const sourceInUse = [...this.sessions.values()].some(({ public: session }) =>
         session.source.id === source.id && session.status !== 'stopped');
       if (sourceInUse) throw new PilotServiceError(409, 'CONFLICT', 'La cámara seleccionada ya está asignada a otra pista.');
@@ -367,7 +367,7 @@ export class PilotService {
       this.ffmpegPath,
       session.public.source,
       session.ingestUrl,
-      usesMobileCamera ? this.mobileCamera?.rtspUrl() ?? null : null,
+      usesMobileCamera ? this.mobileCamera?.rtspUrl(session.public.courtSlug) ?? null : null,
       usesMobileCamera ? this.mobileCamera?.audioAvailableForCourt(session.public.courtSlug) ?? false : false,
       framesPerSecond,
       videoEncoding,
