@@ -19,6 +19,17 @@ select {
     box-shadow 160ms ease;
 }
 
+select {
+  color-scheme: dark;
+}
+
+/* Native dropdowns (Firefox/GTK in particular) otherwise paint a light popup with the inherited light text. */
+select option,
+select optgroup {
+  color: var(--kpl-color-text-strong, #f5f5f5);
+  background-color: var(--kpl-color-surface-raised, #161616);
+}
+
 input:focus,
 select:focus {
   border-color: var(--color-brand-strong);
@@ -88,6 +99,11 @@ select:focus {
   display: grid;
   gap: 6px;
   min-width: 0;
+}
+
+.lineup-hint {
+  color: var(--text-soft);
+  font-size: 0.8rem;
 }
 
 .lineup-fieldset legend {

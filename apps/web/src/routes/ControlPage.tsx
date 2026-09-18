@@ -1,4 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  memo,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from 'react';
 import {
   BarChart3,
   CalendarDays,
@@ -77,18 +87,35 @@ export function ControlPage({ eventId }: { eventId: string }) {
   const [leagueSnapshot, setLeagueSnapshot] = useState<LeagueSnapshot | null>(null);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel | null>(null);
   const stageRef = useRef<HTMLElement>(null);
+  const syncedSetupKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!state) {
       return;
     }
 
-    setMetaTitle(state.title);
-    setMetaCourt(state.courtName);
-    setHomeTeamId(state.homeTeamId);
-    setAwayTeamId(state.awayTeamId);
-    setLineups(state.lineups);
-    setServingSide(state.servingSide);
+    // Realtime pushes arrive for any change (score, overlays...); only overwrite the
+    // setup form when the saved setup itself changed, so unsaved edits are kept.
+    const setupKey = JSON.stringify([
+      state.id,
+      state.title,
+      state.courtName,
+      state.homeTeamId,
+      state.awayTeamId,
+      state.lineups,
+      state.servingSide,
+    ]);
+
+    if (syncedSetupKeyRef.current !== setupKey) {
+      syncedSetupKeyRef.current = setupKey;
+      setMetaTitle(state.title);
+      setMetaCourt(state.courtName);
+      setHomeTeamId(state.homeTeamId);
+      setAwayTeamId(state.awayTeamId);
+      setLineups(state.lineups);
+      setServingSide(state.servingSide);
+    }
+
     setManualHomeGames(activeSet?.homeGames ?? 0);
     setManualAwayGames(activeSet?.awayGames ?? 0);
     setManualHomePoints(state.currentGame.homePoints);
@@ -309,15 +336,17 @@ export function ControlPage({ eventId }: { eventId: string }) {
       <div className="lineup-grid">
         <LineupFields
           label="Jugadores local"
+          side="home"
           lineup={lineups.home}
           roster={homeRoster}
-          onChange={(home) => setLineups((current) => ({ ...current, home }))}
+          setLineups={setLineups}
         />
         <LineupFields
           label="Jugadores visitante"
+          side="away"
           lineup={lineups.away}
           roster={awayRoster}
-          onChange={(away) => setLineups((current) => ({ ...current, away }))}
+          setLineups={setLineups}
         />
       </div>
       <label>
@@ -1145,53 +1174,67 @@ const CUSTOM_PLAYER_OPTION = '__custom__';
 
 function LineupFields({
   label,
+  side,
   lineup,
   roster,
-  onChange,
+  setLineups,
 }: {
   label: string;
+  side: Side;
   lineup: MatchLineups['home'];
   roster: LeaguePlayer[];
-  onChange: (lineup: MatchLineups['home']) => void;
+  setLineups: Dispatch<SetStateAction<MatchLineups>>;
 }) {
   return (
     <fieldset className="lineup-fieldset">
       <legend>{label}</legend>
       <LineupPlayerField
         placeholder="Jugador 1"
+        side={side}
+        slot="player1"
         name={lineup.player1}
         playerId={lineup.player1Id}
         roster={roster}
-        onChange={(name, id) => onChange(withLineupPlayer(lineup, 'player1', name, id))}
+        setLineups={setLineups}
       />
       <LineupPlayerField
         placeholder="Jugador 2"
+        side={side}
+        slot="player2"
         name={lineup.player2}
         playerId={lineup.player2Id}
         roster={roster}
-        onChange={(name, id) => onChange(withLineupPlayer(lineup, 'player2', name, id))}
+        setLineups={setLineups}
       />
+      {roster.length === 0 ? <small className="lineup-hint">Sin plantilla en la liga: escribe los nombres.</small> : null}
     </fieldset>
   );
 }
 
-function LineupPlayerField({
+// Memoized with stable props so realtime re-renders of the page don't touch an open native select.
+const LineupPlayerField = memo(function LineupPlayerField({
   placeholder,
+  side,
+  slot,
   name,
   playerId,
   roster,
-  onChange,
+  setLineups,
 }: {
   placeholder: string;
+  side: Side;
+  slot: 'player1' | 'player2';
   name: string;
   playerId: string | undefined;
   roster: LeaguePlayer[];
-  onChange: (name: string, playerId: string | undefined) => void;
+  setLineups: Dispatch<SetStateAction<MatchLineups>>;
 }) {
   const rosterPlayer = playerId ? roster.find((player) => player.id === playerId) : undefined;
   const [customMode, setCustomMode] = useState(false);
   const isCustom = customMode || (!rosterPlayer && name.trim().length > 0) || roster.length === 0;
   const selectValue = rosterPlayer ? rosterPlayer.id : isCustom ? CUSTOM_PLAYER_OPTION : '';
+  const update = (nextName: string, nextId: string | undefined) =>
+    setLineups((current) => ({ ...current, [side]: withLineupPlayer(current[side], slot, nextName, nextId) }));
 
   return (
     <div className="lineup-player-field">
@@ -1204,13 +1247,13 @@ function LineupPlayerField({
 
             if (value === CUSTOM_PLAYER_OPTION) {
               setCustomMode(true);
-              onChange(rosterPlayer ? '' : name, undefined);
+              update(rosterPlayer ? '' : name, undefined);
               return;
             }
 
             setCustomMode(false);
             const player = roster.find((candidate) => candidate.id === value);
-            onChange(player?.displayName ?? '', player?.id);
+            update(player?.displayName ?? '', player?.id);
           }}
         >
           <option value="">{placeholder}</option>
@@ -1225,13 +1268,13 @@ function LineupPlayerField({
       {isCustom ? (
         <input
           value={name}
-          onChange={(event) => onChange(event.target.value, undefined)}
+          onChange={(event) => update(event.target.value, undefined)}
           placeholder={roster.length > 0 ? 'Nombre del jugador' : placeholder}
         />
       ) : null}
     </div>
   );
-}
+});
 
 function withLineupPlayer(
   lineup: MatchLineups['home'],
