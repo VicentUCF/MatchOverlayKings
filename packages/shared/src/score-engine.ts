@@ -8,6 +8,7 @@ import type {
   MatchGameScore,
   MatchHistoryEntry,
   MatchLineups,
+  TeamLineup,
   MatchMetaPatch,
   OverlayDataSceneKind,
   OverlayDataSceneState,
@@ -659,14 +660,20 @@ function cloneLineups(lineups: MatchLineups | undefined): MatchLineups {
   const fallback = createEmptyLineups();
 
   return {
-    home: {
-      player1: lineups?.home?.player1.trim() ?? fallback.home.player1,
-      player2: lineups?.home?.player2.trim() ?? fallback.home.player2,
-    },
-    away: {
-      player1: lineups?.away?.player1.trim() ?? fallback.away.player1,
-      player2: lineups?.away?.player2.trim() ?? fallback.away.player2,
-    },
+    home: cloneLineup(lineups?.home, fallback.home),
+    away: cloneLineup(lineups?.away, fallback.away),
+  };
+}
+
+function cloneLineup(lineup: TeamLineup | undefined, fallback: TeamLineup): TeamLineup {
+  const player1Id = lineup?.player1Id?.trim();
+  const player2Id = lineup?.player2Id?.trim();
+
+  return {
+    player1: lineup?.player1.trim() ?? fallback.player1,
+    player2: lineup?.player2.trim() ?? fallback.player2,
+    ...(player1Id ? { player1Id } : {}),
+    ...(player2Id ? { player2Id } : {}),
   };
 }
 

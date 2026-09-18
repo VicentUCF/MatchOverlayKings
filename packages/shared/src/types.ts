@@ -48,6 +48,9 @@ export interface MatchConfig {
 export interface TeamLineup {
   player1: string;
   player2: string;
+  /** League API player id when the name was picked from the roster; absent for free text. */
+  player1Id?: string;
+  player2Id?: string;
 }
 
 export interface MatchLineups {

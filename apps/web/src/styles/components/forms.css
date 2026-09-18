@@ -84,6 +84,12 @@ select:focus {
   border-radius: 8px;
 }
 
+.lineup-player-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .lineup-fieldset legend {
   padding: 0 4px;
   color: var(--text-soft);

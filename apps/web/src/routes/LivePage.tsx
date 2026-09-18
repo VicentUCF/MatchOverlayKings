@@ -534,15 +534,26 @@ function createPlayerCards(
   localTeam: Team | undefined,
 ): WatchPlayerCard[] {
   const lineup = state.lineups[side];
-  const lineupNames = [lineup.player1, lineup.player2].filter(Boolean);
-  const sourcePlayers = lineupNames.length > 0
-    ? lineupNames
-    : (leagueTeam?.players ?? []).filter((player) => !player.isPresident).slice(0, 2).map((player) => player.displayName);
+  const localTeamId = leagueTeam?.localTeamId ?? localTeam?.id ?? null;
+  const lineupEntries = [
+    { name: lineup.player1, playerId: lineup.player1Id },
+    { name: lineup.player2, playerId: lineup.player2Id },
+  ].filter((entry) => entry.name.trim().length > 0 || entry.playerId);
+  const sourcePlayers = lineupEntries.length > 0
+    ? lineupEntries
+    : (leagueTeam?.players ?? [])
+      .filter((player) => !player.isPresident)
+      .slice(0, 2)
+      .map((player) => ({ name: player.displayName, playerId: player.id }));
 
-  return sourcePlayers.slice(0, 2).map((name, index) => {
-    const rankedPlayer = findRankedPlayer(name, snapshot, leagueTeam?.localTeamId ?? localTeam?.id ?? null);
-    const rosterPlayer = rankedPlayer ?? findRosterPlayer(name, leagueTeam?.players ?? []);
-    const displayName = rosterPlayer?.alias ?? rosterPlayer?.displayName ?? name;
+  return sourcePlayers.slice(0, 2).map(({ name, playerId }, index) => {
+    const rankedPlayer = playerId
+      ? snapshot?.playerRanking.find((player) => player.id === playerId) ?? null
+      : findRankedPlayer(name, snapshot, localTeamId);
+    const rosterPlayer = rankedPlayer
+      ?? (playerId ? leagueTeam?.players.find((player) => player.id === playerId) : undefined)
+      ?? findRosterPlayer(name, leagueTeam?.players ?? []);
+    const displayName = rosterPlayer?.displayName ?? name;
 
     return {
       id: `${side}-${rosterPlayer?.id ?? (normalizePersonName(name) || String(index))}`,

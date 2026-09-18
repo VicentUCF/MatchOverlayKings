@@ -134,9 +134,14 @@ function parseLineup(value: unknown): MatchLineups['home'] {
     return { player1: '', player2: '' };
   }
 
+  const player1Id = readOptionalString(value, 'player1Id');
+  const player2Id = readOptionalString(value, 'player2Id');
+
   return {
     player1: readOptionalString(value, 'player1'),
     player2: readOptionalString(value, 'player2'),
+    ...(player1Id ? { player1Id } : {}),
+    ...(player2Id ? { player2Id } : {}),
   };
 }
 

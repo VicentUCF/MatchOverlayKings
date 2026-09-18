@@ -7,6 +7,7 @@ import {
   getActiveSet,
   getCompletedSetCount,
   getPointContext,
+  parseLineups,
   resetMatch,
   startNewMatch,
   triggerOverlayDataScene,
@@ -163,6 +164,24 @@ describe('score engine', () => {
     expect(state.lineups.home.player1).toBe('A');
     expect(state.servingSide).toBe('away');
     expect(state.history).toHaveLength(1);
+  });
+
+  it('keeps roster player ids on lineups and drops empty ones', () => {
+    const lineups = parseLineups({
+      home: { player1: 'Ana Garcia', player1Id: 'p-1', player2: 'Libre', player2Id: '' },
+      away: { player1: '', player2: '' },
+    });
+
+    expect(lineups.home).toEqual({ player1: 'Ana Garcia', player1Id: 'p-1', player2: 'Libre' });
+
+    const state = startNewMatch(
+      createInitialMatchState(event),
+      { title: 'Next', courtName: 'Central', homeTeamId: 'home', awayTeamId: 'away', lineups, servingSide: 'home' },
+      'new-match-ids',
+    );
+
+    expect(state.lineups.home.player1Id).toBe('p-1');
+    expect(state.lineups.home).not.toHaveProperty('player2Id');
   });
 
   it('allows one match card per side and clears cards on reset', () => {

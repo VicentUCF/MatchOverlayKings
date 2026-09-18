@@ -49,6 +49,7 @@ import type {
 import { Scoreboard } from '../components/Scoreboard.js';
 import { ProductionNavigation } from '../components/ProductionNavigation.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
+import { fetchLeagueSnapshot, type LeaguePlayer, type LeagueSnapshot } from '../lib/league-data.js';
 import { MATCH_CARDS, type MatchCardDefinition } from '../lib/match-cards.js';
 import { SPONSORS } from '../lib/sponsors.js';
 
@@ -73,6 +74,7 @@ export function ControlPage({ eventId }: { eventId: string }) {
   const [manualHomePoints, setManualHomePoints] = useState(0);
   const [manualAwayPoints, setManualAwayPoints] = useState(0);
   const [phase, setPhase] = useState<ControlPhase>('setup');
+  const [leagueSnapshot, setLeagueSnapshot] = useState<LeagueSnapshot | null>(null);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel | null>(null);
   const stageRef = useRef<HTMLElement>(null);
 
@@ -101,6 +103,31 @@ export function ControlPage({ eventId }: { eventId: string }) {
     setPhase(state.status === 'pre_match' ? 'setup' : 'score');
     setMobilePanel(null);
   }, [eventId, state?.status]);
+
+  useEffect(() => {
+    if (match.teams.length === 0) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    void fetchLeagueSnapshot(match.teams)
+      .then((snapshot) => {
+        if (!cancelled) {
+          setLeagueSnapshot(snapshot);
+        }
+      })
+      .catch(() => {
+        // Without league data the lineup falls back to free text only.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [match.teams]);
+
+  const homeRoster = useMemo(() => teamRoster(leagueSnapshot, homeTeamId), [leagueSnapshot, homeTeamId]);
+  const awayRoster = useMemo(() => teamRoster(leagueSnapshot, awayTeamId), [leagueSnapshot, awayTeamId]);
 
   useEffect(() => {
     if (!stageRef.current || prefersReducedMotion()) {
@@ -246,7 +273,14 @@ export function ControlPage({ eventId }: { eventId: string }) {
       <div className="team-select-grid">
         <label>
           <span>Local</span>
-          <select disabled={state?.productionConfigured === true} value={homeTeamId} onChange={(event) => setHomeTeamId(event.target.value)}>
+          <select
+            disabled={state?.productionConfigured === true}
+            value={homeTeamId}
+            onChange={(event) => {
+              setHomeTeamId(event.target.value);
+              setLineups((current) => ({ ...current, home: createEmptyLineups().home }));
+            }}
+          >
             {match.teams.map((team) => (
               <option key={team.id} value={team.id}>
                 {team.shortName}
@@ -256,7 +290,14 @@ export function ControlPage({ eventId }: { eventId: string }) {
         </label>
         <label>
           <span>Visitante</span>
-          <select disabled={state?.productionConfigured === true} value={awayTeamId} onChange={(event) => setAwayTeamId(event.target.value)}>
+          <select
+            disabled={state?.productionConfigured === true}
+            value={awayTeamId}
+            onChange={(event) => {
+              setAwayTeamId(event.target.value);
+              setLineups((current) => ({ ...current, away: createEmptyLineups().away }));
+            }}
+          >
             {match.teams.map((team) => (
               <option key={team.id} value={team.id}>
                 {team.shortName}
@@ -269,11 +310,13 @@ export function ControlPage({ eventId }: { eventId: string }) {
         <LineupFields
           label="Jugadores local"
           lineup={lineups.home}
+          roster={homeRoster}
           onChange={(home) => setLineups((current) => ({ ...current, home }))}
         />
         <LineupFields
           label="Jugadores visitante"
           lineup={lineups.away}
+          roster={awayRoster}
           onChange={(away) => setLineups((current) => ({ ...current, away }))}
         />
       </div>
@@ -1098,30 +1141,121 @@ function SegmentedControl<TValue extends string>({
   );
 }
 
+const CUSTOM_PLAYER_OPTION = '__custom__';
+
 function LineupFields({
   label,
   lineup,
+  roster,
   onChange,
 }: {
   label: string;
   lineup: MatchLineups['home'];
+  roster: LeaguePlayer[];
   onChange: (lineup: MatchLineups['home']) => void;
 }) {
   return (
     <fieldset className="lineup-fieldset">
       <legend>{label}</legend>
-      <input
-        value={lineup.player1}
-        onChange={(event) => onChange({ ...lineup, player1: event.target.value })}
+      <LineupPlayerField
         placeholder="Jugador 1"
+        name={lineup.player1}
+        playerId={lineup.player1Id}
+        roster={roster}
+        onChange={(name, id) => onChange(withLineupPlayer(lineup, 'player1', name, id))}
       />
-      <input
-        value={lineup.player2}
-        onChange={(event) => onChange({ ...lineup, player2: event.target.value })}
+      <LineupPlayerField
         placeholder="Jugador 2"
+        name={lineup.player2}
+        playerId={lineup.player2Id}
+        roster={roster}
+        onChange={(name, id) => onChange(withLineupPlayer(lineup, 'player2', name, id))}
       />
     </fieldset>
   );
+}
+
+function LineupPlayerField({
+  placeholder,
+  name,
+  playerId,
+  roster,
+  onChange,
+}: {
+  placeholder: string;
+  name: string;
+  playerId: string | undefined;
+  roster: LeaguePlayer[];
+  onChange: (name: string, playerId: string | undefined) => void;
+}) {
+  const rosterPlayer = playerId ? roster.find((player) => player.id === playerId) : undefined;
+  const [customMode, setCustomMode] = useState(false);
+  const isCustom = customMode || (!rosterPlayer && name.trim().length > 0) || roster.length === 0;
+  const selectValue = rosterPlayer ? rosterPlayer.id : isCustom ? CUSTOM_PLAYER_OPTION : '';
+
+  return (
+    <div className="lineup-player-field">
+      {roster.length > 0 ? (
+        <select
+          aria-label={placeholder}
+          value={selectValue}
+          onChange={(event) => {
+            const value = event.target.value;
+
+            if (value === CUSTOM_PLAYER_OPTION) {
+              setCustomMode(true);
+              onChange(rosterPlayer ? '' : name, undefined);
+              return;
+            }
+
+            setCustomMode(false);
+            const player = roster.find((candidate) => candidate.id === value);
+            onChange(player?.displayName ?? '', player?.id);
+          }}
+        >
+          <option value="">{placeholder}</option>
+          {roster.map((player) => (
+            <option key={player.id} value={player.id}>
+              {player.isPresident ? `${player.displayName} (Presidente)` : player.displayName}
+            </option>
+          ))}
+          <option value={CUSTOM_PLAYER_OPTION}>Otro (escribir nombre)</option>
+        </select>
+      ) : null}
+      {isCustom ? (
+        <input
+          value={name}
+          onChange={(event) => onChange(event.target.value, undefined)}
+          placeholder={roster.length > 0 ? 'Nombre del jugador' : placeholder}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function withLineupPlayer(
+  lineup: MatchLineups['home'],
+  slot: 'player1' | 'player2',
+  name: string,
+  playerId: string | undefined,
+): MatchLineups['home'] {
+  const idKey = slot === 'player1' ? 'player1Id' : 'player2Id';
+  const next = { ...lineup, [slot]: name };
+
+  if (playerId) {
+    next[idKey] = playerId;
+  } else {
+    delete next[idKey];
+  }
+
+  return next;
+}
+
+function teamRoster(snapshot: LeagueSnapshot | null, localTeamId: string): LeaguePlayer[] {
+  const players = snapshot?.teams.find((team) => team.localTeamId === localTeamId)?.players ?? [];
+
+  return [...players].sort((left, right) =>
+    Number(left.isPresident) - Number(right.isPresident) || left.displayName.localeCompare(right.displayName, 'es'));
 }
 
 function createEmptyLineups(): MatchLineups {
