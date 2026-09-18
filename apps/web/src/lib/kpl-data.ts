@@ -10,6 +10,10 @@ export interface EventSummary {
   status: MatchState['status'];
   version: number;
   updatedAt: string;
+  /** The live score the public home renders without opening the match. */
+  state: MatchState;
+  /** Published by the emission runtime while the broadcast is on air. */
+  youtubeWatchUrl: string | null;
 }
 
 interface TeamRow {
@@ -31,9 +35,11 @@ interface ScoreStateRow {
   version: number;
   updated_at: string;
   state: MatchState;
+  youtube_watch_url: string | null;
 }
 
-const SCORE_STATE_COLUMNS = 'court_slug,title,court_name,home_team_id,away_team_id,status,version,updated_at,state';
+const SCORE_STATE_COLUMNS =
+  'court_slug,title,court_name,home_team_id,away_team_id,status,version,updated_at,state,youtube_watch_url';
 
 export async function fetchTeams(): Promise<Team[]> {
   assertSupabaseConfig();
@@ -155,5 +161,7 @@ function scoreStateRowToEventSummary(row: ScoreStateRow): EventSummary {
     status: row.status,
     version: row.version,
     updatedAt: row.updated_at,
+    state: row.state,
+    youtubeWatchUrl: row.youtube_watch_url,
   };
 }

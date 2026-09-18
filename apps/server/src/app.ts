@@ -10,6 +10,7 @@ import { HttpCommandError } from './http-error.js';
 import { registerSocketHandlers } from './socket-handlers.js';
 import type { KplSocketServer, SocketData } from './socket-handlers.js';
 import { SupabasePilotMatchBinding, type PilotMatchBinding } from './pilot-match-binding.js';
+import { SupabasePilotStreamLink, type PilotStreamLink } from './pilot-stream-link.js';
 import { PilotService, PilotServiceError } from './pilot-service.js';
 import { PilotYouTubeGateway } from './pilot-youtube.js';
 import { PilotMobileCameraError, PilotMobileCameraService } from './pilot-mobile-camera.js';
@@ -25,6 +26,7 @@ export async function buildApp(
     readonly mobileCameraApiMutation?: ConstructorParameters<typeof PilotMobileCameraService>[6];
     readonly pilotOverlayRenderer?: PilotOverlayRenderer;
     readonly pilotMatchBinding?: PilotMatchBinding;
+    readonly pilotStreamLink?: PilotStreamLink;
     readonly productionAccessGuard?: ProductionAccessGuard;
   } = {},
 ) {
@@ -55,6 +57,7 @@ export async function buildApp(
       ...(browserPath ? { chromiumExecutablePath: browserPath } : {}),
     }),
     dependencies.pilotMatchBinding ?? new SupabasePilotMatchBinding(config.pilot.supabase),
+    dependencies.pilotStreamLink ?? new SupabasePilotStreamLink(config.pilot.supabase),
   );
   const productionAccess = dependencies.productionAccessGuard
     ?? new SupabaseProductionAccessGuard(config.pilot.supabase);
@@ -253,19 +256,19 @@ export async function buildApp(
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/start', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'operator');
-    return { session: await pilot.start(request.params.sessionId) };
+    return { session: await pilot.start(request.params.sessionId, request.headers.authorization) };
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/recover', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'operator');
-    return { session: await pilot.recover(request.params.sessionId) };
+    return { session: await pilot.recover(request.params.sessionId, request.headers.authorization) };
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/stop', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'operator');
-    return { session: await pilot.stop(request.params.sessionId) };
+    return { session: await pilot.stop(request.params.sessionId, request.headers.authorization) };
   });
 
   app.get<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/thumbnail', async (request, reply) => {

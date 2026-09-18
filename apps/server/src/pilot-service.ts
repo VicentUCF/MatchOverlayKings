@@ -23,6 +23,7 @@ import {
 } from '@kpl/production-contracts';
 import { z } from 'zod';
 import type { PilotMatchBinding } from './pilot-match-binding.js';
+import type { PilotStreamLink } from './pilot-stream-link.js';
 import { PilotYouTubeError } from './pilot-youtube.js';
 import type { PilotYouTubeGateway } from './pilot-youtube.js';
 import type { PilotMobileCameraService } from './pilot-mobile-camera.js';
@@ -100,6 +101,7 @@ export class PilotService {
     private readonly mobileCamera?: PilotMobileCameraService,
     private readonly overlayRenderer?: PilotOverlayRenderer,
     private readonly matchBinding?: PilotMatchBinding,
+    private readonly streamLink?: PilotStreamLink,
   ) {}
 
   public async initialize(): Promise<void> {
@@ -309,7 +311,7 @@ export class PilotService {
     return session;
   }
 
-  public async start(id: string): Promise<PilotSession> {
+  public async start(id: string, authorization?: string): Promise<PilotSession> {
     const session = this.get(id);
     if (session.public.status !== 'prepared') {
       throw new PilotServiceError(409, 'CONFLICT', 'La sesión no está preparada para emitir.');
@@ -323,10 +325,11 @@ export class PilotService {
 
     this.spawnSessionProcess(session);
     await this.persistSessions();
+    await this.publishStreamLink(session, session.public.watchUrl, authorization);
     return session.public;
   }
 
-  public async recover(id: string): Promise<PilotSession> {
+  public async recover(id: string, authorization?: string): Promise<PilotSession> {
     const session = this.get(id);
     if (!['interrupted', 'failed'].includes(session.public.status)) {
       throw new PilotServiceError(409, 'CONFLICT', 'La sesión no necesita recuperación.');
@@ -346,6 +349,7 @@ export class PilotService {
     session.diagnostic = '';
     this.spawnSessionProcess(session);
     await this.persistSessions();
+    await this.publishStreamLink(session, session.public.watchUrl, authorization);
     return session.public;
   }
 
@@ -466,7 +470,7 @@ export class PilotService {
     session.retryTimer.unref();
   }
 
-  public async stop(id: string): Promise<PilotSession> {
+  public async stop(id: string, authorization?: string): Promise<PilotSession> {
     const session = this.get(id);
     if (!['prepared', 'starting', 'live', 'reconnecting', 'interrupted', 'failed'].includes(session.public.status)) {
       throw new PilotServiceError(409, 'CONFLICT', 'La sesión no está preparada ni emitiendo.');
@@ -511,7 +515,26 @@ export class PilotService {
       });
       await this.persistSessions();
     }
+    await this.publishStreamLink(session, null, authorization);
     return session.public;
+  }
+
+  /**
+   * The public home links to the broadcast, so the link follows the emission lifecycle.
+   * A rejected publication never stops the emission: the stream matters more than the link.
+   */
+  private async publishStreamLink(
+    session: InternalPilotSession,
+    watchUrl: string | null,
+    authorization?: string,
+  ): Promise<void> {
+    if (this.streamLink === undefined || session.public.mode !== 'youtube') return;
+    try {
+      await this.streamLink.publish(session.public.courtSlug, watchUrl, authorization);
+    } catch {
+      session.diagnostic = `${session.diagnostic}\nNo se pudo publicar el enlace de YouTube en la web pública.`
+        .slice(-MAX_DIAGNOSTIC_LENGTH);
+    }
   }
 
   public previewThumbnail(rawInput: unknown): Uint8Array {

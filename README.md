@@ -6,7 +6,8 @@ Frontend Vite/React para controlar marcadores de padel y overlays OBS de KingsPa
 
 - Supabase es la fuente autoritativa del inventario de pistas, identidades de partido,
   autenticación, roles y marcador. Las pistas no están fijadas en el frontend.
-- `/` es publico y solo lista partidos en directo.
+- `/` es publico y solo lista partidos en directo, con el marcador de cada pista, el enlace
+  al directo de YouTube como accion principal y el marcador ampliado como secundaria.
 - `/live/:courtSlug` es publico y solo muestra una pista si esta `live`.
 - `/admin`, `/admin/emisiones` y `/mandos` forman un único centro de producción. Administradores
   y operadores usan el mismo runtime local con controles limitados por rol.
@@ -62,6 +63,8 @@ La migracion inicial crea:
 - `score_states`
 - `score_events`
 - RLS para lectura publica solo de `score_states.status = 'live'`
+- `score_states.youtube_watch_url`: el enlace publico del directo, que el runtime de emision
+  publica con `publish_court_stream` al arrancar la senal y limpia al pararla
 - RPCs de marcador con bloqueo `FOR UPDATE`, `expected_version`, `command_id` idempotente y auditoria
 
 Para local, usa Supabase CLI:

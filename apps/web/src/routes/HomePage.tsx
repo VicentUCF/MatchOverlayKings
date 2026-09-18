@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { Eye, RefreshCw, WifiOff } from 'lucide-react';
-import type { MatchState, Team } from '@kpl/shared';
+import { BarChart3, RefreshCw, WifiOff, Youtube, Zap } from 'lucide-react';
+import type { Team } from '@kpl/shared';
 import { type EventSummary, fetchEventSummaries, fetchTeams, subscribeToScoreStates } from '../lib/kpl-data.js';
+import { type LiveCourtSummary, type LiveCourtTeam, sortByCourt, toLiveCourtSummary } from '../lib/live-court-summary.js';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -13,7 +14,14 @@ export function HomePage() {
   const [error, setError] = useState<string | null>(null);
 
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
-  const liveEvents = useMemo(() => events.filter((event) => event.status === 'live'), [events]);
+  const liveCourts = useMemo(
+    () => sortByCourt(
+      events
+        .filter((event) => event.status === 'live')
+        .map((event) => toLiveCourtSummary(event, teamById)),
+    ),
+    [events, teamById],
+  );
 
   const loadEvents = useCallback(async (silent = false) => {
     if (!silent) {
@@ -67,7 +75,7 @@ export function HomePage() {
   }, [loadEvents]);
 
   return (
-    <main className="home-page">
+    <main className="home-page live-home">
       <header className="home-topbar">
         <div className="brand">
           <img src="/logos/kpl-wordmark.png" alt="" />
@@ -83,13 +91,19 @@ export function HomePage() {
         </button>
       </header>
 
-      <section className="match-picker" aria-labelledby="match-picker-title">
-        <div className="section-heading">
-          <h1 id="match-picker-title">Partidos en directo</h1>
-          <span>{liveEvents.length} activos</span>
-        </div>
+      <section className="live-hero" aria-labelledby="live-home-title">
+        <p className="live-kicker">
+          <span className="live-dot" aria-hidden="true" />
+          En directo ahora
+        </p>
+        <h1 id="live-home-title">{heroTitle(loadState, liveCourts.length)}</h1>
+        <p className="live-hero-lead">
+          Mira el partido en YouTube y sigue el marcador punto a punto sin salir de la pista.
+        </p>
+      </section>
 
-        {loadState === 'loading' ? <div className="loading-panel">Cargando partidos</div> : null}
+      <section className="live-court-section" aria-label="Pistas en directo">
+        {loadState === 'loading' ? <div className="loading-panel">Buscando pistas en directo</div> : null}
 
         {loadState === 'error' ? (
           <div className="empty-panel">
@@ -98,19 +112,17 @@ export function HomePage() {
           </div>
         ) : null}
 
-        {loadState === 'ready' && liveEvents.length === 0 ? (
-          <div className="empty-panel">No hay partidos en directo.</div>
+        {loadState === 'ready' && liveCourts.length === 0 ? (
+          <div className="empty-panel live-empty">
+            <strong>Ahora mismo no hay ninguna pista en directo.</strong>
+            <span>Esta pagina se actualiza sola en cuanto empiece el siguiente partido.</span>
+          </div>
         ) : null}
 
-        {loadState === 'ready' && liveEvents.length > 0 ? (
-          <div className="match-list">
-            {liveEvents.map((event) => (
-              <MatchRow
-                key={event.id}
-                event={event}
-                homeTeam={teamById.get(event.homeTeamId)}
-                awayTeam={teamById.get(event.awayTeamId)}
-              />
+        {liveCourts.length > 0 ? (
+          <div className="live-court-grid">
+            {liveCourts.map((court) => (
+              <LiveCourtCard key={court.id} court={court} />
             ))}
           </div>
         ) : null}
@@ -119,56 +131,113 @@ export function HomePage() {
   );
 }
 
-function MatchRow({
-  event,
-  homeTeam,
-  awayTeam,
-}: {
-  event: EventSummary;
-  homeTeam: Team | undefined;
-  awayTeam: Team | undefined;
-}) {
+function LiveCourtCard({ court }: { court: LiveCourtSummary }) {
   return (
-    <article className="match-row">
-      <div className="match-info">
-        <span className={`match-status ${event.status}`}>{statusLabel(event.status)}</span>
-        <h2>{event.courtName}</h2>
-        <p>{event.title}</p>
-        <div className="match-teams">
-          <TeamBadge team={homeTeam} fallback={event.homeTeamId} />
-          <span className="versus">vs</span>
-          <TeamBadge team={awayTeam} fallback={event.awayTeamId} />
+    <article className="live-court-card" style={courtColors(court)}>
+      <header className="live-court-head">
+        <span className="live-court-pill">
+          <span className="live-dot" aria-hidden="true" />
+          En directo
+        </span>
+        <h2>{court.courtName}</h2>
+        <span className="live-court-set">{court.setLabel}</span>
+      </header>
+
+      <div className="live-court-score">
+        <div className="live-score-legend" aria-hidden="true">
+          <span />
+          <span>Sets</span>
+          <span>Juegos</span>
+          <span>Punto</span>
         </div>
-        <small>
-          Ruta {event.id} - Version {event.version}
-        </small>
+        <LiveTeamRow team={court.home} />
+        <LiveTeamRow team={court.away} />
       </div>
 
-      <div className="match-actions">
-        <a className="match-action primary" href={`/live/${event.id}`}>
-          <Eye size={18} />
-          Ver directo
-        </a>
+      {court.highlight ? (
+        <p className="live-court-highlight">
+          <Zap size={15} aria-hidden="true" />
+          {court.highlight}
+        </p>
+      ) : null}
+
+      <div className="live-court-actions">
+        {court.watchUrl ? (
+          <>
+            <a
+              className="live-cta primary"
+              href={court.watchUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              <Youtube size={20} aria-hidden="true" />
+              Ver en YouTube
+            </a>
+            <a className="live-cta" href={court.scoreboardUrl}>
+              <BarChart3 size={18} aria-hidden="true" />
+              Marcador en directo
+            </a>
+          </>
+        ) : (
+          <>
+            <a className="live-cta primary" href={court.scoreboardUrl}>
+              <BarChart3 size={20} aria-hidden="true" />
+              Marcador en directo
+            </a>
+            <p className="live-cta-note">El video de esta pista todavia no esta disponible.</p>
+          </>
+        )}
       </div>
     </article>
   );
 }
 
-function TeamBadge({ team, fallback }: { team: Team | undefined; fallback: string }) {
+function LiveTeamRow({ team }: { team: LiveCourtTeam }) {
   return (
-    <span className="team-badge">
-      <span className="team-badge-logo" style={{ '--team-color': team?.primaryColor } as CSSProperties}>
-        {team?.logoUrl ? <img src={team.logoUrl} alt="" /> : fallback.slice(0, 2)}
+    <div className={`live-team-row ${team.leading ? 'leading' : ''}`} style={{ '--team-color': team.color } as CSSProperties}>
+      <span className="live-team-identity">
+        <span className="team-badge-logo">
+          {team.logoUrl ? <img src={team.logoUrl} alt="" /> : teamInitials(team.name)}
+        </span>
+        <span className="live-team-names">
+          <strong>{team.name}</strong>
+          {team.players.length > 0 ? <small>{team.players.join(' · ')}</small> : null}
+        </span>
+        {team.serving ? <span className="live-serve-dot" title="Al saque" aria-label="Al saque" /> : null}
       </span>
-      <strong>{team?.shortName ?? fallback}</strong>
-    </span>
+
+      {/* Remounting on a new value replays the pop animation, so a scored point is impossible to miss. */}
+      <b className="live-score-value" key={`sets-${team.sets}`}>{team.sets}</b>
+      <b className="live-score-value" key={`games-${team.games}`}>{team.games}</b>
+      <strong className="live-score-value live-point" key={`point-${team.point}`}>{team.point}</strong>
+    </div>
   );
 }
 
-function statusLabel(status: MatchState['status']): string {
+function courtColors(court: LiveCourtSummary): CSSProperties {
   return {
-    pre_match: 'Pre',
-    live: 'Live',
-    finished: 'Final',
-  }[status];
+    '--home-color': court.home.color,
+    '--away-color': court.away.color,
+  } as CSSProperties;
+}
+
+function heroTitle(loadState: LoadState, liveCount: number): string {
+  if (loadState !== 'ready') {
+    return 'Kings Padel League';
+  }
+
+  if (liveCount === 0) {
+    return 'Sin partidos en juego';
+  }
+
+  return liveCount === 1 ? '1 pista en juego' : `${liveCount} pistas en juego`;
+}
+
+function teamInitials(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 }

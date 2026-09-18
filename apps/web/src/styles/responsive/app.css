@@ -7,11 +7,6 @@
     width: 100%;
   }
 
-  .match-row {
-    align-items: stretch;
-    display: grid;
-  }
-
   .side-panel {
     width: 100%;
   }
@@ -581,15 +576,6 @@
     display: grid;
   }
 
-  .section-heading {
-    align-items: flex-start;
-    display: grid;
-  }
-
-  .match-actions {
-    display: grid;
-  }
-
   .phase-tabs,
   .setup-actions {
     display: grid;
@@ -601,6 +587,20 @@
 
   .match-action {
     min-width: 0;
+  }
+
+  .live-score-legend,
+  .live-team-row {
+    grid-template-columns: minmax(0, 1fr) 2rem 2.7rem 3rem;
+  }
+
+  .live-score-legend span {
+    font-size: 0.5625rem;
+    letter-spacing: 0.01em;
+  }
+
+  .live-court-card {
+    padding: 16px 12px 12px;
   }
 
   .scoreboard-header {
