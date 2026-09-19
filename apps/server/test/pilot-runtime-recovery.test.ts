@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import type * as ChildProcess from 'node:child_process';
 import type * as VideoEncoders from '../src/pilot-video-encoder.js';
 import { PassThrough } from 'node:stream';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -71,10 +71,37 @@ async function fixture(mode: 'simulation' | 'youtube' = 'simulation', checked = 
     matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: new Date(Date.now() + 3_600_000).toISOString(), privacyStatus: 'private',
   });
   if (checked) await service.preflight(session.id, {});
-  return { service, session, encoders, health, complete, binding, youtube, createService, sources, overlays, recoverCapture, recoverOverlay };
+  return { directory, service, session, encoders, health, complete, binding, youtube, createService, sources, overlays, recoverCapture, recoverOverlay };
 }
 
 describe('production runtime recovery', () => {
+  it('restores legacy sessions from court settings and persists them across another restart', async () => {
+    const { directory, service, session, createService } = await fixture('simulation', false);
+    await service.shutdown();
+    const path = join(directory, 'configuration.json.sessions');
+    const saved = JSON.parse(await readFile(path, 'utf8'));
+    const configuration = saved.sessions[0].configuration;
+    await writeFile(join(directory, 'configuration.json'), JSON.stringify([
+      { ...configuration, updatedAt: new Date().toISOString() },
+    ]));
+    delete saved.sessions[0].configuration;
+    await writeFile(path, JSON.stringify(saved));
+
+    const restarted = createService();
+    await restarted.initialize();
+    cleanups.push(() => restarted.shutdown());
+    expect(restarted.get(session.id).configuration).toEqual(configuration);
+    expect(restarted.configurations()[0]).toHaveProperty('updatedAt');
+    await restarted.shutdown();
+    const persisted = JSON.parse(await readFile(path, 'utf8'));
+    expect(persisted.sessions[0].configuration).toEqual(configuration);
+
+    const again = createService();
+    await again.initialize();
+    cleanups.push(() => again.shutdown());
+    expect(again.get(session.id).configuration).toEqual(configuration);
+  });
+
   it('reports insufficient combined capacity without preventing either court from starting', async () => {
     const upload = vi.fn(async () => ({ kbps: 15_000, checkedAt: new Date().toISOString(), bytes: 2 * 1024 ** 2 }));
     const { service, session } = await fixture('youtube', true, { upload });

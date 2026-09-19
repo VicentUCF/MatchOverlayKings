@@ -1117,7 +1117,12 @@ export class PilotService {
           overlayController: null,
           rejectedEncoders: new Set(saved.rejectedEncoders ?? []),
           remoteStopPending: saved.remoteStopPending ?? false,
-          configuration: saved.configuration ?? this.configurationByCourt.get(publicSession.courtSlug),
+          // Older sessions inherit court settings, which also contain updatedAt.
+          // Keep only preparation fields in the strict session snapshot.
+          configuration: saved.configuration ?? (() => {
+            const configuration = this.configurationByCourt.get(publicSession.courtSlug);
+            return configuration === undefined ? undefined : PreparePilotSessionInputSchema.strip().parse(configuration);
+          })(),
           preparationOperationId: saved.preparationOperationId,
           preparation: saved.preparation,
           program: null,
