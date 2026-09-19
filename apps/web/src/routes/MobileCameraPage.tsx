@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, CircleAlert, CircleCheck, Radio, Wifi } from 'lucide-react';
+import { Camera, CircleAlert, CircleCheck, Radio, RotateCw, Wifi } from 'lucide-react';
 import {
   PilotMobileCameraRuntime,
   PilotMobileApiError,
@@ -23,6 +23,51 @@ export function MobileCameraPage() {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
   const [preparing, setPreparing] = useState(false);
+  const [portrait, setPortrait] = useState(() => window.matchMedia('(orientation: portrait)').matches);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [rotating, setRotating] = useState(false);
+  const [orientationError, setOrientationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const query = window.matchMedia('(orientation: portrait)');
+    const update = () => {
+      setPortrait(query.matches);
+      setOrientationError(null);
+    };
+    const updateFullscreen = () => setFullscreen(document.fullscreenElement !== null);
+    query.addEventListener('change', update);
+    document.addEventListener('fullscreenchange', updateFullscreen);
+    return () => {
+      query.removeEventListener('change', update);
+      document.removeEventListener('fullscreenchange', updateFullscreen);
+    };
+  }, []);
+
+  const enterLandscape = async (): Promise<void> => {
+    if (rotating) return;
+    setRotating(true);
+    setOrientationError(null);
+    try {
+      const orientation = screen.orientation as ScreenOrientation & { lock?: (value: 'landscape') => Promise<void> };
+      if (!orientation?.lock || !document.documentElement.requestFullscreen) {
+        throw new Error('Orientation unavailable');
+      }
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      await orientation.lock('landscape');
+    } catch {
+      setOrientationError('No se pudo activar el modo horizontal. Activa la rotación automática del móvil y gíralo de lado.');
+    } finally {
+      setRotating(false);
+    }
+  };
+
+  const exitFullscreen = async (): Promise<void> => {
+    try {
+      await document.exitFullscreen();
+    } catch {
+      setOrientationError('No se pudo salir de pantalla completa. Utiliza el control de salida del navegador.');
+    }
+  };
 
   useEffect(() => {
     if (videoRef.current !== null) videoRef.current.srcObject = stream;
@@ -31,7 +76,7 @@ export function MobileCameraPage() {
   useEffect(() => () => { void runtimeRef.current?.stop(); }, []);
 
   const prepare = async (): Promise<void> => {
-    if (link === null || runtimeRef.current !== null) return;
+    if (link === null || runtimeRef.current !== null || window.matchMedia('(orientation: portrait)').matches) return;
     setPreparing(true);
     const runtime = new PilotMobileCameraRuntime(link, {
       onStream: setStream,
@@ -71,13 +116,28 @@ export function MobileCameraPage() {
       </span>
     </header>
 
-    <section className="mobile-camera-stage" aria-labelledby="mobile-camera-title">
+    <section className="mobile-camera-orientation" aria-label="Orientación de la cámara">
+      <div role="status">
+        <RotateCw aria-hidden="true" />
+        <p>{portrait ? <><strong>Coloca el móvil en horizontal</strong><span>Activa la rotación automática y gira el móvil para encuadrar la pista.{stream !== null ? ' La cámara sigue conectada.' : ''}</span></>
+          : <><strong>Mantén el móvil de lado</strong><span>Comprueba que la pista se ve derecha en la vista previa.</span></>}</p>
+      </div>
+      <div className="mobile-camera-orientation-actions">
+        <button type="button" onClick={() => void enterLandscape()} disabled={rotating}>
+          {rotating ? 'Activando…' : 'Activar modo horizontal'}
+        </button>
+        {fullscreen ? <button type="button" onClick={() => void exitFullscreen()}>Salir de pantalla completa</button> : null}
+      </div>
+      {orientationError ? <p role="alert">{orientationError}</p> : null}
+    </section>
+
+    <section className="mobile-camera-stage" aria-label="Cámara de pista">
       <video ref={videoRef} autoPlay muted playsInline aria-label="Vista previa de la cámara móvil" />
       {stream === null ? <div className="mobile-camera-placeholder">
         <Camera aria-hidden="true" />
         <h1 id="mobile-camera-title">Cámara de pista</h1>
         <p>Conecta este Android al equipo de producción y déjalo con la pantalla encendida.</p>
-        <button type="button" onClick={() => void prepare()} disabled={preparing} autoFocus>
+        <button type="button" onClick={() => void prepare()} disabled={preparing || portrait}>
           {preparing ? 'Preparando…' : 'Preparar cámara'}
         </button>
       </div> : null}
