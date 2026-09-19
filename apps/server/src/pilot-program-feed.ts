@@ -15,6 +15,7 @@ export type ProgramFeedOptions = {
   readonly source: PilotSource;
   readonly mobileRtspUrl: string | null;
   readonly mobileAudioAvailable: boolean;
+  readonly resolveMobileSource?: () => { url: string; audioAvailable: boolean } | null;
   readonly sourceReady: () => boolean;
   readonly fps: 30 | 60;
   readonly fallback: Uint8Array;
@@ -48,6 +49,7 @@ export class PilotProgramFeed implements ProgramFeed {
   private pumping: Promise<void> | null = null;
   private outputs: readonly Writable[] = [];
   private reported = '';
+  private lastMobileUrl: string | null = null;
 
   public constructor(private readonly options: ProgramFeedOptions) {
     const size = (options.width ?? 1920) * (options.height ?? 1080) * 3 / 2;
@@ -98,7 +100,11 @@ export class PilotProgramFeed implements ProgramFeed {
     this.video.clear(); this.audio.clear();
     this.lastPairAt = 0; this.captureStartedAt = performance.now(); this.sourceStableSince = null;
     if (!this.options.sourceReady()) { this.failed('La cámara no está disponible. Se conserva la continuidad.'); return; }
-    const child = spawn(this.options.executable, captureArguments(this.options), {
+    const mobile = this.options.resolveMobileSource?.();
+    if (this.options.resolveMobileSource && !mobile) { this.failed('Esperando el nuevo móvil. Se conserva la continuidad.'); return; }
+    this.lastMobileUrl = mobile?.url ?? this.options.mobileRtspUrl;
+    const options = mobile ? { ...this.options, mobileRtspUrl: mobile.url, mobileAudioAvailable: mobile.audioAvailable } : this.options;
+    const child = spawn(this.options.executable, captureArguments(options), {
       stdio: ['ignore', 'pipe', 'pipe', 'pipe'], shell: false, windowsHide: true, env: ffmpegEnvironment(),
     });
     this.captureProcess = child;
@@ -137,6 +143,15 @@ export class PilotProgramFeed implements ProgramFeed {
     const frameMs = 1_000 / this.options.fps;
     let next = performance.now();
     while (!this.abort.signal.aborted && !video.destroyed && !audio.destroyed) {
+      // A replacement phone gets a fresh retry budget even after the old phone exhausted it.
+      if (this.exhausted && this.captureProcess === null && this.options.resolveMobileSource && this.options.sourceReady()) {
+        const replacement = this.options.resolveMobileSource?.();
+        if (replacement && replacement.url !== this.lastMobileUrl) {
+          this.attempts = 0;
+          this.exhausted = false;
+          this.capture();
+        }
+      }
       const now = performance.now();
       const pair = this.pair();
       let sound: Uint8Array = this.silence;

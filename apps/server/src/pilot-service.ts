@@ -812,6 +812,11 @@ export class PilotService {
     const program = this.programFactory({ executable: this.ffmpegPath, source: session.public.source,
       mobileRtspUrl: usesMobileCamera ? this.mobileCamera?.rtspUrl(session.public.courtSlug) ?? null : null,
       mobileAudioAvailable: usesMobileCamera && (this.mobileCamera?.audioAvailableForCourt(session.public.courtSlug) ?? false),
+      ...(usesMobileCamera ? { resolveMobileSource: () => {
+        const mobile = this.mobileCamera;
+        if (!mobile?.isReadyForCourt(session.public.courtSlug)) return null;
+        return { url: mobile.rtspUrl(session.public.courtSlug), audioAvailable: mobile.audioAvailableForCourt(session.public.courtSlug) };
+      } } : {}),
       sourceReady: () => !usesMobileCamera || this.mobileCamera?.isReadyForCourt(session.public.courtSlug) === true,
       fps: framesPerSecond, fallback: session.fallbackFrame,
       onProcess: () => this.queuePersistSessions(),

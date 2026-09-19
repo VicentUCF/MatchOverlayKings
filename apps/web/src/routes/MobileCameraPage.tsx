@@ -122,12 +122,12 @@ export function MobileCameraPage() {
         <p>{portrait ? <><strong>Coloca el móvil en horizontal</strong><span>Activa la rotación automática y gira el móvil para encuadrar la pista.{stream !== null ? ' La cámara sigue conectada.' : ''}</span></>
           : <><strong>Mantén el móvil de lado</strong><span>Comprueba que la pista se ve derecha en la vista previa.</span></>}</p>
       </div>
-      <div className="mobile-camera-orientation-actions">
-        <button type="button" onClick={() => void enterLandscape()} disabled={rotating}>
+      {portrait || fullscreen ? <div className="mobile-camera-orientation-actions">
+        {portrait ? <button type="button" onClick={() => void enterLandscape()} disabled={rotating}>
           {rotating ? 'Activando…' : 'Activar modo horizontal'}
-        </button>
+        </button> : null}
         {fullscreen ? <button type="button" onClick={() => void exitFullscreen()}>Salir de pantalla completa</button> : null}
-      </div>
+      </div> : null}
       {orientationError ? <p role="alert">{orientationError}</p> : null}
     </section>
 

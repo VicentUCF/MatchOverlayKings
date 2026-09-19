@@ -227,10 +227,6 @@ export async function buildApp(
   app.delete<{ Params: { sessionId: string } }>('/api/pilot/mobile-camera/:sessionId', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'production_admin');
-    const current = mobileCamera.current(request.params.sessionId);
-    if (current !== null && current.id === request.params.sessionId && pilot.isCourtActive(current.courtSlug)) {
-      throw new PilotMobileCameraError(409, 'CONFLICT', 'Detén la emisión antes de revocar la cámara.');
-    }
     return { mobileCamera: await mobileCamera.revoke(request.params.sessionId) };
   });
 

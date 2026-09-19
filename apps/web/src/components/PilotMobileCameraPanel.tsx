@@ -80,9 +80,11 @@ export function PilotMobileCameraPanel({
       {owned === null ? null : <CameraState state={owned.state} />}
     </div>
 
+    {active ? <p>Para sustituir el teléfono, revoca el móvil y genera un enlace nuevo. Durante el cambio se mantiene la emisión con la pantalla de continuidad y el marcador.</p> : null}
+
     {owned === null ? <div className="pilot-mobile-camera__empty">
       <p>Genera un enlace temporal y ábrelo en Chrome desde el móvil de esta pista.</p>
-      <button type="button" onClick={() => void onCreate()} disabled={pending || active}>
+      <button type="button" onClick={() => void onCreate()} disabled={pending || saving}>
         <Link2 aria-hidden="true" />Generar enlace
       </button>
     </div> : <>
@@ -120,8 +122,11 @@ export function PilotMobileCameraPanel({
       </form>}
 
       <MobileCameraTechnicalStatus mobileCamera={owned} />
-      <button className="pilot-mobile-camera__revoke" type="button" disabled={active || pending}
-        onClick={() => void onRevoke(owned.id)}><Trash2 aria-hidden="true" />Revocar móvil</button>
+      <button className="pilot-mobile-camera__revoke" type="button" disabled={pending || saving}
+        onClick={() => {
+          setSaving(true);
+          void onRevoke(owned.id).finally(() => setSaving(false));
+        }}><Trash2 aria-hidden="true" />Revocar móvil</button>
     </>}
   </section>;
 }

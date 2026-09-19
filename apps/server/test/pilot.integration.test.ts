@@ -1,10 +1,11 @@
+import { PilotService } from '../src/pilot-service.js';
 import { passingPreflight } from './pilot-preflight-fixture.js';
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Writable } from 'node:stream';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderLiveScoreboardPng } from '@kpl/production-assets';
 import {
   ClaimPilotMobileCameraResponseSchema,
@@ -520,9 +521,12 @@ exec /bin/ffmpeg "$@"
     })).json().mobileCamera);
     expect(offline.state).toBe('offline');
 
+    const activeCourt = vi.spyOn(PilotService.prototype, 'isCourtActive').mockReturnValue(true);
     const revokedResponse = await app.inject({
       method: 'DELETE', url: `/api/pilot/mobile-camera/${created.session.id}`,
     });
+    expect(revokedResponse.statusCode).toBe(200);
+    activeCourt.mockRestore();
     expect(PilotMobileCameraSessionSchema.parse(revokedResponse.json().mobileCamera).state).toBe('revoked');
     const reused = await app.inject({
       method: 'POST', url: `/api/pilot/mobile-camera/${created.session.id}/claim`, headers: mobileHeaders,
