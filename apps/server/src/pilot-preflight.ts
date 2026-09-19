@@ -50,9 +50,13 @@ export async function runPilotPreflight(options: {
     catch { set(id, { status: 'blocked', message: 'No se pudo completar esta comprobación. Revisa la conexión o el servicio y vuelve a intentarlo.' }); }
   }));
   if (selected.some((id) => MEDIA_CHECKS.includes(id)) && !options.signal.aborted) {
-    if (report.checks.some((check) => ['configuration', 'storage', 'authorization', 'profile', 'mediamtx'].includes(check.id)
-      && check.status === 'blocked')) {
-      for (const id of MEDIA_CHECKS) set(id, { status: 'blocked', message: 'Resuelve primero las comprobaciones de preparación bloqueadas y repite la prueba del programa.' });
+    const prerequisites = report.checks.filter((check) => ['configuration', 'storage', 'authorization', 'profile', 'mediamtx'].includes(check.id)
+      && check.status === 'blocked');
+    if (prerequisites.length) {
+      report = { ...report, checks: report.checks.map((check) => MEDIA_CHECKS.includes(check.id)
+        ? { ...check, status: 'pending', checkedAt: new Date().toISOString(),
+          message: `Prueba omitida por: ${prerequisites.map(({ label }) => label).join(', ')}. No se ha evaluado este resultado.` } : check) };
+      publish();
     } else {
       try {
         const result = await options.media(report.id);

@@ -43,7 +43,7 @@ export async function checkPilotMetadata(id: PilotPreflightCheckId, context: {
     case 'storage': {
       const free = (await context.host()).availableStorageBytes;
       return { status: free < 128 * 1024 ** 2 ? 'blocked' : free < 2 * 1024 ** 3 ? 'warning' : 'pass',
-        message: `${(free / 1024 ** 3).toFixed(1)} GB libres. La vista previa necesita al menos 128 MB; se recomiendan 2 GB de margen.` };
+        message: `${(free / 1024 ** 3).toFixed(1)} GB libres. Con menos de 128 MB se omite la grabación de prueba. Este aviso no impide emitir.` };
     }
     case 'memory': {
       const free = (await context.host()).availableMemoryBytes;

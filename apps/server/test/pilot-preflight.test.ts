@@ -50,6 +50,8 @@ it('does not touch cameras or record media when preparation or disk checks block
   expect(report.status).toBe('blocked');
   expect(report.preview).toBeNull();
   expect(input.media).not.toHaveBeenCalled();
+  expect(report.checks.filter(({ id }) => MEDIA_CHECKS.includes(id)).every(({ status, message }) =>
+    status === 'pending' && message.includes('Espacio disponible'))).toBe(true);
 });
 
 it('bounds unresponsive metadata checks and never reports an incomplete run as ready', async () => {
@@ -59,7 +61,7 @@ it('bounds unresponsive metadata checks and never reports an incomplete run as r
   await vi.advanceTimersByTimeAsync(20_001);
   const report = await pending;
   expect(report.status).toBe('blocked');
-  expect(report.checks.every(({ status }) => status === 'blocked')).toBe(true);
+  expect(report.checks.every(({ id, status }) => status === (MEDIA_CHECKS.includes(id) ? 'pending' : 'blocked'))).toBe(true);
 });
 
 it('requires cancellation to stay cancelled even when a dependency later returns a successful result', async () => {

@@ -75,17 +75,17 @@ async function fixture(mode: 'simulation' | 'youtube' = 'simulation', checked = 
 }
 
 describe('production runtime recovery', () => {
-  it('invalidates network proof when another court is prepared and blocks insufficient combined capacity', async () => {
+  it('reports insufficient combined capacity without preventing either court from starting', async () => {
     const upload = vi.fn(async () => ({ kbps: 15_000, checkedAt: new Date().toISOString(), bytes: 2 * 1024 ** 2 }));
     const { service, session } = await fixture('youtube', true, { upload });
     const second = await service.prepare({ courtSlug: 'pista-2', mode: 'youtube', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
       matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: new Date(Date.now() + 3_600_000).toISOString(), privacyStatus: 'private' });
-    await expect(service.start(session.id)).rejects.toMatchObject({ code: 'NOT_READY' });
+    await expect(service.start(session.id)).resolves.toMatchObject({ status: 'starting' });
     expect(service.get(session.id).public.preflight?.status).toBe('stale');
     const checked = await service.preflight(second.id, {});
     expect(checked.preflight?.checks.find(({ id }) => id === 'network')).toMatchObject({ status: 'blocked' });
     expect(checked.preflight?.checks.find(({ id }) => id === 'network')?.message).toContain('15.9 Mbps');
-    await expect(service.start(second.id)).rejects.toMatchObject({ code: 'NOT_READY' });
+    await expect(service.start(second.id)).resolves.toMatchObject({ status: 'starting' });
     expect(upload).toHaveBeenCalledOnce();
   });
 
@@ -111,7 +111,7 @@ describe('production runtime recovery', () => {
     upload.mockResolvedValueOnce({ kbps: 1_000, checkedAt: new Date().toISOString(), bytes: 2 * 1024 ** 2 });
     const checked = await service.preflight(second.id, { check: 'network' });
     expect(checked.preflight?.status).toBe('blocked');
-    await expect(service.start(session.id)).rejects.toMatchObject({ code: 'NOT_READY' });
+    await expect(service.start(session.id)).resolves.toMatchObject({ status: 'starting' });
     expect(service.get(session.id).public.preflight?.status).toBe('stale');
     expect(upload).toHaveBeenCalledTimes(2);
   });
@@ -135,10 +135,18 @@ describe('production runtime recovery', () => {
     expect(upload).toHaveBeenCalledTimes(2);
   });
 
-  it('requires a current complete preflight on the server, including after restart', async () => {
+  it('starts without running optional diagnostics', async () => {
+    const host = vi.fn(passingPreflight.host!);
+    const media = vi.fn(passingPreflight.media!);
+    const { service, session, encoders } = await fixture('youtube', false, { host, media });
+    await expect(service.start(session.id)).resolves.toMatchObject({ status: 'starting' });
+    expect(encoders).toHaveLength(1);
+    expect(host).not.toHaveBeenCalled();
+    expect(media).not.toHaveBeenCalled();
+  });
+
+  it('keeps optional previews protected and permits starting with stale diagnostics after restart', async () => {
     const { service, session, encoders, createService } = await fixture('simulation', false);
-    await expect(service.start(session.id)).rejects.toMatchObject({ code: 'NOT_READY' });
-    expect(encoders).toHaveLength(0);
     const checked = await service.preflight(session.id, {});
     expect(checked.preflight?.status).toBe('warning');
     expect(checked.preflight?.checks).toHaveLength(14);
@@ -148,19 +156,20 @@ describe('production runtime recovery', () => {
     await service.shutdown();
     const restarted = createService(); await restarted.initialize(); cleanups.push(() => restarted.shutdown());
     expect(restarted.get(session.id).public.preflight?.status).toBe('stale');
-    await expect(restarted.start(session.id)).rejects.toMatchObject({ code: 'NOT_READY' });
-    expect(encoders).toHaveLength(0);
+    await expect(restarted.start(session.id)).resolves.toMatchObject({ status: 'starting' });
+    expect(encoders).toHaveLength(1);
   });
 
-  it('expires successful checks and invalidates them when the encoder context changes', async () => {
+  it('expires diagnostics when the encoder context changes without vetoing a start', async () => {
     const { service, session, encoders } = await fixture();
     service.get(session.id).rejectedEncoders.add('changed');
-    await expect(service.start(session.id)).rejects.toMatchObject({ code: 'NOT_READY' });
+    await service.list();
+    expect(service.get(session.id).public.preflight?.status).toBe('stale');
     await service.preflight(session.id, {});
-    vi.useFakeTimers(); await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
-    await expect(service.start(session.id)).rejects.toMatchObject({ code: 'NOT_READY' });
-    expect(encoders).toHaveLength(0);
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(Date.now() + 5 * 60_000 + 1);
     await expect(service.preflight(session.id, { check: 'storage' })).rejects.toMatchObject({ code: 'NOT_READY' });
+    await expect(service.start(session.id)).resolves.toMatchObject({ status: 'starting' });
+    expect(encoders).toHaveLength(1);
   });
 
   it('retries a failed metadata check without recapturing a valid program', async () => {
@@ -198,7 +207,7 @@ describe('production runtime recovery', () => {
     expect(encoders).toHaveLength(0);
   });
 
-  it('reserves at most three program checks and rechecks free resources before starting', async () => {
+  it('reserves at most three program checks without imposing preview resource thresholds on a start', async () => {
     const { service, session, encoders } = await fixture('simulation', false);
     const sessions = [session];
     for (const courtSlug of ['pista-2', 'pista-3', 'pista-4']) sessions.push(await service.prepare({
@@ -213,10 +222,34 @@ describe('production runtime recovery', () => {
     await vi.waitFor(() => expect(entered).toBe(3)); release();
     expect((await results).filter(({ status }) => status === 'fulfilled')).toHaveLength(3);
     const host = await passingPreflight.host!('/tmp');
-    vi.spyOn(passingPreflight, 'host').mockResolvedValue({ ...host, availableStorageBytes: 0 });
-    await expect(service.start(session.id)).rejects.toMatchObject({ code: 'NOT_READY' });
-    expect(service.get(session.id).public.preflight?.checks.find(({ id }) => id === 'storage')?.status).toBe('blocked');
-    expect(encoders).toHaveLength(0);
+    const measurement = vi.spyOn(passingPreflight, 'host').mockResolvedValue({ ...host, availableStorageBytes: 0, availableMemoryBytes: 0 });
+    await expect(service.start(session.id)).resolves.toMatchObject({ status: 'starting' });
+    expect(measurement).not.toHaveBeenCalled();
+    expect(encoders).toHaveLength(1);
+  });
+
+  it('allows starting after a low-disk diagnostic skips the preview', async () => {
+    const host = await passingPreflight.host!('/tmp');
+    const media = vi.fn(passingPreflight.media!);
+    const { service, session, encoders } = await fixture('youtube', true, {
+      host: async () => ({ ...host, availableStorageBytes: 100 * 1024 ** 2 }), media,
+    });
+    expect(service.get(session.id).public.preflight).toMatchObject({ status: 'blocked', preview: null });
+    expect(service.get(session.id).public.preflight?.checks.find(({ id }) => id === 'camera')?.status).toBe('pending');
+    expect(media).not.toHaveBeenCalled();
+    await expect(service.start(session.id)).resolves.toMatchObject({ status: 'starting' });
+    expect(encoders).toHaveLength(1);
+  });
+
+  it('allows starting after an optional diagnostic is cancelled', async () => {
+    const { service, session, encoders } = await fixture('simulation', false);
+    // A persisted cancelled report must not prevent starting.
+    service.get(session.id).public = { ...session, preflight: {
+      id: session.id, status: 'cancelled', startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+      validUntil: null, checks: [], preview: null,
+    } };
+    await expect(service.start(session.id)).resolves.toMatchObject({ status: 'starting' });
+    expect(encoders).toHaveLength(1);
   });
 
   it('recovers a failed overlay without restarting a healthy camera or encoder', async () => {

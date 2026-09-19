@@ -224,7 +224,6 @@ exec /bin/ffmpeg "$@"
     expect(preview.json().dataUrl).toBe(`data:image/png;base64,${thumbnail.rawPayload.toString('base64')}`);
     expect(thumbnail.rawPayload.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
 
-    expect((await app.inject({ method: 'POST', url: `/api/pilot/sessions/${prepared.id}/start` })).statusCode).toBe(409);
     const checked = await app.inject({ method: 'POST', url: `/api/pilot/sessions/${prepared.id}/preflight`, payload: {} });
     expect(checked.statusCode).toBe(200);
     const clip = await app.inject({ method: 'GET', url: checked.json().session.preflight.preview.url });

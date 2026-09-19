@@ -638,9 +638,7 @@ export class PilotService {
       throw new PilotServiceError(409, 'CONFLICT', 'La sesión no está preparada para emitir.');
     }
     this.invalidatePreflight(session);
-    if (!session.public.preflight || !['ready', 'warning'].includes(session.public.preflight.status)) {
-      throw new PilotServiceError(409, 'NOT_READY', 'Comprueba el programa antes de emitir y resuelve las comprobaciones bloqueadas.');
-    }
+    // Preflight is an optional diagnostic. Its result never authorizes or vetoes a start.
     const active = [...this.sessions.values()].filter(({ public: current }) =>
       ['starting', 'live', 'reconnecting', 'stopping'].includes(current.status)).length;
     if (active >= MAX_ACTIVE_SESSIONS) throw new PilotServiceError(409, 'CONFLICT', 'Ya hay tres salidas activas.');
@@ -654,22 +652,6 @@ export class PilotService {
       if (!this.mobileCamera?.isReadyForCourt(session.public.courtSlug)) {
         throw new PilotServiceError(409, 'NOT_READY', 'La cámara móvil todavía no está lista. Espera a que recupere la señal y vuelve a iniciar.');
       }
-    }
-    this.assertCapacity(id);
-
-    this.invalidatePreflight(session);
-    if (!session.public.preflight || !['ready', 'warning'].includes(session.public.preflight.status)) {
-      throw new PilotServiceError(409, 'NOT_READY', 'La comprobación del programa ha caducado o cambió la fuente. Comprueba de nuevo antes de emitir.');
-    }
-    const host = await (this.preflightDependencies.host ?? measurePilotHost)(dirname(this.configurationPath));
-    if (host.availableStorageBytes < 128 * 1024 ** 2 || host.availableMemoryBytes < 256 * 1024 ** 2) {
-      const report = session.public.preflight;
-      const failed = host.availableStorageBytes < 128 * 1024 ** 2 ? 'storage' : 'memory';
-      session.public = { ...session.public, preflight: { ...report, status: 'blocked', validUntil: null,
-        checks: report.checks.map((check) => check.id === failed ? { ...check, status: 'blocked',
-          checkedAt: new Date().toISOString(), message: 'El margen disponible ha caído desde la comprobación. Libera recursos y repite este paso.' } : check) } };
-      await this.persistSessions();
-      throw new PilotServiceError(409, 'NOT_READY', 'Falta espacio o memoria para iniciar. Libera recursos y repite la comprobación bloqueada.');
     }
     this.assertCapacity(id);
 

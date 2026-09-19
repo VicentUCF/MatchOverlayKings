@@ -23,7 +23,7 @@ producción durante estas pruebas.
 | Calidad de la señal | Analiza vídeo antes del overlay a 320×180 y 2 FPS; detecta negro sostenido, imagen inmóvil y silencio cuando se espera micrófono; calcula FPS, velocidad, bitrate y pérdida recientes | Prueba con filtros FFmpeg reales de negro/congelado/silencio y recuperación; avisos visibles e historial, sin reinicios por estas heurísticas; falta calibración con cámaras reales |
 | Continuidad ante pérdida de cámara | Captura separada del encoder de salida; vídeo YUV420p BT.709 y audio PCM con reloj común y colas limitadas; cartel por pista y silencio durante los cinco reintentos; conserva el compositor del marcador | Corte real de una captura entre tres salidas 1080p30: los tres encoders mantienen su identidad y avanzan; reintento manual, historial y reinicio comprobados; falta la prueba de micrófono, sincronía y carga sostenida con dispositivos reales |
 | Recuperación del navegador del overlay | Reloj de imágenes independiente; conserva el último PNG validado durante caídas, bloqueo de JavaScript o pérdida de datos; cinco reintentos, historial y recuperación manual del navegador sin reiniciar la cámara | Chromium entrega PNG 1080p a FFmpeg con salida de prueba 160×90: fallo de página, datos caducados, JS bloqueado y cierre del navegador; otra pista conserva su página ante el fallo aislado; sin primera imagen válida la salida espera |
-| Comprobación previa por pista | Catorce comprobaciones, programa local H.264/AAC de diez segundos con cámara y marcador, verificación de decodificación, bloqueos en servidor, caducidad de cinco minutos, cancelación y repetición parcial | Clip real con Chromium y FFmpeg, color del overlay decodificado, pérdida de cámara, ausencia de fuente/datos, permisos, cancelación y caducidad; estimación de subida compartida y demanda conjunta con margen; falta validar la red y tres pistas con dispositivos reales en menos de dos minutos |
+| Comprobación previa por pista | Diagnóstico opcional con catorce comprobaciones, programa local H.264/AAC de diez segundos, resumen de avisos y detalle plegado; resultados válidos cinco minutos, cancelación y repetición parcial; el operador puede emitir sin prueba o con avisos | Clip real con Chromium y FFmpeg, color del overlay decodificado, pérdida de cámara, ausencia de fuente/datos, permisos, cancelación y caducidad; estimación de subida compartida y demanda conjunta con margen; falta validar la red y tres pistas con dispositivos reales en menos de dos minutos |
 | Caída o bloqueo de MediaMTX | Reinicia el proceso compartido hasta cinco veces con backoff y conserva rutas y credenciales; consulta su API cada 5 s y actúa tras tres fallos consecutivos; registra los cambios por pista | Pruebas de tres pistas, arranque sin configuración válida, escritura fallida del historial, proceso bloqueado, fallo aislado, agotamiento, recuperación manual y cierre; falta validación con tres móviles reales |
 | Cámaras móviles después de reiniciar el servidor | Snapshot privado y atómico de enlaces, hashes de acceso, propietario, caducidad, perfil y revocación; conserva identidad del proceso y retira huérfanos antes de reconstruir las rutas | Recupera las tres pistas; no acepta señal lista hasta confirmar la nueva revisión; el navegador conserva su identidad al recargar la misma pestaña sin guardar el token |
 | Protección de diagnósticos | No se registran queries OAuth ni errores internos crudos; FFmpeg se traduce a causas acotadas con referencia de sesión | El historial no contiene entradas RTMP ni tokens; falta auditar todos los subsistemas |
@@ -160,8 +160,8 @@ en `mejoras.md`, con autorización limitada, revocación y pruebas de aislamient
 - Se comprueban partido, autorización, perfil, cámara, audio, almacenamiento,
   carga de CPU, memoria, codificador, red, bitrate, MediaMTX, marcador y destino.
   La memoria y CPU consideran los límites de cgroup cuando están disponibles.
-  El servidor reserva un máximo de tres salidas, contando las pruebas, y vuelve
-  a comprobar los mínimos de disco y memoria al iniciar.
+  El servidor reserva un máximo de tres salidas, contando las pruebas. Los
+  umbrales de disco y memoria son diagnósticos y no bloquean el inicio.
 - Una prueba de señal completa exige velocidad reciente de al menos 0,95×.
   La medición descubrió que el audio llegaba en ráfagas adelantadas al vídeo:
   limitar ambas colas a seis cuadros descartaba pares válidos y reducía la
@@ -181,10 +181,10 @@ en `mejoras.md`, con autorización limitada, revocación y pruebas de aislamient
   El navegador descarga un blob con autorización y revoca su URL al cambiar de
   clip o salir. No se incorporan tokens a la URL del vídeo. Un nuevo programa
   sustituye el clip previo y finalizar la sesión lo elimina.
-- Mandos bloquea `Emitir` mientras falta una prueba vigente y permite cancelar
-  la comprobación mientras está pendiente. El estado de jornada no anuncia
-  preparación completa si una pista sigue bloqueada. Chromium verifica estos
-  flujos con teclado y a 320 px; captura `output/mejoras/preflight-blocked-320.png`.
+- Mandos permite `Emitir` sin prueba, con avisos o con resultados anteriores.
+  Durante una prueba activa se puede cancelarla para liberar la captura. Los
+  resultados se muestran plegados y las pruebas omitidas figuran sin comprobar.
+  La API tampoco exige un diagnóstico favorable para iniciar.
 - La ruta TCP/TLS comprueba disponibilidad del destino; la medición independiente
   de subida se describe más abajo. No se acredita todavía el presupuesto de dos
   minutos para tres cámaras físicas ni la operación sostenida en el PC previsto.
@@ -208,7 +208,7 @@ en `mejoras.md`, con autorización limitada, revocación y pruebas de aislamient
   si termina mientras alguna de ellas todavía está grabando su muestra.
 - Se suman 6/9 Mbps de vídeo según 30/60 FPS y 128 kbps de audio por pista; se
   comparan las tres pistas configuradas/preparadas para YouTube de mayor consumo
-  con un 30 % adicional. Una estimación insuficiente bloquea el inicio; cambiar
+  con un 30 % adicional. Una estimación insuficiente genera un aviso; cambiar
   la demanda invalida el informe anterior. Una simulación no consume subida.
 - Nunca inicia una transferencia si existe una salida a YouTube activa o en
   recuperación. Arrancar cualquier salida cancela la prueba pendiente. Sin una

@@ -1,7 +1,7 @@
 import { PilotThumbnailPreview } from './PilotThumbnailPreview.js';
 import { PilotOperationHistory } from './PilotOperationHistory.js';
 import { PilotSignalStatus } from './PilotSignalStatus.js';
-import { PilotPreflightPanel, preflightCanStart } from './PilotPreflightPanel.js';
+import { PilotPreflightPanel } from './PilotPreflightPanel.js';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
 import {
   CircleCheck, CircleX, ExternalLink, Info, MonitorPlay, Radio, RefreshCw,
@@ -405,9 +405,9 @@ export function PilotControlPanel({
 function CourtStatus({ session, enabled }: { readonly session: PilotSession | null; readonly enabled: boolean }) {
   if (!enabled) return <span className="production-status warning">Producción desactivada</span>;
   if (session?.status === 'prepared') {
-    const ready = preflightCanStart(session);
-    return <span className={`production-status ${ready ? session.preflight?.status === 'warning' ? 'warning' : 'success' : 'warning'}`}>
-      {session.preflight?.status === 'running' ? 'Comprobando' : ready ? session.preflight?.status === 'warning' ? 'Lista con advertencias' : 'Lista' : 'Bloqueada'}
+    const hasNotices = session.preflight && ['blocked', 'warning'].includes(session.preflight.status);
+    return <span className={`production-status ${hasNotices ? 'warning' : 'info'}`}>
+      {session.preflight?.status === 'running' ? 'Comprobando' : hasNotices ? 'Preparada · Con avisos' : 'Preparada'}
     </span>;
   }
   const live = session?.status === 'live';
@@ -468,7 +468,7 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover
       {elapsedSeconds !== null ? <p>Preparación hasta señal: <strong>{elapsedSeconds} s</strong></p> : null}
       {session.error ? <p className="production-command-feedback danger" role="alert">{session.error}</p> : null}
       <div className="production-pilot-actions">
-        {session.status === 'prepared' ? <button className="production-setup-submit" type="button" disabled={pending || !preflightCanStart(session)} onClick={onStart}>Emitir</button> : null}
+        {session.status === 'prepared' ? <button className="production-setup-submit" type="button" disabled={pending || session.preflight?.status === 'running'} onClick={onStart}>Emitir</button> : null}
         {session.status === 'interrupted' || session.status === 'failed'
           ? <button className="production-setup-submit" type="button" disabled={pending} onClick={onRecover}>
             {session.preparationPending ? 'Recuperar preparación' : 'Recuperar emisión'}
@@ -540,17 +540,17 @@ function ValidationDecision({ readiness, sessions, courts, elapsedByCourt }: {
     return elapsed !== undefined && elapsed <= 120;
   }).length;
   const total = courts.length;
-  const blocked = sessions.filter((session) => !session || ['stopped', 'failed', 'interrupted'].includes(session.status)
-    || (session.status === 'prepared' && !preflightCanStart(session))).length;
-  const decision = blocked > 0 ? 'Hay pistas pendientes de comprobar'
+  const needsPreparation = sessions.filter((session) => !session || ['stopped', 'failed', 'interrupted', 'preparing'].includes(session.status)).length;
+  const decision = needsPreparation > 0 ? 'Hay pistas pendientes de preparar'
     : total > 0 && youtubeHealthy === total ? 'YouTube recibe señal de todas las pistas'
     : total > 0 && stable === total ? 'Los programas locales producen señal; falta comprobar YouTube'
-      : 'Validación de pistas en curso';
+      : total > 0 && sessions.every((session) => session?.status === 'prepared') ? 'Emisiones preparadas para iniciar'
+        : 'Validación de pistas en curso';
   return <section className="production-pilot-decision" aria-labelledby="pilot-decision-title">
     <div><p className="production-kicker">Estado de la jornada</p><h2 id="pilot-decision-title">{decision}</h2>
       <p>El operador puede controlar cada pista de forma independiente.</p></div>
     <ul><li className={readiness.ffmpeg.available ? 'passed' : ''}>FFmpeg disponible</li>
-      <li className={blocked === 0 && total > 0 ? 'passed' : ''}>Pistas pendientes de comprobar: {blocked}</li>
+      <li className={needsPreparation === 0 && total > 0 ? 'passed' : ''}>Pistas pendientes de preparar: {needsPreparation}</li>
       <li className={total > 0 && prepared === total ? 'passed' : ''}>Emisiones preparadas: {prepared}/{total}</li>
       <li className={total > 0 && stable === total ? 'passed' : ''}>Codificación estable: {stable}/{total}</li>
       <li className={total > 0 && youtubeHealthy === total ? 'passed' : ''}>YouTube activo y saludable: {youtubeHealthy}/{total}</li>

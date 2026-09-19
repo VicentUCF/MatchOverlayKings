@@ -60,11 +60,11 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
 - [ ] El marcador cambia en el preview al sumar y deshacer un punto de prueba.
 - [ ] La emisión se prepara inicialmente como `Privado`.
 - [ ] La miniatura, título y descripción son correctos.
-- [ ] Pulsar `Comprobar programa completo` y resolver los bloqueos de cada pista.
+- [ ] Opcionalmente, pulsar `Comprobar programa completo` y revisar los avisos de cada pista.
 - [ ] Abrir `Ver programa de prueba`, comprobar equipos, tanteo y encuadre, y
   escuchar su audio. Es un clip local de diez segundos, no una emisión a YouTube.
-- [ ] La pista muestra `Lista` o `Lista con advertencias`; revisar sus advertencias
-  antes de pulsar `Emitir`. La comprobación caduca a los cinco minutos.
+- [ ] Revisar los avisos y decidir cuándo pulsar `Emitir`. La prueba es informativa:
+  no es obligatoria ni sus resultados o antigüedad impiden iniciar.
 - [ ] Después de pulsar `Emitir`, FPS, bitrate y velocidad empiezan a actualizarse.
 - [ ] YouTube informa `live · active · good` antes de cambiar la privacidad o compartir
   el enlace.
@@ -317,21 +317,24 @@ evento:
 
 ## Comprobación del programa antes de emitir
 
-Después de preparar la sesión, Mandos permite **Comprobar programa completo**.
+Después de preparar la sesión, Mandos permite **Comprobar programa completo** de forma opcional.
+El operador decide cuándo emitir: puede hacerlo sin prueba, con avisos o con resultados
+anteriores. El panel resume los avisos y mantiene el detalle plegado. Si hay una prueba
+en curso, terminarla o cancelarla libera la cámara para iniciar la emisión.
 La prueba verifica el partido autenticado, perfil aplicado, servicio móvil,
 recursos del PC, acceso al destino y conexión de entrada. Graba diez segundos
 con la cámara, el marcador del partido y audio usando el mismo compositor y
 codificador del directo. El archivo se decodifica para comprobar su integridad.
 El cartel de continuidad no cuenta como cámara válida.
 
-- **Bloqueada**: no se permite iniciar desde Mandos ni desde la API. Resolver el
-  paso señalado y pulsar su botón `Repetir`. Cámara, audio, marcador, codificador
-  y bitrate comparten una muestra y se repiten juntos. Un fallo de preparación
-  puede impedir esa muestra; resolverlo y repetir después el programa.
-- **Lista con advertencias**: revisar cada aviso. Una fuente sintética, una fuente
+- **Revisar / Aviso**: consultar el detalle del paso y, si procede, pulsar `Repetir`.
+  Cámara, audio, marcador, codificador y bitrate comparten una muestra y se repiten
+  juntos. Si se omite la muestra, esos pasos aparecen **Sin comprobar**, indicando
+  la causa, sin atribuirles un fallo que no se ha medido.
+- **Avisos en la prueba**: revisar cada aviso. Una fuente sintética, una fuente
   sin micrófono o una imagen inmóvil pueden ser intencionadas. Reproducir siempre
   el clip y comprobar lo que se oye y se ve.
-- **Comprobación caducada**: repetirla completa. Reiniciar el runtime o cambiar la
+- **Resultados anteriores**: se puede repetir la prueba completa. Reiniciar el runtime o cambiar la
   identidad/perfil de la cámara invalida la comprobación anterior. Repetir un
   solo paso no renueva la antigüedad de los demás.
 - **Cancelar comprobación**: cancela la captura local sin iniciar ni cancelar el
@@ -344,8 +347,8 @@ máximo de doce segundos. No envía imágenes, audio, claves ni tokens. Las pist
 comparten una medición durante cinco minutos, conservando su fecha original.
 La comparación suma vídeo y audio de las pistas configuradas/preparadas para
 YouTube, hasta las tres simultáneas de mayor consumo, y añade un 30 % de margen.
-Si la estimación es inferior, bloquea el inicio. Cambiar esa demanda invalida
-las comprobaciones anteriores; preparar todas las pistas antes de comprobarlas.
+Si la estimación es inferior, muestra un aviso sin bloquear el inicio. Cambiar esa
+demanda marca los resultados anteriores como desactualizados.
 
 Usar `Repetir: Red y capacidad de subida` para forzar una medición nueva después
 de cambiar de red, incluso si la anterior salió correcta. Durante un directo
@@ -357,9 +360,10 @@ con la prueba privada de treinta minutos; ni esta estimación ni un clip individ
 de diez segundos acreditan capacidad sostenida de tres pistas. El bitrate del
 programa mostrado en otro paso corresponde al archivo compuesto.
 
-Para la vista previa se exige un mínimo de 128 MB libres y 256 MB de memoria
-disponible; con menos de 2 GB de disco o 1 GB de memoria se advierte del margen
-reducido. Al iniciar se vuelven a comprobar ambos mínimos. Estos límites no son
+Con menos de 128 MB libres se omite la grabación de prueba; con menos de 256 MB de
+memoria se señala el margen crítico. Con menos de 2 GB de disco o 1 GB de memoria
+también se advierte del margen reducido. Estos diagnósticos no bloquean `Emitir`
+ni se exigen de nuevo al iniciar. Estos límites no son
 una reserva suficiente para grabar partidos completos ni sustituyen su futura
 política de almacenamiento.
 

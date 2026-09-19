@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PilotPreflightCheckId, PilotSession } from '@kpl/production-contracts';
 import type { ProductionPilotAdapter } from '../lib/production-pilot-adapter.js';
 
-export function preflightCanStart(session: PilotSession): boolean {
+export function preflightIsFresh(session: PilotSession): boolean {
   const report = session.preflight;
   return !!report && ['ready', 'warning'].includes(report.status) && report.validUntil !== null
     && Date.parse(report.validUntil) > Date.now();
@@ -17,9 +17,17 @@ export function PilotPreflightPanel({ session, pending, onCheck, onCancel, loadP
 }) {
   const report = session.preflight;
   const running = report?.status === 'running';
-  const fresh = preflightCanStart(session);
-  const label = running ? 'Comprobando programa…' : fresh ? report?.status === 'warning' ? 'Lista con advertencias' : 'Lista'
-    : report?.status === 'stale' ? 'Comprobación caducada' : report?.status === 'cancelled' ? 'Comprobación cancelada' : 'Bloqueada hasta comprobar';
+  const fresh = preflightIsFresh(session);
+  const priority = { blocked: 0, warning: 1, pending: 2, running: 3, pass: 4, not_applicable: 5 };
+  const checks = [...(report?.checks ?? [])].sort((a, b) => priority[a.status] - priority[b.status]);
+  const notices = checks.filter(({ status }) => ['blocked', 'warning'].includes(status));
+  const unchecked = report?.checks.filter(({ status }) => status === 'pending') ?? [];
+  const completed = report?.checks.filter(({ status }) => !['running', 'pending'].includes(status)).length ?? 0;
+  const label = running ? `Comprobando programa… ${completed}/${report.checks.length}`
+    : report?.status === 'stale' || (report?.validUntil && !fresh) ? 'Resultados anteriores'
+      : report?.status === 'cancelled' ? 'Comprobación cancelada'
+        : !report ? 'Comprobación opcional' : notices.length ? `${notices.length} aviso${notices.length === 1 ? '' : 's'} en la prueba`
+          : unchecked.length ? 'Prueba incompleta' : 'Prueba completada';
   const [video, setVideo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,17 +56,21 @@ export function PilotPreflightPanel({ session, pending, onCheck, onCancel, loadP
   };
   return <section className="pilot-preflight" aria-label="Comprobación antes de emitir">
     <h4 role="status">{label}</h4>
-    <p>Comprueba la pista y graba diez segundos del programa con marcador y audio. La prueba se guarda en este PC y no emite a YouTube.</p>
-    {session.mode === 'youtube' ? <p>Con las salidas detenidas, también mide la subida desde este PC enviando hasta 26 MiB de datos de prueba a Cloudflare, sin vídeo ni audio. Las pistas comparten la medición durante cinco minutos. Repite Red si cambias de conexión.</p> : null}
-    {report ? <details open={running || report.status === 'blocked'}>
-      <summary>Resultados de las comprobaciones</summary>
-      <ul>{report.checks.map((check) => <li key={check.id} className={`pilot-preflight__check pilot-preflight__check--${check.status}`}>
-        <strong>{check.label} · {{ pending: 'Pendiente', running: 'Comprobando', pass: 'Correcto', warning: 'Advertencia', blocked: 'Bloqueo', not_applicable: 'No necesario' }[check.status]}</strong>
-        <p>{check.message}</p>
-        {(['blocked', 'warning'].includes(check.status) || (check.id === 'network' && check.status === 'pass')) && !['running', 'stale', 'cancelled'].includes(report.status)
-          ? <button type="button" className="refresh-button" disabled={pending} onClick={() => onCheck(check.id)}>Repetir: {check.label}</button> : null}
-      </li>)}</ul>
-    </details> : null}
+    <p>Estos resultados son informativos. Tú decides cuándo emitir.</p>
+    {!running && notices[0] ? <p className="pilot-preflight__notice"><strong>{notices[0].label}:</strong> {notices[0].message}</p> : null}
+    <details>
+      <summary>{report ? `Ver resultados (${report.checks.length})${unchecked.length ? ` · ${unchecked.length} sin comprobar` : ''}` : 'Qué incluye la prueba'}</summary>
+      <p>Graba diez segundos del programa con marcador y audio en este PC, sin emitir a YouTube.</p>
+      {session.mode === 'youtube' ? <p>Con las salidas detenidas, también mide la subida enviando hasta 26 MiB de datos de prueba a Cloudflare, sin vídeo ni audio. La medición se comparte durante cinco minutos.</p> : null}
+      {report ? <ul>{checks.map((check) => <li key={check.id} className={`pilot-preflight__check pilot-preflight__check--${check.status}`}>
+        <details>
+          <summary><strong>{check.label}</strong><span>{{ pending: 'Sin comprobar', running: 'Comprobando', pass: 'Correcto', warning: 'Aviso', blocked: 'Revisar', not_applicable: 'No necesario' }[check.status]}</span></summary>
+          <p>{check.message}</p>
+          {(['blocked', 'warning', 'pending'].includes(check.status) || (check.id === 'network' && check.status === 'pass')) && !['running', 'stale', 'cancelled'].includes(report.status)
+            ? <button type="button" className="refresh-button" disabled={pending} onClick={() => onCheck(check.id)}>Repetir: {check.label}</button> : null}
+        </details>
+      </li>)}</ul> : null}
+    </details>
     <div className="production-pilot-actions">
       {running ? <button type="button" className="refresh-button" onClick={onCancel}>Cancelar comprobación</button>
         : <button type="button" className="refresh-button" disabled={pending} onClick={() => onCheck()}>Comprobar programa completo</button>}
@@ -66,7 +78,7 @@ export function PilotPreflightPanel({ session, pending, onCheck, onCancel, loadP
         {loading ? 'Cargando programa…' : 'Ver programa de prueba'}
       </button> : null}
     </div>
-    {fresh && report?.validUntil ? <p>Válida hasta las {new Date(report.validUntil).toLocaleTimeString('es-ES')}. Repite la comprobación si cambias la fuente o el perfil.</p> : null}
+    {report?.finishedAt ? <p className="pilot-preflight__timestamp">Última prueba: {new Date(report.finishedAt).toLocaleTimeString('es-ES')}. Puedes repetirla si cambias la fuente o el perfil.</p> : null}
     {video ? <><video controls preload="metadata" src={video} aria-label="Programa de prueba con marcador y audio" />
       <p>Revisa los equipos y el tanteo, y escucha el audio antes de emitir.</p></> : null}
     {error ? <p role="alert" className="production-command-feedback danger">{error}</p> : null}
