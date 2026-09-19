@@ -241,6 +241,18 @@ describe('production runtime recovery', () => {
     expect(encoders).toHaveLength(1);
   });
 
+  it('allows starting despite failed encoder and bitrate diagnostics', async () => {
+    const { service, session, encoders } = await fixture('simulation', true, {
+      media: async (options) => ({ ...await passingPreflight.media!(options), completed: false }),
+    });
+    const report = service.get(session.id).public.preflight;
+    expect(report?.status).toBe('blocked');
+    expect(report?.checks.find(({ id }) => id === 'encoder')?.status).toBe('blocked');
+    expect(report?.checks.find(({ id }) => id === 'bitrate')?.status).toBe('blocked');
+    await expect(service.start(session.id)).resolves.toMatchObject({ status: 'starting' });
+    expect(encoders).toHaveLength(1);
+  });
+
   it('allows starting after an optional diagnostic is cancelled', async () => {
     const { service, session, encoders } = await fixture('simulation', false);
     // A persisted cancelled report must not prevent starting.

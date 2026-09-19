@@ -482,7 +482,7 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover
       </div>
       {session.status === 'prepared' ? <PilotPreflightPanel session={session} pending={pending}
         onCheck={(check) => void preflight.preflight(session, check)} onCancel={() => void preflight.cancelPreflight(session)}
-        loadPreview={preflight.preview} /> : null}
+        onStart={onStart} loadPreview={preflight.preview} /> : null}
     </div>
   </div>;
 }

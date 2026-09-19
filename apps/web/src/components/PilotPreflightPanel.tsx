@@ -8,11 +8,12 @@ export function preflightIsFresh(session: PilotSession): boolean {
     && Date.parse(report.validUntil) > Date.now();
 }
 
-export function PilotPreflightPanel({ session, pending, onCheck, onCancel, loadPreview }: {
+export function PilotPreflightPanel({ session, pending, onCheck, onCancel, onStart, loadPreview }: {
   readonly session: PilotSession;
   readonly pending: boolean;
   readonly onCheck: (check?: PilotPreflightCheckId) => void;
   readonly onCancel: () => void;
+  readonly onStart: () => void;
   readonly loadPreview: ProductionPilotAdapter['preview'];
 }) {
   const report = session.preflight;
@@ -58,6 +59,10 @@ export function PilotPreflightPanel({ session, pending, onCheck, onCancel, loadP
     <h4 role="status">{label}</h4>
     <p>Estos resultados son informativos. Tú decides cuándo emitir.</p>
     {!running && notices[0] ? <p className="pilot-preflight__notice"><strong>{notices[0].label}:</strong> {notices[0].message}</p> : null}
+    {!running && notices.length > 0 && session.status === 'prepared' ? <div className="production-pilot-actions">
+      <p>Si crees que el diagnóstico es erróneo, puedes omitir estos avisos e iniciar la emisión.</p>
+      <button type="button" className="production-setup-submit" disabled={pending} onClick={onStart}>Emitir de todos modos</button>
+    </div> : null}
     <details>
       <summary>{report ? `Ver resultados (${report.checks.length})${unchecked.length ? ` · ${unchecked.length} sin comprobar` : ''}` : 'Qué incluye la prueba'}</summary>
       <p>Graba diez segundos del programa con marcador y audio en este PC, sin emitir a YouTube.</p>
