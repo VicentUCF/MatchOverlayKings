@@ -43,6 +43,8 @@ type InternalSession = {
   clientId: string | null;
   report: PilotMobileCameraStatusReport | null;
   lastHeartbeatAt: string | null;
+  // Claims and heartbeats renew ownership; restored owners get the same grace period.
+  ownershipUpdatedAt: number;
   degradedSamples: number;
   revoked: boolean;
   error: string | null;
@@ -130,6 +132,7 @@ export class PilotMobileCameraService {
       for (const saved of snapshot.sessions) this.sessions.set(saved.id, {
         ...saved, tokenDigest: Buffer.from(saved.tokenDigest, 'hex'), report: null,
         lastHeartbeatAt: null, degradedSamples: 0, error: null, awaitingRevision: null,
+        ownershipUpdatedAt: this.now(),
         revoked: saved.revoked || Date.parse(saved.expiresAt) <= this.now(),
       });
     } catch (error) {
@@ -248,6 +251,7 @@ export class PilotMobileCameraService {
       clientId: null,
       report: null,
       lastHeartbeatAt: null,
+      ownershipUpdatedAt: this.now(),
       degradedSamples: 0,
       revoked: false,
       error: null,
@@ -297,7 +301,8 @@ export class PilotMobileCameraService {
     const session = this.authorize(id, token);
     const input = ClaimPilotMobileCameraInputSchema.safeParse(rawInput);
     if (!input.success) throw new PilotMobileCameraError(400, 'INVALID_INPUT', 'Las capacidades del móvil no son válidas.');
-    if (session.clientId !== null && session.clientId !== input.data.clientId) {
+    if (session.clientId !== null && session.clientId !== input.data.clientId
+      && this.now() - session.ownershipUpdatedAt <= HEARTBEAT_OFFLINE_MS) {
       throw new PilotMobileCameraError(409, 'CONFLICT', 'Este enlace ya está en uso por otro móvil.');
     }
     const supportsMinimum = input.data.capabilities.cameras.some(({ supportedProfiles }) =>
@@ -320,7 +325,8 @@ export class PilotMobileCameraService {
       audioEnabled: session.desired.audioEnabled && input.data.capabilities.audioAvailable,
     });
     await this.commitSession(session, { clientId: input.data.clientId, capabilities: input.data.capabilities,
-      desired, awaitingRevision: desired.revision });
+      desired, awaitingRevision: desired.revision, ownershipUpdatedAt: this.now(),
+      report: null, error: null, degradedSamples: 0 });
     session.lastHeartbeatAt = new Date(this.now()).toISOString();
     this.flushWaiters(session.id, session.desired);
     return {
@@ -362,6 +368,7 @@ export class PilotMobileCameraService {
     if (session.awaitingRevision !== null && report.data.applied?.revision === session.awaitingRevision) session.awaitingRevision = null;
     session.lastHeartbeatAt = new Date(this.now()).toISOString();
     session.error = report.data.error;
+    session.ownershipUpdatedAt = this.now();
     session.degradedSamples = isDegradedSample(session.desired, report.data)
       ? session.degradedSamples + 1
       : 0;

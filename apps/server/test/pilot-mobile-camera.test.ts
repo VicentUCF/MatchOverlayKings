@@ -45,6 +45,60 @@ async function fixture() {
 }
 
 describe('independent mobile cameras per court', () => {
+  it('reclaims a closed tab after its last heartbeat expires and rejects the previous owner', async () => {
+    const { service, advance } = await fixture();
+    const link = await service.create({ courtSlug: 'pista-1' });
+    const first = await service.claim(link.session.id, token(link), { clientId: firstClient, capabilities });
+    const report = { clientId: firstClient, state: 'error', applied: null, metrics: null, error: 'Old capture error' };
+    service.report(link.session.id, token(link), report);
+    advance(20_000);
+    await expect(service.claim(link.session.id, token(link), { clientId: secondClient, capabilities })).rejects.toMatchObject({ code: 'CONFLICT' });
+    advance(1);
+    const reclaimed = await service.claim(link.session.id, token(link), { clientId: secondClient, capabilities });
+    expect(reclaimed).toMatchObject({ whipUrl: first.whipUrl, whipUser: first.whipUser,
+      desired: { ...first.desired, revision: first.desired.revision + 1 } });
+    expect(service.current(link.session.id)).toMatchObject({ error: null, applied: null, metrics: null });
+    expect(() => service.report(link.session.id, token(link), report)).toThrow('no ha reclamado');
+    service.report(link.session.id, token(link), { clientId: secondClient, state: 'ready', metrics: null, error: null,
+      applied: { ...reclaimed.desired, width: 1920, height: 1080, framesPerSecond: 30 } });
+    expect(service.isReadyForCourt('pista-1')).toBe(true);
+    await expect(service.claim(link.session.id, token(link), { clientId: firstClient, capabilities })).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  it('renews ownership with heartbeats and lets the same tab reconnect immediately', async () => {
+    const { service, advance } = await fixture();
+    const link = await service.create({ courtSlug: 'pista-1' });
+    await service.claim(link.session.id, token(link), { clientId: firstClient, capabilities });
+    await expect(service.claim(link.session.id, token(link), { clientId: firstClient, capabilities })).resolves.toBeDefined();
+    advance(19_000);
+    service.report(link.session.id, token(link), { clientId: firstClient, state: 'connecting', applied: null, metrics: null, error: null });
+    advance(19_000);
+    await expect(service.claim(link.session.id, token(link), { clientId: secondClient, capabilities })).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  it('allows only one concurrent replacement of an abandoned claim without any status reports', async () => {
+    const { service, advance } = await fixture();
+    const link = await service.create({ courtSlug: 'pista-1' });
+    await service.claim(link.session.id, token(link), { clientId: firstClient, capabilities });
+    advance(20_001);
+    const attempts = await Promise.allSettled([secondClient, '20000000-0000-4000-8000-000000000003']
+      .map((clientId) => service.claim(link.session.id, token(link), { clientId, capabilities })));
+    expect(attempts.map(({ status }) => status)).toEqual(['fulfilled', 'rejected']);
+  });
+
+  it('gives a restored owner time to reconnect but eventually releases an abandoned reservation', async () => {
+    const f = await fixture();
+    const link = await f.service.create({ courtSlug: 'pista-1' });
+    await f.service.claim(link.session.id, token(link), { clientId: firstClient, capabilities });
+    await f.service.shutdown();
+    const restarted = f.createService();
+    cleanups.push(() => restarted.shutdown());
+    await restarted.initialize();
+    await expect(restarted.claim(link.session.id, token(link), { clientId: secondClient, capabilities })).rejects.toMatchObject({ code: 'CONFLICT' });
+    f.advance(20_001);
+    await expect(restarted.claim(link.session.id, token(link), { clientId: secondClient, capabilities })).resolves.toBeDefined();
+  });
+
   it.runIf(process.platform === 'linux')('persists process identity and retires an orphan before restoring the mobile runtime', async () => {
     const f = await fixture();
     const link = await f.service.create({ courtSlug: 'pista-1' });

@@ -1,8 +1,66 @@
-import { describe, expect, it, vi } from 'vitest';
-import { parsePilotMobileLink, profileDimensions, WhepPreview } from './pilot-mobile-camera.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { claimPilotMobileCamera, parsePilotMobileLink, profileDimensions, WhepPreview } from './pilot-mobile-camera.js';
 
 const session = '10000000-0000-4000-8000-000000000001';
 const token = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG';
+
+describe('mobile camera ownership recovery', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+  const link = { endpoint: 'http://192.168.1.20:4310', sessionId: session, token };
+  const clientId = '20000000-0000-4000-8000-000000000001';
+  const capabilities = { cameras: [], audioAvailable: false };
+  const claimed = { desired: { revision: 2, cameraId: 'rear', profile: '720p30', audioEnabled: false },
+    whipUrl: `${link.endpoint}/camera/whip`, whipUser: 'camera' };
+  function setup(code = 'CONFLICT') {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', { setTimeout, clearTimeout });
+    const fetch = vi.fn<(url: string, init: RequestInit) => Promise<Response>>(async () =>
+      Response.json({ error: { code, message: 'Enlace ocupado' } }, { status: 409 }));
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
+  }
+
+  it('retries until the previous page reservation expires without changing identity', async () => {
+    const fetch = setup();
+    const retry = vi.fn();
+    const pending = claimPilotMobileCamera(link, clientId, capabilities, new AbortController().signal, retry);
+    await vi.advanceTimersByTimeAsync(20_000);
+    fetch.mockResolvedValueOnce(Response.json(claimed));
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(pending).resolves.toEqual(claimed);
+    expect(retry).toHaveBeenCalled();
+    expect(fetch.mock.calls.every(([, init]) => JSON.parse(init.body as string).clientId === clientId)).toBe(true);
+  });
+
+  it('stops retrying when another camera remains active', async () => {
+    const fetch = setup();
+    const pending = claimPilotMobileCamera(link, clientId, capabilities, new AbortController().signal, vi.fn());
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'CONFLICT' });
+    await vi.advanceTimersByTimeAsync(22_000);
+    await rejected;
+    const attempts = fetch.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetch).toHaveBeenCalledTimes(attempts);
+  });
+
+  it('cancels pending retries when the page closes', async () => {
+    const fetch = setup();
+    const controller = new AbortController();
+    const pending = claimPilotMobileCamera(link, clientId, capabilities, controller.signal, vi.fn());
+    const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await rejected;
+    await vi.advanceTimersByTimeAsync(22_000);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it.each(['EXPIRED', 'FORBIDDEN', 'NOT_READY'])('does not retry %s failures', async (code) => {
+    const fetch = setup(code);
+    await expect(claimPilotMobileCamera(link, clientId, capabilities, new AbortController().signal, vi.fn())).rejects.toMatchObject({ code });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+});
 
 describe('pilot mobile camera link', () => {
   it('reads a fragment-only secret for a private LAN endpoint', () => {

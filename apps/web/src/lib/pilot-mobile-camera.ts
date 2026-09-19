@@ -79,6 +79,35 @@ export function profileDimensions(profile: PilotMobileVideoProfile) {
   return PROFILE_DIMENSIONS[profile];
 }
 
+export async function claimPilotMobileCamera(
+  link: PilotMobileLink,
+  clientId: string,
+  capabilities: PilotMobileCameraCapabilities,
+  signal: AbortSignal,
+  onRetry: () => void,
+) {
+  // Allow a closed tab's 20-second ownership lease to expire, while keeping
+  // a camera that still sends heartbeats protected from another publisher.
+  const deadline = Date.now() + 22_000;
+  while (true) {
+    signal.throwIfAborted();
+    try {
+      return await localJson(
+        `${link.endpoint}/api/pilot/mobile-camera/${encodeURIComponent(link.sessionId)}/claim`,
+        {
+          method: 'POST', headers: mobileHeaders(link.token),
+          body: JSON.stringify({ clientId, capabilities }), signal,
+        },
+        ClaimPilotMobileCameraResponseSchema,
+      );
+    } catch (error) {
+      if (!(error instanceof PilotMobileApiError) || error.code !== 'CONFLICT' || Date.now() >= deadline) throw error;
+      onRetry();
+      await delay(2_000, signal);
+    }
+  }
+}
+
 export class PilotMobileCameraRuntime {
   private readonly clientId: string;
   private readonly abortController = new AbortController();
@@ -109,20 +138,17 @@ export class PilotMobileCameraRuntime {
     this.setState('connecting');
     const capabilities = await discoverCapabilities();
     this.audioAvailable = capabilities.audioAvailable;
-    const claim = await localJson(
-      `${this.link.endpoint}/api/pilot/mobile-camera/${encodeURIComponent(this.link.sessionId)}/claim`,
-      {
-        method: 'POST',
-        headers: mobileHeaders(this.link.token),
-        body: JSON.stringify({ clientId: this.clientId, capabilities }),
-        signal: this.abortController.signal,
+    const claim = await claimPilotMobileCamera(
+      this.link, this.clientId, capabilities, this.abortController.signal, () => {
+        this.error = 'Esperando a que se libere la conexión anterior. Reintentando…';
+        this.setState('reconnecting');
       },
-      ClaimPilotMobileCameraResponseSchema,
     );
+    this.error = null;
     this.desired = claim.desired;
+    this.reportTimer = window.setInterval(() => { void this.sendStatus(); }, 2_000);
     await this.applyDesired(claim.desired, claim.whipUrl, claim.whipUser);
     void this.desiredLoop(claim.whipUrl, claim.whipUser);
-    this.reportTimer = window.setInterval(() => { void this.sendStatus(); }, 2_000);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     await this.acquireWakeLock();
     await this.sendStatus();
@@ -297,6 +323,11 @@ export class PilotMobileCameraRuntime {
       if (error instanceof PilotMobileApiError && error.code === 'EXPIRED') {
         this.error = error.message;
         this.setState('revoked');
+        await this.stop();
+      }
+      if (error instanceof PilotMobileApiError && error.code === 'FORBIDDEN') {
+        this.error = 'La cámara se ha conectado desde otra página. Vuelve a abrir el enlace para reconectar.';
+        this.setState('error');
         await this.stop();
       }
       // A failed heartbeat is reflected by server-side staleness; the media retry owns recovery.
@@ -700,11 +731,16 @@ function isLocalHost(hostname: string): boolean {
 
 function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(resolve, milliseconds);
-    signal.addEventListener('abort', () => {
+    signal.throwIfAborted();
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }, milliseconds);
+    const abort = () => {
       window.clearTimeout(timer);
       reject(new DOMException('Aborted', 'AbortError'));
-    }, { once: true });
+    };
+    signal.addEventListener('abort', abort, { once: true });
   });
 }
 
