@@ -19,6 +19,61 @@ const session = {
 } as const;
 
 describe('production pilot adapter', () => {
+  it('allows a fresh local check after restart instead of reusing an interrupted preflight forever', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ error: { code: 'OPERATION_INTERRUPTED', message: 'Reinicio' } }, { status: 409 }))
+      .mockResolvedValueOnce(Response.json({ session }));
+    const adapter = createProductionPilotAdapter(fetcher);
+    expect((await adapter.preflight(session.id)).kind).toBe('error');
+    expect((await adapter.preflight(session.id)).kind).toBe('success');
+    const keys = fetcher.mock.calls.map(([, init]) => new Headers(init?.headers).get('Idempotency-Key'));
+    expect(keys[0]).not.toBe(keys[1]);
+  });
+  it('loads a private preview as a blob with no-store and refuses external or unrelated URLs', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('preview', { headers: { 'content-type': 'video/mp4' } }));
+    const adapter = createProductionPilotAdapter(fetcher, 'http://127.0.0.1:4310');
+    const path = `/api/pilot/sessions/${session.id}/preflight-preview/${session.id}`;
+    const result = await adapter.preview(path, new AbortController().signal);
+    expect(result.kind).toBe('success');
+    if (result.kind === 'success') expect(await result.value.text()).toBe('preview');
+    expect(fetcher).toHaveBeenCalledWith(`http://127.0.0.1:4310${path}`, expect.objectContaining({ cache: 'no-store', targetAddressSpace: 'loopback' }));
+    expect((await adapter.preview('https://outside.example/preview', new AbortController().signal)).kind).toBe('error');
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
+  it('journals a partial preflight retry separately from starting a broadcast', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ session }));
+    const adapter = createProductionPilotAdapter(fetcher);
+    await adapter.preflight(session.id, 'storage');
+    expect(fetcher).toHaveBeenCalledWith(`/api/pilot/sessions/${session.id}/preflight`, expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ check: 'storage' }), headers: expect.objectContaining({ 'Idempotency-Key': expect.any(String) }),
+    }));
+  });
+  it('reuses the same operation identifier after a lost response and clears it after success', async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockRejectedValueOnce(new Error('connection lost'))
+      .mockResolvedValue(new Response(JSON.stringify({ session }), { status: 200 }));
+    const adapter = createProductionPilotAdapter(fetcher);
+    expect((await adapter.start(session.id)).kind).toBe('error');
+    expect((await adapter.start(session.id)).kind).toBe('success');
+    const first = new Headers(fetcher.mock.calls[0]?.[1]?.headers).get('Idempotency-Key');
+    expect(first).toMatch(/^[a-f0-9-]{36}$/);
+    expect(new Headers(fetcher.mock.calls[1]?.[1]?.headers).get('Idempotency-Key')).toBe(first);
+    await adapter.start(session.id);
+    expect(new Headers(fetcher.mock.calls[2]?.[1]?.headers).get('Idempotency-Key')).not.toBe(first);
+  });
+
+  it('keeps the operation identifier when the runtime reports an uncertain interruption', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({
+      error: { code: 'OPERATION_INTERRUPTED', message: 'Comprueba la pista.' },
+    }), { status: 409 }));
+    const adapter = createProductionPilotAdapter(fetcher);
+    await adapter.start(session.id);
+    await adapter.start(session.id);
+    expect(new Headers(fetcher.mock.calls[0]?.[1]?.headers).get('Idempotency-Key'))
+      .toBe(new Headers(fetcher.mock.calls[1]?.[1]?.headers).get('Idempotency-Key'));
+  });
+
   it('loads all court cameras through the local agent without collapsing them into one', async () => {
     const mobileCameras = [1, 2].map((n) => PilotMobileCameraSessionSchema.parse({
       id: `20000000-0000-4000-8000-00000000000${n}`, courtSlug: `pista-${n}`, state: 'waiting_permission',

@@ -30,6 +30,7 @@ type RpcEventName = Exclude<CommandEventName, never>;
 
 export interface MatchSocketState {
   connectionState: ConnectionState;
+  confirmedAt: number | null;
   state: MatchState | null;
   teams: Team[];
   events: EventSummary[];
@@ -52,6 +53,7 @@ export interface MatchSocketState {
 
 export function useMatchSocket(eventId: string, role: ClientRole, pin: string): MatchSocketState {
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
+  const [confirmedAt, setConfirmedAt] = useState<number | null>(null);
   const [state, setState] = useState<MatchState | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [events, setEvents] = useState<EventSummary[]>([]);
@@ -60,9 +62,15 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
   const stateRef = useRef<MatchState | null>(null);
   void pin;
 
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
+  const acceptState = useCallback((nextState: MatchState | null) => {
+    const current = stateRef.current;
+    // A delayed poll must not roll back a newer realtime or command result.
+    if (nextState && current?.id === nextState.id && nextState.version < current.version) return false;
+    stateRef.current = nextState;
+    setState(nextState);
+    setConfirmedAt(Date.now());
+    return true;
+  }, []);
 
   const refreshEvents = useCallback(async () => {
     const nextEvents = await fetchEventSummaries({ liveOnly: role !== 'control' });
@@ -83,8 +91,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
         if (!cancelled) {
           setTeams(teamsPayload);
           setEvents(eventsPayload);
-          setState(statePayload);
-          stateRef.current = statePayload;
+          acceptState(statePayload);
           setConnectionState('connected');
           setError(null);
         }
@@ -101,7 +108,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
     return () => {
       cancelled = true;
     };
-  }, [eventId, role]);
+  }, [acceptState, eventId, role]);
 
   useEffect(() => {
     setConnectionState('connecting');
@@ -109,9 +116,9 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
 
     try {
       unsubscribe = subscribeToMatchState(eventId, (nextState) => {
-        setState(nextState);
-        stateRef.current = nextState;
+        if (!acceptState(nextState)) return;
         setConnectionState('connected');
+        if (role !== 'control') setError(null);
 
         if (role !== 'control') {
           void fetchEventSummaries({ liveOnly: true }).then(setEvents).catch(() => undefined);
@@ -125,7 +132,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
     return () => {
       unsubscribe?.();
     };
-  }, [eventId, role]);
+  }, [acceptState, eventId, role]);
 
   useEffect(() => {
     if (role === 'control') {
@@ -141,12 +148,11 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
           return;
         }
 
-        setState(nextState);
-        stateRef.current = nextState;
+        if (!acceptState(nextState)) return;
         setConnectionState('connected');
         setError(null);
       } catch (refreshError) {
-        if (!cancelled && !stateRef.current) {
+        if (!cancelled) {
           setError(errorMessage(refreshError));
           setConnectionState('error');
         }
@@ -160,7 +166,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [eventId, role]);
+  }, [acceptState, eventId, role]);
 
   const send = useCallback(
     async <TEvent extends RpcEventName>(
@@ -193,8 +199,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
         }
 
         const nextState = data as MatchState;
-        setState(nextState);
-        stateRef.current = nextState;
+        acceptState(nextState);
         await refreshEvents();
         return true;
       } catch (sendError) {
@@ -204,12 +209,13 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
         setPending(false);
       }
     },
-    [eventId, refreshEvents],
+    [acceptState, eventId, refreshEvents],
   );
 
   return useMemo(
     () => ({
       connectionState,
+      confirmedAt,
       state,
       teams,
       events,
@@ -234,7 +240,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
         }),
       refreshEvents,
     }),
-    [connectionState, error, events, pending, refreshEvents, send, state, teams],
+    [connectionState, confirmedAt, error, events, pending, refreshEvents, send, state, teams],
   );
 }
 

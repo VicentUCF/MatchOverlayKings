@@ -1,4 +1,6 @@
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { passingPreflight } from './pilot-preflight-fixture.js';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Writable } from 'node:stream';
@@ -13,6 +15,8 @@ import {
   PilotSessionSchema,
 } from '@kpl/production-contracts';
 import { buildApp } from '../src/app.js';
+import { PilotServiceError } from '../src/pilot-service.js';
+import type { ProductionAccessGuard } from '../src/production-access.js';
 import { buildPilotMediaMtxConfiguration } from '../src/pilot-mobile-camera.js';
 import type { PilotOverlayRenderer } from '../src/pilot-overlay.js';
 
@@ -24,6 +28,48 @@ afterEach(async () => {
 });
 
 describe('production pilot', () => {
+  it('protects program checks, cancellation and preview files with local operator access', async () => {
+    const app = await createPilotApp('/missing/ffmpeg', '', { require: async (authorization) => {
+      if (authorization !== 'Bearer operator') throw new PilotServiceError(403, 'FORBIDDEN', 'Acceso de operador requerido.');
+    } });
+    const id = '11111111-1111-4111-8111-111111111111';
+    for (const [method, suffix] of [['POST', 'preflight'], ['POST', 'preflight/cancel'], ['GET', `preflight-preview/${id}`]] as const) {
+      const url = `/api/pilot/sessions/${id}/${suffix}`;
+      expect((await app.inject({ method, url })).statusCode).toBe(403);
+      expect((await app.inject({ method, url, headers: { authorization: 'Bearer operator' }, remoteAddress: '192.168.1.20' })).statusCode).toBe(403);
+      expect((await app.inject({ method, url, headers: { authorization: 'Bearer operator' } })).statusCode).toBe(404);
+    }
+  });
+  it('persists operation receipts and returns current state when preparation is retried after restart', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'kpl-operation-restart-'));
+    const app = await createPilotApp('/bin/ffmpeg', directory);
+    const payload = {
+      courtSlug: 'pista-1', mode: 'simulation', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
+      matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: new Date().toISOString(), privacyStatus: 'private',
+    };
+    const headers = { 'idempotency-key': randomUUID() };
+    const first = await app.inject({ method: 'POST', url: '/api/pilot/sessions', headers, payload });
+    expect(first.statusCode).toBe(201);
+    const id = first.json().session.id;
+    const duplicate = await app.inject({ method: 'POST', url: '/api/pilot/sessions', headers, payload });
+    expect(duplicate.json().session.id).toBe(id);
+    await app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/stop` });
+    await app.close();
+    const restarted = await createPilotApp('/bin/ffmpeg', directory);
+    const retried = await restarted.inject({ method: 'POST', url: '/api/pilot/sessions', headers, payload });
+    expect(retried.statusCode).toBe(201);
+    expect(retried.json().session).toMatchObject({ id, status: 'stopped' });
+    const history = await restarted.inject({ method: 'GET', url: '/api/pilot/operations' });
+    expect(history.statusCode).toBe(200);
+    expect(history.json().operations).toHaveLength(2);
+    expect(history.json().operations[0]).toMatchObject({ id: headers['idempotency-key'], kind: 'prepare', status: 'completed', sessionId: id });
+    expect(JSON.stringify(history.json())).not.toContain('fingerprint');
+    const incidents = await restarted.inject({ method: 'GET', url: '/api/pilot/incidents' });
+    expect(incidents.statusCode).toBe(200);
+    expect(incidents.json().incidents.map((incident: { status: string }) => incident.status))
+      .toEqual(['prepared', 'stopping', 'stopped']);
+  });
+
   it('recovers the same session on CPU when a GPU passes detection but fails during streaming', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'kpl-gpu-failure-'));
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
@@ -46,6 +92,7 @@ exec /bin/ffmpeg "$@"
     } });
     expect(response.statusCode).toBe(201);
     const { id } = response.json().session;
+    await app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/preflight`, payload: {} });
     const started = await app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/start` });
     expect(started.json().session.videoEncoding.name).toBe('h264_nvenc');
     const live = await waitForSession(app, id, (session) => session.status === 'live'
@@ -177,6 +224,13 @@ exec /bin/ffmpeg "$@"
     expect(preview.json().dataUrl).toBe(`data:image/png;base64,${thumbnail.rawPayload.toString('base64')}`);
     expect(thumbnail.rawPayload.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
 
+    expect((await app.inject({ method: 'POST', url: `/api/pilot/sessions/${prepared.id}/start` })).statusCode).toBe(409);
+    const checked = await app.inject({ method: 'POST', url: `/api/pilot/sessions/${prepared.id}/preflight`, payload: {} });
+    expect(checked.statusCode).toBe(200);
+    const clip = await app.inject({ method: 'GET', url: checked.json().session.preflight.preview.url });
+    expect(clip.headers['cache-control']).toBe('no-store');
+    expect(clip.headers['content-type']).toContain('video/mp4');
+    expect(clip.body).toBe('LOCAL PREVIEW FIXTURE');
     const startResponse = await app.inject({ method: 'POST', url: `/api/pilot/sessions/${prepared.id}/start` });
     expect(startResponse.statusCode).toBe(200);
     const live = await waitForSession(app, prepared.id, (session) =>
@@ -208,8 +262,9 @@ exec /bin/ffmpeg "$@"
     });
   });
 
-  it('keeps three independent 1080p30 sessions live and stops each one cleanly', async () => {
-    const app = await createPilotApp();
+  it('keeps three independent 1080p30 sessions live through a camera failure and stops each one cleanly', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'kpl-three-continuity-'));
+    const app = await createPilotApp('/bin/ffmpeg', directory);
     const ids: string[] = [];
     for (const [index, courtSlug] of ['pista-1', 'pista-2', 'pista-3'].entries()) {
       const response = await app.inject({
@@ -224,10 +279,27 @@ exec /bin/ffmpeg "$@"
       ids.push(PilotSessionSchema.parse(response.json().session).id);
     }
 
+    await Promise.all(ids.map((id) => app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/preflight`, payload: {} })));
     await Promise.all(ids.map((id) => app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/start` })));
     const live = await waitForSessions(app, ids, (session) =>
       session.status === 'live' && (session.encoder?.speed ?? 0) >= 0.9, 'three stable live sessions');
     expect(live).toHaveLength(3);
+
+    const processState = async () => JSON.parse(await readFile(join(directory, 'pilot-configurations.json.sessions'), 'utf8')) as {
+      sessions: Array<{ public: { id: string }; runtimeProcess: { pid: number }; captureProcess: { pid: number } }>;
+    };
+    const before = await processState();
+    const first = before.sessions.find(({ public: session }) => session.id === ids[0])!;
+    expect(first.captureProcess.pid).not.toBe(first.runtimeProcess.pid);
+    process.kill(first.captureProcess.pid, 'SIGKILL');
+    const continuity = await waitForSession(app, ids[0]!, (session) => session.continuity?.active === true, 'continuity after capture failure');
+    expect(continuity.status).toBe('live');
+    const recovered = await waitForSessions(app, ids, (session) => session.status === 'live' && session.continuity?.active === false
+      && (session.encoder?.frame ?? 0) > (live.find(({ id }) => id === session.id)?.encoder?.frame ?? 0) + 20, 'three progressing programs after recovery');
+    expect(recovered).toHaveLength(3);
+    const after = await processState();
+    expect(after.sessions.map(({ runtimeProcess }) => runtimeProcess)).toEqual(before.sessions.map(({ runtimeProcess }) => runtimeProcess));
+    expect(after.sessions.find(({ public: session }) => session.id === ids[0])!.captureProcess.pid).not.toBe(first.captureProcess.pid);
 
     await Promise.all(ids.map((id) => app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/stop` })));
     await waitForSessions(app, ids, (session) => session.status === 'stopped', 'three stopped sessions');
@@ -247,7 +319,7 @@ exec /bin/ffmpeg "$@"
       },
     } as const;
     const dependencies = {
-      pilotOverlayRenderer: testOverlayRenderer(),
+      pilotOverlayRenderer: testOverlayRenderer(), pilotPreflight: passingPreflight,
       productionAccessGuard: allowProductionAccess,
       pilotMatchBinding: {
         configure: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
@@ -270,6 +342,7 @@ exec /bin/ffmpeg "$@"
     } as const;
     const preparedResponse = await first.app.inject({ method: 'POST', url: '/api/pilot/sessions', payload });
     const prepared = PilotSessionSchema.parse(preparedResponse.json().session);
+    await first.app.inject({ method: 'POST', url: `/api/pilot/sessions/${prepared.id}/preflight`, payload: {} });
     await first.app.inject({ method: 'POST', url: `/api/pilot/sessions/${prepared.id}/start` });
     await waitForSession(first.app, prepared.id, (session) => session.status === 'live', 'live before restart');
     await first.app.close();
@@ -313,6 +386,7 @@ exec /bin/ffmpeg "$@"
         },
       },
     }, {
+      mobileCameraHealthProbe: async () => true,
       mobileCameraReadinessProbe: async () => undefined,
       mobileCameraVersionProbe: () => true,
       mobileCameraNow: () => now,
@@ -485,9 +559,10 @@ exec /bin/ffmpeg "$@"
           webRtcPort: 8889, webRtcUdpPort: 8189, rtspPort: 8554, apiPort: 9998 },
       },
     }, {
+      mobileCameraHealthProbe: async () => true,
       mobileCameraReadinessProbe: async () => undefined, mobileCameraVersionProbe: () => true,
       mobileCameraApiMutation: async () => undefined, productionAccessGuard: allowProductionAccess,
-      pilotOverlayRenderer: testOverlayRenderer(), pilotMatchBinding: {
+      pilotOverlayRenderer: testOverlayRenderer(), pilotPreflight: passingPreflight, pilotMatchBinding: {
         configure: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
         assertConfigured: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
       },
@@ -505,12 +580,14 @@ exec /bin/ffmpeg "$@"
       const token = new URLSearchParams(new URL(link.connectUrl).hash.slice(1)).get('token');
       const headers = { origin: 'https://live.kingspadelleague.es', authorization: `Bearer ${token}` };
       const clientId = link.session.id;
-      expect((await app.inject({ method: 'POST', url: `/api/pilot/mobile-camera/${link.session.id}/claim`, headers,
+      const claim = await app.inject({ method: 'POST', url: `/api/pilot/mobile-camera/${link.session.id}/claim`, headers,
         payload: { clientId, capabilities: { cameras: [{ id: 'rear', label: 'Trasera', facingMode: 'environment',
           maxWidth: 1280, maxHeight: 720, maxFramesPerSecond: 30, supportedProfiles: ['720p30'] }], audioAvailable: false } },
-      })).statusCode).toBe(200);
+      });
+      expect(claim.statusCode).toBe(200);
       expect((await app.inject({ method: 'POST', url: `/api/pilot/mobile-camera/${link.session.id}/status`, headers,
-        payload: { clientId, state: 'ready', applied: null, metrics: null, error: null },
+        payload: { clientId, state: 'ready', applied: { revision: claim.json().desired.revision,
+          cameraId: 'rear', profile: '720p30', audioEnabled: false, width: 1280, height: 720, framesPerSecond: 30 }, metrics: null, error: null },
       })).statusCode).toBe(200);
       const prepared = await app.inject({ method: 'POST', url: '/api/pilot/sessions', payload: {
         courtSlug: link.session.courtSlug, mode: 'simulation', sourceId: 'mobile:pilot',
@@ -567,7 +644,7 @@ exec /bin/ffmpeg "$@"
   });
 });
 
-async function createPilotApp(ffmpegPath = '/bin/ffmpeg', dataDir = '') {
+async function createPilotApp(ffmpegPath = '/bin/ffmpeg', dataDir = '', access: ProductionAccessGuard = allowProductionAccess) {
   if (!dataDir) dataDir = await mkdtemp(join(tmpdir(), 'kpl-pilot-'));
   await writeFile(join(dataDir, 'teams.json'), JSON.stringify([{
     id: 'kings-of-favar',
@@ -584,7 +661,7 @@ async function createPilotApp(ffmpegPath = '/bin/ffmpeg', dataDir = '') {
       controlOrigins: ['https://live.kingspadelleague.es'],
       youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
     },
-  }, { pilotOverlayRenderer: testOverlayRenderer(), productionAccessGuard: allowProductionAccess, pilotMatchBinding: {
+  }, { pilotOverlayRenderer: testOverlayRenderer(), pilotPreflight: passingPreflight, productionAccessGuard: access, pilotMatchBinding: {
     configure: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
     assertConfigured: async () => ({ homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' }),
   } });
@@ -626,25 +703,27 @@ function testOverlayRenderer(): PilotOverlayRenderer {
 }
 
 async function waitForSession(
-  app: Awaited<ReturnType<typeof buildApp>>['app'],
+  app: Awaited<Awaited<ReturnType<typeof buildApp>>['app']>,
   id: string,
   matches: (session: ReturnType<typeof PilotSessionSchema.parse>) => boolean,
   expected: string,
 ) {
   const deadline = Date.now() + 8_000;
+  let observed: unknown = null;
   while (Date.now() < deadline) {
     const response = await app.inject({ method: 'GET', url: '/api/pilot/sessions' });
     const session = (response.json().sessions as unknown[])
       .map((value) => PilotSessionSchema.parse(value))
       .find((candidate) => candidate.id === id);
+    observed = session && { status: session.status, videoEncoding: session.videoEncoding, encoder: session.encoder, continuity: session.continuity, error: session.error };
     if (session !== undefined && matches(session)) return session;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error(`Pilot session did not reach ${expected}`);
+  throw new Error(`Pilot session did not reach ${expected}: ${JSON.stringify(observed)}`);
 }
 
 async function waitForSessions(
-  app: Awaited<ReturnType<typeof buildApp>>['app'],
+  app: Awaited<Awaited<ReturnType<typeof buildApp>>['app']>,
   ids: readonly string[],
   matches: (session: ReturnType<typeof PilotSessionSchema.parse>) => boolean,
   expected: string,

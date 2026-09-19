@@ -17,6 +17,9 @@ const pilot: ProductionPilotController = {
   revokeMobileCamera: async () => false,
   prepare: async () => undefined,
   start: async () => undefined,
+  preflight: async () => undefined,
+  cancelPreflight: async () => undefined,
+  preview: async () => ({ kind: 'error', message: 'Sin vista previa' }),
   recover: async () => undefined,
   stop: async () => undefined,
 };

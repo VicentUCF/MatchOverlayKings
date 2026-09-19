@@ -1,4 +1,7 @@
 import { PilotThumbnailPreview } from './PilotThumbnailPreview.js';
+import { PilotOperationHistory } from './PilotOperationHistory.js';
+import { PilotSignalStatus } from './PilotSignalStatus.js';
+import { PilotPreflightPanel, preflightCanStart } from './PilotPreflightPanel.js';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
 import {
   CircleCheck, CircleX, ExternalLink, Info, MonitorPlay, Radio, RefreshCw,
@@ -86,7 +89,8 @@ export function ProductionPilotWorkspaceView({
   const ready = pilot.state;
   const enabledCourts = courts.filter(({ productionEnabled }) => productionEnabled);
   const sessions = enabledCourts.map(({ slug }) => latestSession(ready.sessions, slug));
-  const activeCount = sessions.filter((session) => session && ['starting', 'live', 'reconnecting', 'stopping'].includes(session.status)).length;
+  const activeCount = sessions.filter((session) => session && (['starting', 'live', 'reconnecting', 'stopping'].includes(session.status)
+    || (session.status === 'failed' && (session.continuity?.active || session.overlayHealth?.status === 'failed')))).length;
   const configuredCount = enabledCourts.filter(({ slug }) => ready.configurations.some((item) => item.courtSlug === slug)).length;
   const unavailableSources = new Set(ready.sessions
     .filter((session) => session.source.kind === 'v4l2' && session.status !== 'stopped')
@@ -136,11 +140,13 @@ export function ProductionPilotWorkspaceView({
           error={ready.courtErrors[court.slug] ?? null} onPrepare={(input) => void pilot.prepare(input)}
           onStart={(session) => void pilot.start(session)} onRecover={(session) => void pilot.recover(session)}
           onStop={(session) => void pilot.stop(session)}
+          preflight={pilot}
           mobileCamera={ready.mobileCameras.find(({ courtSlug }) => courtSlug === court.slug) ?? null}
           onElapsed={recordElapsed} />)}
       </section>
       <ValidationDecision readiness={ready.readiness} sessions={sessions} courts={enabledCourts}
         elapsedByCourt={elapsedByCourt} />
+      <PilotOperationHistory />
     </>}
   </>);
 }
@@ -299,7 +305,7 @@ function PilotConfigurationPanel({
 }
 
 function PilotControlPanel({
-  court, configuration, session, pending, error, mobileCamera, onPrepare, onStart, onRecover, onStop, onElapsed,
+  court, configuration, session, pending, error, mobileCamera, onPrepare, onStart, onRecover, onStop, onElapsed, preflight,
 }: {
   readonly court: ProductionCourtSlot;
   readonly configuration: PilotConfiguration | null;
@@ -312,6 +318,7 @@ function PilotControlPanel({
   readonly onRecover: (session: PilotSession) => void;
   readonly onStop: (session: PilotSession) => void;
   readonly onElapsed: (court: PilotCourtSlug, seconds: number | null) => void;
+  readonly preflight: Pick<ProductionPilotController, 'preflight' | 'cancelPreflight' | 'preview'>;
 }) {
   const attemptStartedAt = useRef<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null);
@@ -340,7 +347,7 @@ function PilotControlPanel({
   };
   const stop = () => {
     if (session === null) return;
-    if (session.mode === 'youtube' && !window.confirm(session.status === 'prepared'
+    if (session.mode === 'youtube' && !window.confirm(session.status === 'prepared' || session.preparationPending
       ? `Se cancelará la emisión programada de ${court.name} en YouTube. ¿Continuar?`
       : `Se finalizará la emisión real de ${court.name}. ¿Continuar?`)) return;
     onStop(session);
@@ -348,7 +355,9 @@ function PilotControlPanel({
   const recover = () => {
     if (session === null) return;
     if (session.mode === 'youtube' && !window.confirm(
-      `Se reutilizará el mismo directo de ${court.name} en YouTube. Comprueba primero que la cámara está disponible. ¿Recuperar emisión?`,
+      session.preparationPending
+        ? `Se recuperará la preparación de ${court.name} sin crear otro directo. La emisión no se iniciará hasta que pulses Emitir. ¿Continuar?`
+        : `Se reutilizará el mismo directo de ${court.name} en YouTube. Comprueba primero que la cámara está disponible. ¿Recuperar emisión?`,
     )) return;
     if (attemptStartedAt.current === null) attemptStartedAt.current = performance.now();
     onRecover(session);
@@ -372,6 +381,7 @@ function PilotControlPanel({
           ? <PilotMobileCameraMonitor mobileCamera={mobileCamera} /> : null}
         {session !== null && session.status !== 'stopped'
           ? <PilotSessionCard session={session} pending={pending} elapsedSeconds={elapsedSeconds}
+            preflight={preflight}
             onStart={start} onRecover={recover} onStop={stop} />
           : <div className="production-pilot-ready-action"><p>Configuración lista para preparar.</p>
             <button className="production-setup-submit" type="button" disabled={!canPrepare || pending} onClick={prepare}>
@@ -388,23 +398,39 @@ function PilotControlPanel({
 
 function CourtStatus({ session, enabled }: { readonly session: PilotSession | null; readonly enabled: boolean }) {
   if (!enabled) return <span className="production-status warning">Producción desactivada</span>;
-  const active = session && ['starting', 'live', 'reconnecting'].includes(session.status);
+  if (session?.status === 'prepared') {
+    const ready = preflightCanStart(session);
+    return <span className={`production-status ${ready ? session.preflight?.status === 'warning' ? 'warning' : 'success' : 'warning'}`}>
+      {session.preflight?.status === 'running' ? 'Comprobando' : ready ? session.preflight?.status === 'warning' ? 'Lista con advertencias' : 'Lista' : 'Bloqueada'}
+    </span>;
+  }
+  const live = session?.status === 'live';
+  const recovering = session?.status === 'reconnecting';
+  const continuity = session?.continuity?.active && ['starting', 'live', 'reconnecting', 'failed'].includes(session.status);
+  const overlayWarning = session?.overlayHealth && session.overlayHealth.status !== 'ready'
+    && ['starting', 'live', 'reconnecting', 'failed'].includes(session.status);
+  const signalWarning = ['starting', 'live', 'reconnecting'].includes(session?.status ?? '')
+    && (session?.signal?.issues.length ?? 0) > 0;
   const failed = session?.status === 'failed' || session?.status === 'interrupted';
-  return <span className={`production-status ${failed ? 'danger' : active ? 'success' : 'info'}`} aria-live="polite">
-    {active ? <CircleCheck aria-hidden="true" /> : failed ? <CircleX aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
-    {session ? sessionStatus(session.status) : 'Sin preparar'}
+  return <span className={`production-status ${failed ? 'danger' : recovering || signalWarning || continuity || overlayWarning ? 'warning' : live ? 'success' : 'info'}`} aria-live="polite">
+    {failed ? <CircleX aria-hidden="true" /> : signalWarning || overlayWarning || continuity ? <Info aria-hidden="true" /> : live ? <CircleCheck aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
+    {continuity ? 'Continuidad · Revisar cámara' : overlayWarning ? 'Revisar marcador'
+      : session ? `${sessionStatus(session.status)}${signalWarning ? ' · Revisar señal' : ''}` : 'Sin preparar'}
   </span>;
 }
 
-function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover, onStop }: {
+function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover, onStop, preflight }: {
   readonly session: PilotSession;
   readonly pending: boolean;
   readonly elapsedSeconds: number | null;
   readonly onStart: () => void;
+  readonly preflight: Pick<ProductionPilotController, 'preflight' | 'cancelPreflight' | 'preview'>;
   readonly onRecover: () => void;
   readonly onStop: () => void;
 }) {
   const active = ['starting', 'live', 'reconnecting'].includes(session.status);
+  const continuity = session.continuity?.active && (active || session.status === 'failed');
+  const overlay = (active || session.status === 'failed') && session.overlayHealth?.status !== 'ready' ? session.overlayHealth : null;
   const watchUrl = youtubeWatchUrl(session);
   return <div className="production-pilot-session">
     <div className="production-pilot-thumbnail"><img src={session.thumbnailUrl} alt={`Miniatura de ${session.title}`} /></div>
@@ -418,19 +444,39 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover
         <div><dt>Frames</dt><dd>{session.encoder.frame}</dd></div>
       </dl> : null}
       {session.youtubeStreamStatus ? <p>Salud YouTube: <strong>{session.youtubeStreamStatus}</strong></p> : null}
+      {overlay ? <div className="production-command-feedback warning" role="alert">
+        <strong>Revisar marcador de {session.courtSlug}</strong>
+        <p>{overlay.holdingLastFrame ? 'Se conserva la última imagen del marcador mientras continúa el vídeo. El tanteo mostrado puede estar desactualizado.'
+          : 'La salida espera a recibir el marcador del partido configurado.'}</p>
+        <p>{overlay.reason}</p>
+        {overlay.lastFrameAt ? <p>Última imagen válida: <time dateTime={overlay.lastFrameAt}>{new Date(overlay.lastFrameAt).toLocaleTimeString('es-ES')}</time>.</p> : null}
+        {overlay.status !== 'failed' ? <p>Reintentos del marcador: {overlay.attempt}/5.</p> : null}
+      </div> : null}
+      {continuity ? <div className="production-command-feedback warning" role="alert">
+        <strong>Mostrando continuidad en {session.courtSlug}</strong>
+        <p>La salida mantiene una imagen de espera y el marcador, con audio en silencio.</p>
+        <p>{session.continuity?.reason}</p>
+        {!session.continuity?.exhausted ? <p>Reintentos de cámara: {session.continuity?.attempt}/5.</p> : null}
+      </div> : null}
+      {active || continuity || overlay?.holdingLastFrame ? <PilotSignalStatus signal={session.signal} courtSlug={session.courtSlug} continuity={Boolean(continuity)} /> : null}
       {elapsedSeconds !== null ? <p>Preparación hasta señal: <strong>{elapsedSeconds} s</strong></p> : null}
       {session.error ? <p className="production-command-feedback danger" role="alert">{session.error}</p> : null}
       <div className="production-pilot-actions">
-        {session.status === 'prepared' ? <button className="production-setup-submit" type="button" disabled={pending} onClick={onStart}>Emitir</button> : null}
+        {session.status === 'prepared' ? <button className="production-setup-submit" type="button" disabled={pending || !preflightCanStart(session)} onClick={onStart}>Emitir</button> : null}
         {session.status === 'interrupted' || session.status === 'failed'
-          ? <button className="production-setup-submit" type="button" disabled={pending} onClick={onRecover}>Recuperar emisión</button> : null}
-        {active || ['prepared', 'interrupted', 'failed'].includes(session.status)
-          ? <button className="refresh-button danger" type="button" disabled={pending} onClick={onStop}>
-            {session.status === 'prepared' ? 'Cancelar preparación' : active ? 'Detener' : 'Finalizar sesión'}
+          ? <button className="production-setup-submit" type="button" disabled={pending} onClick={onRecover}>
+            {session.preparationPending ? 'Recuperar preparación' : 'Recuperar emisión'}
+          </button> : null}
+        {active || ['preparing', 'prepared', 'interrupted', 'failed'].includes(session.status)
+          ? <button className="refresh-button danger" type="button" disabled={pending && session.status !== 'preparing'} onClick={onStop}>
+            {session.status === 'prepared' || session.status === 'preparing' ? 'Cancelar preparación' : active ? 'Detener' : 'Finalizar sesión'}
           </button> : null}
         {watchUrl ? <a className="production-setup-submit production-pilot-youtube-link" href={watchUrl}
           target="_blank" rel="noreferrer">Ver directo en YouTube <ExternalLink aria-hidden="true" /></a> : null}
       </div>
+      {session.status === 'prepared' ? <PilotPreflightPanel session={session} pending={pending}
+        onCheck={(check) => void preflight.preflight(session, check)} onCancel={() => void preflight.cancelPreflight(session)}
+        loadPreview={preflight.preview} /> : null}
     </div>
   </div>;
 }
@@ -488,13 +534,16 @@ function ValidationDecision({ readiness, sessions, courts, elapsedByCourt }: {
     return elapsed !== undefined && elapsed <= 120;
   }).length;
   const total = courts.length;
-  const decision = total > 0 && youtubeHealthy === total ? 'Todas las emisiones reales están validadas'
-    : total > 0 && stable === total ? 'Todos los motores locales están validados; falta la prueba en YouTube'
+  const blocked = sessions.filter((session) => !session || (session.status === 'prepared' && !preflightCanStart(session))).length;
+  const decision = blocked > 0 ? 'Hay pistas pendientes de comprobar'
+    : total > 0 && youtubeHealthy === total ? 'YouTube recibe señal de todas las pistas'
+    : total > 0 && stable === total ? 'Los programas locales producen señal; falta comprobar YouTube'
       : 'Validación de pistas en curso';
   return <section className="production-pilot-decision" aria-labelledby="pilot-decision-title">
     <div><p className="production-kicker">Estado de la jornada</p><h2 id="pilot-decision-title">{decision}</h2>
       <p>El operador puede controlar cada pista de forma independiente.</p></div>
     <ul><li className={readiness.ffmpeg.available ? 'passed' : ''}>FFmpeg disponible</li>
+      <li className={blocked === 0 && total > 0 ? 'passed' : ''}>Pistas pendientes de comprobar: {blocked}</li>
       <li className={total > 0 && prepared === total ? 'passed' : ''}>Emisiones preparadas: {prepared}/{total}</li>
       <li className={total > 0 && stable === total ? 'passed' : ''}>Codificación estable: {stable}/{total}</li>
       <li className={total > 0 && youtubeHealthy === total ? 'passed' : ''}>YouTube activo y saludable: {youtubeHealthy}/{total}</li>
@@ -558,6 +607,7 @@ function privacyLabel(privacy: PilotPrivacy): string {
 
 function sessionStatus(status: PilotSession['status']): string {
   switch (status) {
+    case 'preparing': return 'Preparando destino';
     case 'prepared': return 'Preparado';
     case 'starting': return 'Iniciando señal';
     case 'live': return 'Emitiendo';

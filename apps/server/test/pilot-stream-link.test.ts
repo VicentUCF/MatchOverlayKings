@@ -1,3 +1,4 @@
+import { passingPreflight } from './pilot-preflight-fixture.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -52,6 +53,7 @@ describe('public stream link', () => {
     const publish = vi.fn(async () => undefined);
     const service = await createService({ publish });
     const prepared = await service.prepare(input, 'Bearer operator');
+    await service.preflight(prepared.id, {}, 'Bearer operator');
 
     await service.start(prepared.id, 'Bearer operator');
     expect(publish).toHaveBeenLastCalledWith('pista-1', watchUrl, 'Bearer operator');
@@ -64,6 +66,7 @@ describe('public stream link', () => {
     const publish = vi.fn(async () => { throw new Error('offline'); });
     const service = await createService({ publish });
     const prepared = await service.prepare(input, 'Bearer operator');
+    await service.preflight(prepared.id, {}, 'Bearer operator');
 
     await expect(service.start(prepared.id, 'Bearer operator')).resolves.toMatchObject({ id: prepared.id });
     await expect(service.stop(prepared.id, 'Bearer operator')).resolves.toMatchObject({ id: prepared.id });
@@ -83,6 +86,9 @@ describe('public stream link', () => {
 
 async function createService(streamLink: PilotStreamLink): Promise<PilotService> {
   const youtube = new PilotYouTubeGateway({ clientId: null, clientSecret: null, redirectUri: null, tokenPath: null });
+  vi.spyOn(youtube, 'configured', 'get').mockReturnValue(true);
+  vi.spyOn(youtube, 'isAuthorized', 'get').mockReturnValue(true);
+  vi.spyOn(youtube, 'health').mockResolvedValue({ broadcastStatus: 'ready', streamStatus: 'ready', healthStatus: 'good' });
   vi.spyOn(youtube, 'prepareBroadcast').mockResolvedValue({
     broadcastId: 'dQw4w9WgXcQ', streamId: 'stream', ingestUrl: 'rtmp://127.0.0.1:1/live', watchUrl,
   });
@@ -96,7 +102,7 @@ async function createService(streamLink: PilotStreamLink): Promise<PilotService>
     undefined,
     silentOverlayRenderer(),
     { configure: async () => identity, assertConfigured: async () => identity },
-    streamLink,
+    streamLink, undefined, passingPreflight,
   );
   cleanups.push(async () => { await service.shutdown(); await rm(directory, { recursive: true, force: true }); });
   await service.initialize();

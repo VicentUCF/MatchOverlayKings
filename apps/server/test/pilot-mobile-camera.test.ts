@@ -1,11 +1,13 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PilotMobileCameraLink } from '@kpl/production-contracts';
 import { PilotMobileCameraService } from '../src/pilot-mobile-camera.js';
+import { encoderProcessIdentity } from '../src/pilot-process-identity.js';
 
 const cleanups: Array<() => Promise<unknown>> = [];
 afterEach(async () => { while (cleanups.length) await cleanups.pop()?.(); });
@@ -34,14 +36,41 @@ async function fixture() {
   let child: ChildProcess | undefined;
   const ready = vi.fn(async (_port: number, process: ChildProcess) => { child = process; });
   const mutation = vi.fn<(port: number, method: string, path: string, body?: unknown) => Promise<void>>(async () => undefined);
-  const service = new PilotMobileCameraService({ ...config, mediaMtxPath: executable }, directory, 4310,
-    ready, () => true, () => now, mutation);
-  service.initialize();
+  const createService = () => new PilotMobileCameraService({ ...config, mediaMtxPath: executable }, directory, 4310,
+    ready, () => true, () => now, mutation, async () => true);
+  const service = createService();
+  await service.initialize();
   cleanups.push(async () => { await service.shutdown(); await rm(directory, { recursive: true, force: true }); });
-  return { service, ready, mutation, child: () => child, advance: (milliseconds: number) => { now += milliseconds; } };
+  return { service, createService, directory, ready, mutation, child: () => child, advance: (milliseconds: number) => { now += milliseconds; } };
 }
 
 describe('independent mobile cameras per court', () => {
+  it.runIf(process.platform === 'linux')('persists process identity and retires an orphan before restoring the mobile runtime', async () => {
+    const f = await fixture();
+    const link = await f.service.create({ courtSlug: 'pista-1' });
+    const path = join(f.directory, 'sessions.json');
+    const running = JSON.parse(await readFile(path, 'utf8'));
+    expect(running.runtimeProcess).toMatchObject({ pid: f.child()?.pid, bootId: expect.any(String) });
+    await f.service.shutdown();
+    const orphan = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+    await once(orphan, 'spawn');
+    cleanups.push(async () => {
+      if (orphan.exitCode === null && orphan.signalCode === null) {
+        const closed = once(orphan, 'close'); orphan.kill('SIGKILL'); await closed;
+      }
+    });
+    const snapshot = JSON.parse(await readFile(path, 'utf8'));
+    snapshot.runtimeProcess = encoderProcessIdentity(orphan.pid);
+    expect(snapshot.runtimeProcess).not.toBeNull();
+    await writeFile(path, JSON.stringify(snapshot));
+    const restarted = f.createService();
+    cleanups.push(() => restarted.shutdown());
+    await restarted.initialize();
+    expect(orphan.signalCode).toBe('SIGTERM');
+    expect(restarted.current(link.session.id)?.state).toBe('waiting_permission');
+    expect(f.child()?.pid).not.toBe(orphan.pid);
+  });
+
   it('creates courts concurrently with separate credentials, video paths and one shared process', async () => {
     const { service, ready, mutation, child } = await fixture();
     const [first, second, third] = await Promise.all([1, 2, 3].map((n) => service.create({ courtSlug: `pista-${n}` })));
@@ -55,11 +84,11 @@ describe('independent mobile cameras per court', () => {
       expect(link.session.previewUrl).toContain(link.session.id);
       expect(JSON.stringify(service.list())).not.toContain(token(link));
     }
-    const one = service.claim(first.session.id, token(first), { clientId: firstClient, capabilities });
-    const two = service.claim(second.session.id, token(second), { clientId: secondClient, capabilities });
+    const one = await service.claim(first.session.id, token(first), { clientId: firstClient, capabilities });
+    const two = await service.claim(second.session.id, token(second), { clientId: secondClient, capabilities });
     expect(one.whipUrl).not.toBe(two.whipUrl);
     expect(one.whipUser).not.toBe(two.whipUser);
-    expect(() => service.claim(second.session.id, token(first), { clientId: firstClient, capabilities })).toThrow('no es válido');
+    await expect(service.claim(second.session.id, token(first), { clientId: firstClient, capabilities })).rejects.toThrow('no es válido');
     await expect(service.create({ courtSlug: 'pista-1' })).rejects.toMatchObject({ statusCode: 409 });
     expect(ready).toHaveBeenCalledTimes(1);
     expect(child()?.killed).toBe(false);
@@ -70,12 +99,13 @@ describe('independent mobile cameras per court', () => {
     const { service, child } = await fixture();
     const first = await service.create({ courtSlug: 'pista-1' });
     const second = await service.create({ courtSlug: 'pista-2' });
-    const one = service.claim(first.session.id, token(first), { clientId: firstClient, capabilities });
-    const two = service.claim(second.session.id, token(second), {
+    const one = await service.claim(first.session.id, token(first), { clientId: firstClient, capabilities });
+    const two = await service.claim(second.session.id, token(second), {
       clientId: secondClient, capabilities: { ...capabilities, audioAvailable: false },
     });
-    service.report(first.session.id, token(first), { clientId: firstClient, state: 'ready', applied: null, metrics: null, error: null });
-    service.report(second.session.id, token(second), { clientId: secondClient, state: 'ready', applied: null, metrics: null, error: null });
+    const applied = { cameraId: 'rear', profile: '1080p30', audioEnabled: true, width: 1920, height: 1080, framesPerSecond: 30 };
+    service.report(first.session.id, token(first), { clientId: firstClient, state: 'ready', applied: { ...applied, revision: one.desired.revision }, metrics: null, error: null });
+    service.report(second.session.id, token(second), { clientId: secondClient, state: 'ready', applied: { ...applied, audioEnabled: false, revision: two.desired.revision }, metrics: null, error: null });
     expect(service.isReadyForCourt('pista-1')).toBe(true);
     expect(service.isReadyForCourt('pista-2')).toBe(true);
     expect(service.isReadyForCourt('pista-3')).toBe(false);
@@ -83,7 +113,7 @@ describe('independent mobile cameras per court', () => {
     let secondResolved = false;
     const pendingTwo = service.waitForDesired(second.session.id, token(second), two.desired.revision)
       .then((desired) => { secondResolved = true; return desired; });
-    service.updateDesired(first.session.id, { expectedRevision: one.desired.revision,
+    await service.updateDesired(first.session.id, { expectedRevision: one.desired.revision,
       cameraId: 'rear', profile: '1080p60', audioEnabled: true });
     expect((await pendingOne).profile).toBe('1080p60');
     expect(secondResolved).toBe(false);
@@ -99,8 +129,8 @@ describe('independent mobile cameras per court', () => {
     const replacement = await service.create({ courtSlug: 'pista-1' });
     expect(service.rtspUrl('pista-1')).toContain(replacement.session.id);
     expect(service.list()).toHaveLength(2);
-    expect(() => service.claim(replacement.session.id, token(first), { clientId: firstClient, capabilities })).toThrow('no es válido');
-    service.updateDesired(second.session.id, { expectedRevision: two.desired.revision,
+    await expect(service.claim(replacement.session.id, token(first), { clientId: firstClient, capabilities })).rejects.toThrow('no es válido');
+    await service.updateDesired(second.session.id, { expectedRevision: two.desired.revision,
       cameraId: 'rear', profile: '720p30', audioEnabled: false });
     expect((await pendingTwo).profile).toBe('720p30');
   });
@@ -122,11 +152,11 @@ describe('independent mobile cameras per court', () => {
     advance(60_000);
     const second = await service.create({ courtSlug: 'pista-2' });
     advance(12 * 60 * 60_000 - 59_999);
-    expect(() => service.claim(first.session.id, token(first), { clientId: firstClient, capabilities })).toThrow('caducado');
-    service.claim(second.session.id, token(second), { clientId: secondClient, capabilities });
+    await expect(service.claim(first.session.id, token(first), { clientId: firstClient, capabilities })).rejects.toThrow('caducado');
+    await service.claim(second.session.id, token(second), { clientId: secondClient, capabilities });
     const replacement = await service.create({ courtSlug: 'pista-1' });
     expect(replacement.session.id).not.toBe(first.session.id);
-    expect(service.current(second.session.id)?.state).toBe('connecting');
+    expect(service.current(second.session.id)?.state).toBe('reconnecting');
     expect(child()?.killed).toBe(false);
   });
 });
@@ -134,7 +164,7 @@ describe('independent mobile cameras per court', () => {
 it.runIf(existsSync(config.mediaMtxPath))('keeps a real MediaMTX publisher connected while another court is added and revoked', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'kpl-mobile-real-'));
   const service = new PilotMobileCameraService(config, directory, 4310);
-  service.initialize();
+  await service.initialize();
   cleanups.push(async () => { await service.shutdown(); await rm(directory, { recursive: true, force: true }); });
   const first = await service.create({ courtSlug: 'pista-1' });
   // FFmpeg's RTSP authentication needs a plain password; production cameras use hashed WHIP credentials.

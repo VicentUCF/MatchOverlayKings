@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { PilotSignalHealthSchema } from './pilot-signal.js';
+import { PilotPreflightSchema } from './pilot-preflight.js';
 
 // Kept as a compatibility name while the former pilot becomes the production
 // runtime. Court inventory is authoritative in Supabase, so slugs cannot be an
@@ -7,6 +9,7 @@ export const PilotCourtSlugSchema = z.string().regex(/^pista-[a-z0-9-]+$/).max(8
 export const PilotModeSchema = z.enum(['simulation', 'youtube']);
 export const PilotPrivacySchema = z.enum(['private', 'unlisted', 'public']);
 export const PilotSessionStatusSchema = z.enum([
+  'preparing',
   'prepared',
   'starting',
   'live',
@@ -191,12 +194,22 @@ export const PilotEncoderHealthSchema = z.strictObject({
   speed: z.number().nonnegative(),
 });
 
+export const PilotOverlayHealthSchema = z.strictObject({
+  status: z.enum(['starting', 'ready', 'recovering', 'failed']),
+  attempt: z.number().int().nonnegative().max(5),
+  lastFrameAt: z.iso.datetime().nullable(),
+  holdingLastFrame: z.boolean(),
+  reason: z.string().max(300).nullable(),
+}).readonly();
+export type PilotOverlayHealth = z.infer<typeof PilotOverlayHealthSchema>;
+
 export const PilotSessionSchema = z.strictObject({
   id: z.uuid(),
   courtSlug: PilotCourtSlugSchema,
   mode: PilotModeSchema,
   source: PilotSourceSchema,
   status: PilotSessionStatusSchema,
+  preparationPending: z.boolean().optional(),
   title: z.string().min(1),
   description: z.string().min(1),
   thumbnailUrl: z.string().min(1),
@@ -204,6 +217,11 @@ export const PilotSessionSchema = z.strictObject({
   watchUrl: z.string().url().nullable(),
   youtubeStreamStatus: z.string().nullable(),
   encoder: PilotEncoderHealthSchema.nullable(),
+  signal: PilotSignalHealthSchema.nullable().optional(),
+  overlayHealth: PilotOverlayHealthSchema.nullable().optional(),
+  preflight: PilotPreflightSchema.nullable().optional(),
+  continuity: z.strictObject({ active: z.boolean(), attempt: z.number().int().nonnegative().max(5),
+    exhausted: z.boolean(), reason: z.string().max(300).nullable() }).nullable().optional(),
   videoEncoding: PilotVideoEncoderSchema.nullable().optional(),
   encodingWarning: z.string().nullable().optional(),
   startedAt: z.iso.datetime({ offset: true }).nullable(),

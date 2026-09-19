@@ -8,6 +8,7 @@ export { ProductionAssetInputSchema, parseProductionAssetInput } from './schema.
 export { THUMBNAIL_TOKENS } from './tokens.js';
 export { buildLiveScoreboardSvg, renderLiveScoreboardPng, renderLiveScoreboardRgba } from './live-scoreboard.js';
 export type { LiveScoreboardFrameInput } from './live-scoreboard.js';
+export { renderContinuityFrame } from './continuity.js';
 export type { ProductionAssetInput, ProductionAssetOptions, ProductionAssets } from './types.js';
 
 export function createProductionAssets(

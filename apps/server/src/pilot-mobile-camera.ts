@@ -1,6 +1,6 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
@@ -21,12 +21,17 @@ import {
   type PilotSource,
 } from '@kpl/production-contracts';
 import type { PilotMobileCameraRuntimeConfig } from './config.js';
+import type { PilotMobileRuntimeEvent } from './pilot-mobile-events.js';
+import { MobileSnapshotSchema } from './pilot-mobile-state.js';
+import { writePrivateJson } from './private-json.js';
+import { encoderProcessIdentity, stopOrphanedEncoder } from './pilot-process-identity.js';
 
 const TOKEN_TTL_MS = 12 * 60 * 60_000;
 const HEARTBEAT_STALE_MS = 6_000;
 const HEARTBEAT_OFFLINE_MS = 20_000;
 const MEDIA_MTX_VERSION = '1.21.0';
 const MOBILE_PATH = 'mobile-pilot';
+const RUNTIME_RETRY_DELAYS = [1_000, 2_000, 4_000, 8_000, 15_000] as const;
 
 type InternalSession = {
   readonly id: string;
@@ -41,6 +46,7 @@ type InternalSession = {
   degradedSamples: number;
   revoked: boolean;
   error: string | null;
+  awaitingRevision: number | null;
 };
 
 type DesiredWaiter = {
@@ -78,7 +84,18 @@ export class PilotMobileCameraService {
   private mediaMtxVersion: string | null = null;
   private readonly expirationTimers = new Map<string, NodeJS.Timeout>();
   private mutation: Promise<unknown> = Promise.resolve();
-  private diagnostic = '';
+  private runtimeReady = false;
+  private runtimeError: string | null = null;
+  private retryTimer: NodeJS.Timeout | null = null;
+  private retryAttempt = 0;
+  private retryExhausted = false;
+  private stableSince: number | null = null;
+  private shuttingDown = false;
+  private storageLoaded = false;
+  private healthTimer: NodeJS.Timeout | null = null;
+  private healthChecking = false;
+  private healthFailures = 0;
+  private runtimeObserver: ((event: PilotMobileRuntimeEvent) => void) | null = null;
 
   public constructor(
     private readonly config: PilotMobileCameraRuntimeConfig | undefined,
@@ -88,12 +105,83 @@ export class PilotMobileCameraService {
     private readonly versionProbe: (executable: string) => boolean = hasExpectedMediaMtxVersion,
     private readonly now: () => number = Date.now,
     private readonly apiMutation: typeof mutateMediaMtx = mutateMediaMtx,
+    private readonly runtimeHealthProbe: (port: number) => Promise<boolean> = apiReady,
   ) {}
 
-  public initialize(): void {
+  public observeRuntime(observer: (event: PilotMobileRuntimeEvent) => void): () => void {
+    this.runtimeObserver = observer;
+    // Also supports a runtime initialized before its operational journal attaches.
+    if (this.activeSessions().length > 0) this.emitRuntime(this.runtimeReady ? 'ready'
+      : this.retryExhausted ? this.available() ? 'exhausted' : 'configuration_unavailable' : 'starting');
+    return () => { if (this.runtimeObserver === observer) this.runtimeObserver = null; };
+  }
+
+  private emitRuntime(code: PilotMobileRuntimeEvent['code'], sessions = this.activeSessions(), attempt = this.retryAttempt): void {
+    if (!this.runtimeObserver || this.shuttingDown) return;
+    const createdAt = new Date(this.now()).toISOString();
+    for (const session of sessions) this.runtimeObserver({ id: randomUUID(), courtSlug: session.courtSlug,
+      mobileSessionId: session.id, code, attempt, createdAt });
+  }
+
+  public async initialize(): Promise<void> {
+    try {
+      const snapshot = MobileSnapshotSchema.parse(JSON.parse(await readFile(this.snapshotPath(), 'utf8')));
+      if (snapshot.runtimeProcess) await stopOrphanedEncoder(snapshot.runtimeProcess);
+      for (const saved of snapshot.sessions) this.sessions.set(saved.id, {
+        ...saved, tokenDigest: Buffer.from(saved.tokenDigest, 'hex'), report: null,
+        lastHeartbeatAt: null, degradedSamples: 0, error: null, awaitingRevision: null,
+        revoked: saved.revoked || Date.parse(saved.expiresAt) <= this.now(),
+      });
+    } catch (error) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+        throw new PilotMobileCameraError(503, 'RUNTIME_ERROR', 'No se pudo recuperar el estado de las cámaras móviles. Conserva el archivo sessions.json y revisa el almacenamiento.');
+      }
+    }
+    this.storageLoaded = true;
     const executable = this.config?.mediaMtxPath;
-    if (!this.configured() || executable === null || executable === undefined) return;
-    this.mediaMtxVersion = this.versionProbe(executable) ? MEDIA_MTX_VERSION : null;
+    if (this.configured() && executable !== null && executable !== undefined) {
+      this.mediaMtxVersion = this.versionProbe(executable) ? MEDIA_MTX_VERSION : null;
+    }
+    for (const session of this.activeSessions()) this.scheduleExpiration(session);
+    if (this.activeSessions().length > 0) {
+      if (!this.available()) {
+        this.runtimeError = 'Las cámaras están conservadas, pero MediaMTX o la red LAN no están disponibles.';
+        this.retryExhausted = true;
+        this.emitRuntime('configuration_unavailable');
+        return;
+      }
+      try { await this.startMediaMtx(true); }
+      catch { this.emitRuntime('start_failed'); await this.stopMediaMtx(); this.scheduleRuntimeRetry(); }
+    }
+  }
+
+  private snapshotPath(): string { return join(this.dataDir, 'sessions.json'); }
+
+  private persistSessions(replacement?: InternalSession): Promise<void> {
+    return writePrivateJson(this.snapshotPath(), MobileSnapshotSchema.parse({
+      version: 1, runtimeProcess: encoderProcessIdentity(this.process?.pid),
+      sessions: [...this.sessions.values()].map((current) => {
+        const session = current.id === replacement?.id ? replacement : current;
+        return { id: session.id, courtSlug: session.courtSlug, tokenDigest: session.tokenDigest.toString('hex'),
+          expiresAt: session.expiresAt, desired: session.desired, capabilities: session.capabilities,
+          clientId: session.clientId, revoked: session.revoked };
+      }),
+    }));
+  }
+
+  private async commitSession(session: InternalSession, patch: Partial<InternalSession>): Promise<void> {
+    const next = { ...session, ...patch };
+    await this.persistSessions(next);
+    Object.assign(session, patch);
+  }
+
+  private scheduleExpiration(session: InternalSession): void {
+    clearTimeout(this.expirationTimers.get(session.id));
+    const timer = setTimeout(() => {
+      void this.revoke(session.id).catch(() => { session.error = 'No se pudo retirar la entrada móvil caducada.'; });
+    }, Math.max(0, Date.parse(session.expiresAt) - this.now()));
+    timer.unref();
+    this.expirationTimers.set(session.id, timer);
   }
 
   public available(): boolean {
@@ -113,7 +201,7 @@ export class PilotMobileCameraService {
     if (this.mediaMtxVersion !== MEDIA_MTX_VERSION) {
       return `MediaMTX ${MEDIA_MTX_VERSION} no está disponible para la cámara móvil.`;
     }
-    return null;
+    return this.runtimeError;
   }
 
   public current(id?: string): PilotMobileCameraSession | null {
@@ -163,31 +251,38 @@ export class PilotMobileCameraService {
       degradedSamples: 0,
       revoked: false,
       error: null,
+      awaitingRevision: null,
     };
     this.sessions.set(session.id, session);
+    try { await this.persistSessions(); }
+    catch (error) { this.sessions.delete(session.id); throw error; }
     const starting = this.process === null;
     try {
       if (starting) {
+        const recovering = this.runtimeError !== null;
+        if (this.retryTimer !== null) clearTimeout(this.retryTimer);
+        this.retryTimer = null;
+        this.retryAttempt = 0;
         await this.stopMediaMtx();
-        await this.startMediaMtx();
+        await this.startMediaMtx(recovering);
       } else {
         await this.syncCredentials();
         await this.apiMutation(this.config.apiPort, 'POST', `/v3/config/paths/add/${mediaPath(session.id)}`, {
           source: 'publisher', overridePublisher: false,
         });
+        this.emitRuntime('ready', [session]);
       }
-    } catch (error) {
-      session.error = boundedError(error, this.diagnostic);
+    } catch {
+      this.emitRuntime('start_failed', [session]);
+      session.error = 'No se pudo habilitar la entrada móvil. Comprueba MediaMTX y vuelve a intentar.';
       session.revoked = true;
+      await this.persistSessions();
       if (starting) await this.stopMediaMtx();
       else await this.revokeSession(session.id).catch(() => undefined);
+      if (starting) this.scheduleRuntimeRetry();
       throw new PilotMobileCameraError(500, 'RUNTIME_ERROR', 'No se pudo iniciar MediaMTX para el móvil.');
     }
-    const timer = setTimeout(() => {
-      void this.revoke(session.id).catch(() => { session.error = 'No se pudo retirar la entrada móvil caducada.'; });
-    }, TOKEN_TTL_MS);
-    timer.unref();
-    this.expirationTimers.set(session.id, timer);
+    this.scheduleExpiration(session);
     return PilotMobileCameraLinkSchema.parse({
       session: this.publicSession(session),
       connectUrl: this.connectUrl(session.id, token),
@@ -195,6 +290,10 @@ export class PilotMobileCameraService {
   }
 
   public claim(id: string, token: string, rawInput: unknown) {
+    return this.serialize(() => this.claimSession(id, token, rawInput));
+  }
+
+  private async claimSession(id: string, token: string, rawInput: unknown) {
     const session = this.authorize(id, token);
     const input = ClaimPilotMobileCameraInputSchema.safeParse(rawInput);
     if (!input.success) throw new PilotMobileCameraError(400, 'INVALID_INPUT', 'Las capacidades del móvil no son válidas.');
@@ -206,20 +305,22 @@ export class PilotMobileCameraService {
     if (!supportsMinimum) {
       throw new PilotMobileCameraError(409, 'NOT_READY', 'El móvil no ofrece el perfil mínimo 720p30.');
     }
-    session.clientId = input.data.clientId;
-    session.capabilities = input.data.capabilities;
-    const selected = input.data.capabilities.cameras.find(({ supportedProfiles }) =>
+    const selected = input.data.capabilities.cameras.find(({ id, supportedProfiles }) => id === session.desired.cameraId && supportedProfiles.includes(session.desired.profile))
+      ?? input.data.capabilities.cameras.find(({ supportedProfiles }) =>
       supportedProfiles.includes('1080p30'))
       ?? input.data.capabilities.cameras.find(({ supportedProfiles }) => supportedProfiles.includes('720p30'));
     if (selected === undefined) throw new PilotMobileCameraError(409, 'NOT_READY', 'No hay una cámara compatible.');
-    const profile = selected.supportedProfiles.includes('1080p30') ? '1080p30' : '720p30';
-    session.desired = PilotMobileCameraDesiredSchema.parse({
+    const profile = selected.id === session.desired.cameraId && selected.supportedProfiles.includes(session.desired.profile)
+      ? session.desired.profile : selected.supportedProfiles.includes('1080p30') ? '1080p30' : '720p30';
+    const desired = PilotMobileCameraDesiredSchema.parse({
       ...session.desired,
       revision: session.desired.revision + 1,
       cameraId: selected.id,
       profile,
       audioEnabled: session.desired.audioEnabled && input.data.capabilities.audioAvailable,
     });
+    await this.commitSession(session, { clientId: input.data.clientId, capabilities: input.data.capabilities,
+      desired, awaitingRevision: desired.revision });
     session.lastHeartbeatAt = new Date(this.now()).toISOString();
     this.flushWaiters(session.id, session.desired);
     return {
@@ -258,6 +359,7 @@ export class PilotMobileCameraService {
       throw new PilotMobileCameraError(403, 'FORBIDDEN', 'El móvil no ha reclamado esta sesión.');
     }
     session.report = report.data;
+    if (session.awaitingRevision !== null && report.data.applied?.revision === session.awaitingRevision) session.awaitingRevision = null;
     session.lastHeartbeatAt = new Date(this.now()).toISOString();
     session.error = report.data.error;
     session.degradedSamples = isDegradedSample(session.desired, report.data)
@@ -266,7 +368,11 @@ export class PilotMobileCameraService {
     return this.publicSession(session);
   }
 
-  public updateDesired(id: string, rawInput: unknown): PilotMobileCameraSession {
+  public updateDesired(id: string, rawInput: unknown): Promise<PilotMobileCameraSession> {
+    return this.serialize(() => this.updateSessionDesired(id, rawInput));
+  }
+
+  private async updateSessionDesired(id: string, rawInput: unknown): Promise<PilotMobileCameraSession> {
     const session = this.requireSession(id);
     const input = UpdatePilotMobileCameraDesiredInputSchema.safeParse(rawInput);
     if (!input.success) throw new PilotMobileCameraError(400, 'INVALID_INPUT', 'La configuración móvil no es válida.');
@@ -285,12 +391,13 @@ export class PilotMobileCameraService {
     if (input.data.audioEnabled && !session.capabilities?.audioAvailable) {
       throw new PilotMobileCameraError(409, 'NOT_READY', 'El móvil no ha concedido acceso al micrófono.');
     }
-    session.desired = PilotMobileCameraDesiredSchema.parse({
+    const desired = PilotMobileCameraDesiredSchema.parse({
       revision: session.desired.revision + 1,
       cameraId: input.data.cameraId,
       profile: input.data.profile,
       audioEnabled: input.data.audioEnabled,
     });
+    await this.commitSession(session, { desired, awaitingRevision: desired.revision });
     session.degradedSamples = 0;
     this.flushWaiters(session.id, session.desired);
     return this.publicSession(session);
@@ -302,17 +409,22 @@ export class PilotMobileCameraService {
 
   private async revokeSession(id: string): Promise<PilotMobileCameraSession> {
     const session = this.requireSession(id);
-    if (this.process !== null && this.config !== undefined) {
-      // Removing this path closes only its publisher and readers, including existing WebRTC sessions.
-      await this.apiMutation(this.config.apiPort, 'DELETE', `/v3/config/paths/delete/${mediaPath(id)}`);
-    }
-    session.revoked = true;
+    await this.commitSession(session, { revoked: true });
     session.error = null;
     clearTimeout(this.expirationTimers.get(id));
     this.expirationTimers.delete(id);
     this.rejectWaiters(new PilotMobileCameraError(410, 'EXPIRED', 'El enlace móvil ha sido revocado.'), id);
     if (this.process !== null && this.config !== undefined) {
-      await this.syncCredentials();
+      try {
+        // Remove the live path as well as credentials so existing publishers lose access.
+        await this.apiMutation(this.config.apiPort, 'DELETE', `/v3/config/paths/delete/${mediaPath(id)}`);
+        await this.syncCredentials();
+      } catch {
+        this.emitRuntime('revocation_restart');
+        await this.stopMediaMtx();
+        this.scheduleRuntimeRetry();
+        throw new PilotMobileCameraError(503, 'RUNTIME_ERROR', 'El enlace está revocado. Se está recuperando el servicio para retirar su conexión anterior.');
+      }
     }
     return this.publicSession(session);
   }
@@ -323,8 +435,18 @@ export class PilotMobileCameraService {
     return current?.courtSlug === courtSlug && ['ready', 'degraded'].includes(current.state);
   }
 
+  public async checkRuntimeForCourt(courtSlug: string): Promise<boolean> {
+    if (!this.config || !this.runtimeReady || !this.isReadyForCourt(courtSlug)) return false;
+    return this.runtimeHealthProbe(this.config.apiPort).catch(() => false);
+  }
+
   public audioAvailableForCourt(courtSlug: string): boolean {
     return this.sessionForCourt(courtSlug)?.capabilities?.audioAvailable === true;
+  }
+
+  public audioExpectedForCourt(courtSlug: string): boolean {
+    const session = this.sessionForCourt(courtSlug);
+    return session?.capabilities?.audioAvailable === true && session.desired.audioEnabled;
   }
 
   public framesPerSecondForCourt(courtSlug: string): 30 | 60 {
@@ -341,11 +463,18 @@ export class PilotMobileCameraService {
   }
 
   public async shutdown(): Promise<void> {
+    if (this.shuttingDown) return;
+    this.shuttingDown = true;
+    if (this.healthTimer !== null) clearInterval(this.healthTimer);
+    this.healthTimer = null;
+    if (this.retryTimer !== null) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
     await this.mutation;
     for (const timer of this.expirationTimers.values()) clearTimeout(timer);
     this.expirationTimers.clear();
     this.rejectWaiters(new PilotMobileCameraError(410, 'EXPIRED', 'El piloto se ha detenido.'));
     await this.stopMediaMtx();
+    if (this.storageLoaded) await this.persistSessions();
   }
 
   private configured(): boolean {
@@ -381,7 +510,11 @@ export class PilotMobileCameraService {
   }
 
   private publicSession(session: InternalSession): PilotMobileCameraSession {
-    const state = projectedState(session, this.now());
+    const projected = projectedState(session, this.now());
+    const runtimeFailed = !this.runtimeReady && this.runtimeError !== null;
+    const state = projected === 'revoked' ? projected
+      : runtimeFailed ? this.retryExhausted ? 'error' : 'reconnecting'
+        : session.awaitingRevision !== null ? 'reconnecting' : projected;
     return PilotMobileCameraSessionSchema.parse({
       id: session.id,
       courtSlug: session.courtSlug,
@@ -393,7 +526,7 @@ export class PilotMobileCameraService {
       claimed: session.clientId !== null,
       lastHeartbeatAt: session.lastHeartbeatAt,
       expiresAt: session.expiresAt,
-      error: session.error,
+      error: runtimeFailed && state !== 'revoked' ? this.runtimeError : session.error,
       previewUrl: state === 'revoked' ? null : this.previewUrl(session.id),
     });
   }
@@ -420,18 +553,19 @@ export class PilotMobileCameraService {
       : `http://127.0.0.1:${this.config.webRtcPort}/${mediaPath(id)}/whep`;
   }
 
-  private async startMediaMtx(): Promise<void> {
+  private async startMediaMtx(recovering = false): Promise<void> {
+    this.emitRuntime('starting');
     if (this.config?.mediaMtxPath === null || this.config?.lanHost === null
       || this.config?.lanCidr === null || this.config === undefined) {
       throw new TypeError('MediaMTX configuration unavailable');
     }
     await mkdir(this.dataDir, { recursive: true, mode: 0o700 });
     const runtimePath = await mkdtemp(join(this.dataDir, 'pilot-mobile-mediamtx-'));
+    this.runtimePath = runtimePath;
     const configPath = join(runtimePath, 'mediamtx.yml');
     const configuration = buildPilotMediaMtxConfiguration(this.config, this.activeSessions());
     await writeFile(configPath, `${JSON.stringify(configuration, null, 2)}\n`, { mode: 0o600 });
-    this.runtimePath = runtimePath;
-    this.diagnostic = '';
+    this.runtimeReady = false;
     const child = spawn(this.config.mediaMtxPath, [configPath], {
       cwd: runtimePath,
       env: { PATH: process.env.PATH ?? '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C' },
@@ -440,37 +574,144 @@ export class PilotMobileCameraService {
     });
     this.process = child;
     child.stdout?.resume();
-    child.stderr?.setEncoding('utf8');
-    child.stderr?.on('data', (chunk: string) => {
-      this.diagnostic = `${this.diagnostic}${chunk}`.slice(-2_000);
-    });
+    child.stderr?.resume();
     child.once('close', () => {
       if (this.process === child) {
+        const wasReady = this.runtimeReady;
         this.process = null;
-        for (const session of this.activeSessions()) session.error = 'MediaMTX se detuvo de forma inesperada.';
+        this.runtimeReady = false;
+        if (wasReady) {
+          this.emitRuntime('process_exit');
+          if (this.stableSince !== null && this.now() - this.stableSince >= 30_000) this.retryAttempt = 0;
+          this.scheduleRuntimeRetry();
+        }
       }
     });
     child.once('error', () => {
-      for (const session of this.activeSessions()) session.error = 'No se pudo ejecutar MediaMTX.';
+      this.runtimeError = 'No se pudo ejecutar MediaMTX.';
     });
+    await this.persistSessions();
     await this.readinessProbe(this.config.apiPort, child);
+    if (this.process !== child || child.exitCode !== null || child.signalCode !== null) throw new Error('MediaMTX exited during startup');
+    if (recovering) for (const session of this.activeSessions()) {
+      if (session.clientId === null) continue;
+      session.desired = PilotMobileCameraDesiredSchema.parse({ ...session.desired, revision: session.desired.revision + 1 });
+      session.awaitingRevision = session.desired.revision;
+      session.report = null;
+      session.error = null;
+    }
+    await this.persistSessions();
+    if (this.process !== child || child.exitCode !== null || child.signalCode !== null) throw new Error('MediaMTX exited while committing startup');
+    this.runtimeReady = true;
+    this.runtimeError = null;
+    this.retryExhausted = false;
+    this.stableSince = this.now();
+    this.healthFailures = 0;
+    this.emitRuntime(recovering ? 'restored' : 'ready');
+    if (this.healthTimer === null) {
+      this.healthTimer = setInterval(() => { void this.checkRuntimeHealth(); }, 5_000);
+      this.healthTimer.unref();
+    }
+    if (recovering) for (const session of this.activeSessions()) this.flushWaiters(session.id, session.desired);
+  }
+
+  private async checkRuntimeHealth(): Promise<void> {
+    const child = this.process;
+    if (this.shuttingDown || this.healthChecking || !this.runtimeReady || child === null || this.config === undefined) return;
+    this.healthChecking = true;
+    try {
+      const healthy = await this.runtimeHealthProbe(this.config.apiPort).catch(() => false);
+      if (this.shuttingDown || this.process !== child || !this.runtimeReady) return;
+      this.healthFailures = healthy ? 0 : this.healthFailures + 1;
+      if (this.healthFailures < 3) return;
+      await this.serialize(async () => {
+        if (this.shuttingDown || this.process !== child || !this.runtimeReady) return;
+        if (this.stableSince !== null && this.now() - this.stableSince >= 30_000) this.retryAttempt = 0;
+        this.runtimeReady = false;
+        this.runtimeError = 'MediaMTX no responde a las comprobaciones. Recuperando las cámaras.';
+        this.emitRuntime('unresponsive');
+        await this.stopMediaMtx();
+        this.scheduleRuntimeRetry();
+      });
+    } catch {
+      this.scheduleRuntimeRetry();
+    } finally { this.healthChecking = false; }
+  }
+
+  /** Explicit operator recovery also works after the automatic retry budget expires. */
+  public recoverRuntimeForCourt(courtSlug: string): Promise<void> {
+    return this.serialize(async () => {
+      if (this.shuttingDown) throw new PilotMobileCameraError(503, 'NOT_READY', 'El servicio móvil se está cerrando.');
+      const session = this.sessionForCourt(courtSlug);
+      if (!session || session.revoked || Date.parse(session.expiresAt) <= this.now()) return;
+      if (this.runtimeReady) return;
+      if (this.retryTimer !== null) clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+      this.retryAttempt = 0;
+      this.emitRuntime('manual_recovery');
+      await this.stopMediaMtx();
+      try { await this.startMediaMtx(true); }
+      catch {
+        this.emitRuntime('start_failed');
+        await this.stopMediaMtx();
+        this.scheduleRuntimeRetry();
+        throw new PilotMobileCameraError(503, 'NOT_READY', 'MediaMTX sigue sin responder. Se reintentará la recuperación.');
+      }
+    });
+  }
+
+  private scheduleRuntimeRetry(): void {
+    if (this.shuttingDown || this.retryTimer !== null || this.activeSessions().length === 0) return;
+    const delay = RUNTIME_RETRY_DELAYS[this.retryAttempt];
+    if (delay === undefined) {
+      this.retryExhausted = true;
+      this.runtimeError = 'MediaMTX falló tras cinco reintentos. Comprueba el servicio y pulsa Recuperar emisión; si no hay emisión, renueva el enlace móvil.';
+      this.emitRuntime('exhausted');
+      return;
+    }
+    this.retryExhausted = false;
+    this.runtimeError = `MediaMTX se detuvo. Recuperando las cámaras (intento ${this.retryAttempt + 1}/5).`;
+    this.emitRuntime('retry_scheduled', this.activeSessions(), this.retryAttempt + 1);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.serialize(async () => {
+        if (this.shuttingDown || this.runtimeReady || this.activeSessions().length === 0) return;
+        this.retryAttempt += 1;
+        this.emitRuntime('retrying');
+        await this.stopMediaMtx();
+        try { await this.startMediaMtx(true); }
+        catch {
+          this.emitRuntime('start_failed');
+          await this.stopMediaMtx();
+          this.scheduleRuntimeRetry();
+        }
+      }).catch(() => { this.scheduleRuntimeRetry(); });
+    }, delay);
+    this.retryTimer.unref();
   }
 
   private async stopMediaMtx(): Promise<void> {
     const child = this.process;
     this.process = null;
-    if (child !== null && child.exitCode === null) {
-      child.kill('SIGINT');
-      await Promise.race([
-        new Promise<void>((resolve) => child.once('close', () => resolve())),
-        new Promise<void>((resolve) => {
+    this.runtimeReady = false;
+    if (child !== null && child.exitCode === null && child.signalCode === null) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          let forced: NodeJS.Timeout | undefined;
           const timer = setTimeout(() => {
-            if (child.exitCode === null) child.kill('SIGKILL');
-            resolve();
+            forced = setTimeout(() => reject(new Error('MediaMTX did not stop')), 1_000);
+            forced.unref();
+            child.kill('SIGKILL');
           }, 3_000);
           timer.unref();
-        }),
-      ]);
+          child.once('close', () => { clearTimeout(timer); clearTimeout(forced); resolve(); });
+          child.kill('SIGINT');
+        });
+      } catch (error) {
+        // Retain ownership so the next attempt cannot launch a duplicate runtime.
+        this.process = child;
+        throw error;
+      }
     }
     const runtimePath = this.runtimePath;
     this.runtimePath = null;
@@ -635,6 +876,8 @@ function apiReady(port: number): Promise<boolean> {
       host: '127.0.0.1', port, method: 'GET', path: '/v3/paths/list', timeout: 300,
     }, (response) => {
       response.resume();
+      response.once('error', () => resolve(false));
+      response.once('aborted', () => resolve(false));
       response.once('end', () => resolve(response.statusCode === 200));
     });
     active.once('timeout', () => { active.destroy(); resolve(false); });
@@ -687,12 +930,6 @@ function validCidr(value: string): boolean {
 function isPrivateIpv6(address: string): boolean {
   const first = Number.parseInt(address.split(':', 1)[0] ?? '', 16);
   return Number.isInteger(first) && ((first >= 0xfc00 && first <= 0xfdff) || (first >= 0xfe80 && first <= 0xfebf));
-}
-
-function boundedError(error: unknown, diagnostic: string): string {
-  const message = error instanceof Error ? error.message : 'Error desconocido';
-  const detail = diagnostic.trim().split(/\r?\n/).at(-1)?.trim();
-  return `${message}${detail ? `: ${detail}` : ''}`.slice(0, 500);
 }
 
 function assertNever(value: never): never {

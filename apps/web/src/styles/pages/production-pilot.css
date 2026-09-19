@@ -344,11 +344,16 @@
 
 .production-pilot-court__header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--kpl-space-3);
   align-items: center;
   padding: var(--kpl-space-4);
   background: var(--kpl-color-surface-emphasis);
+}
+
+.production-pilot-court__header > div {
+  flex: 1 0 6rem;
 }
 
 .production-pilot-court__header h2 {
@@ -726,6 +731,12 @@
 .pilot-mobile-camera__audio { align-self: stretch; min-height: 2.75rem; }
 .pilot-mobile-camera__revoke { color: var(--kpl-color-danger); }
 
+.production-operation-history { min-width: 0; padding: var(--kpl-space-4); overflow-wrap: anywhere; }
+.production-operation-history summary { cursor: pointer; font-weight: 700; }
+.production-operation-history select { max-width: 100%; }
+.production-operation-history ol { padding-inline-start: var(--kpl-space-5); }
+.production-operation-history li { margin-block: var(--kpl-space-4); }
+
 .pilot-mobile-monitor { display: grid; gap: var(--kpl-space-3); }
 .pilot-mobile-preview {
   position: relative;
@@ -749,3 +760,11 @@
 .pilot-mobile-technical > div { min-width: 0; border: var(--kpl-border-width) solid var(--kpl-color-border-subtle); padding: var(--kpl-space-2); }
 .pilot-mobile-technical dt { color: var(--kpl-color-text-muted); font-size: var(--kpl-font-size-50); font-weight: 800; text-transform: uppercase; }
 .pilot-mobile-technical dd { margin: var(--kpl-space-1) 0 0; overflow: hidden; text-overflow: ellipsis; }
+
+.pilot-preflight { display: grid; gap: var(--kpl-space-3); min-width: 0; padding-top: var(--kpl-space-3); border-top: var(--kpl-border-width) solid var(--kpl-color-border-subtle); }
+.pilot-preflight h4, .pilot-preflight p { margin: 0; }
+.pilot-preflight summary { cursor: pointer; padding-block: var(--kpl-space-2); }
+.pilot-preflight ul { list-style: none; padding: 0; display: grid; gap: var(--kpl-space-3); }
+.pilot-preflight__check { display: grid; gap: var(--kpl-space-2); padding: var(--kpl-space-2); border: var(--kpl-border-width) solid var(--kpl-color-border-subtle); overflow-wrap: anywhere; }
+.pilot-preflight__check button { justify-self: start; white-space: normal; text-align: start; }
+.pilot-preflight video { width: 100%; max-width: 100%; background: #050505; aspect-ratio: 16 / 9; }

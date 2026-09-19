@@ -11,6 +11,7 @@ import { registerSocketHandlers } from './socket-handlers.js';
 import type { KplSocketServer, SocketData } from './socket-handlers.js';
 import { SupabasePilotMatchBinding, type PilotMatchBinding } from './pilot-match-binding.js';
 import { SupabasePilotStreamLink, type PilotStreamLink } from './pilot-stream-link.js';
+import { PilotOperationError } from './pilot-operation-journal.js';
 import { PilotService, PilotServiceError } from './pilot-service.js';
 import { PilotYouTubeGateway } from './pilot-youtube.js';
 import { PilotMobileCameraError, PilotMobileCameraService } from './pilot-mobile-camera.js';
@@ -24,15 +25,22 @@ export async function buildApp(
     readonly mobileCameraVersionProbe?: ConstructorParameters<typeof PilotMobileCameraService>[4];
     readonly mobileCameraNow?: ConstructorParameters<typeof PilotMobileCameraService>[5];
     readonly mobileCameraApiMutation?: ConstructorParameters<typeof PilotMobileCameraService>[6];
+    readonly mobileCameraHealthProbe?: ConstructorParameters<typeof PilotMobileCameraService>[7];
     readonly pilotOverlayRenderer?: PilotOverlayRenderer;
     readonly pilotMatchBinding?: PilotMatchBinding;
     readonly pilotStreamLink?: PilotStreamLink;
+    readonly pilotPreflight?: ConstructorParameters<typeof PilotService>[8];
     readonly productionAccessGuard?: ProductionAccessGuard;
   } = {},
 ) {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
+      serializers: {
+        // OAuth callbacks carry one-time codes in the query string.
+        req: (request: FastifyRequest) => ({ method: request.method, url: request.url.split('?')[0] ?? '/' }),
+        err: () => ({ type: 'Error', message: 'Error interno; consultar el identificador de diagnóstico.', stack: '' }),
+      },
     },
   });
   const store = new FileStore(config.dataDir);
@@ -44,8 +52,8 @@ export async function buildApp(
     dependencies.mobileCameraVersionProbe,
     dependencies.mobileCameraNow,
     dependencies.mobileCameraApiMutation,
+    dependencies.mobileCameraHealthProbe,
   );
-  mobileCamera.initialize();
   const browserPath = chromiumExecutablePath();
   const pilot = new PilotService(
     config.pilot.ffmpegPath,
@@ -58,10 +66,19 @@ export async function buildApp(
     }),
     dependencies.pilotMatchBinding ?? new SupabasePilotMatchBinding(config.pilot.supabase),
     dependencies.pilotStreamLink ?? new SupabasePilotStreamLink(config.pilot.supabase),
+    undefined,
+    dependencies.pilotPreflight,
   );
   const productionAccess = dependencies.productionAccessGuard
     ?? new SupabaseProductionAccessGuard(config.pilot.supabase);
   await pilot.initialize();
+  try {
+    await mobileCamera.initialize();
+    await pilot.flushOperationalHistory();
+  } catch (error) {
+    await Promise.allSettled([pilot.shutdown(), mobileCamera.shutdown()]);
+    throw error;
+  }
   const io: KplSocketServer = new SocketServer<
     ClientToServerEvents,
     ServerToClientEvents,
@@ -78,8 +95,8 @@ export async function buildApp(
 
   registerSocketHandlers({ io, store, controlPin: config.controlPin });
 
-  app.setErrorHandler((error, _request, reply) => {
-    if (error instanceof PilotServiceError || error instanceof PilotMobileCameraError) {
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof PilotServiceError || error instanceof PilotMobileCameraError || error instanceof PilotOperationError) {
       reply.status(error.statusCode).send({ error: { code: error.code, message: error.message } });
       return;
     }
@@ -94,8 +111,10 @@ export async function buildApp(
       return;
     }
 
-    app.log.error(error);
-    reply.status(500).send({ error: { code: 'SERVER_ERROR', message: errorMessage(error) } });
+    request.log.error({ diagnosticId: request.id }, 'No se pudo completar la solicitud.');
+    reply.status(500).send({ error: { code: 'SERVER_ERROR',
+      message: `No se pudo completar la solicitud. Comprueba el estado de la pista antes de reintentar. Diagnóstico: ${request.id}.`,
+    } });
   });
 
   const pilotControlOrigins = new Set(config.pilot.controlOrigins
@@ -161,6 +180,18 @@ export async function buildApp(
     return { sessions: await pilot.list() };
   });
 
+  app.get('/api/pilot/operations', async (request) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'operator');
+    return { operations: pilot.operationHistory() };
+  });
+
+  app.get('/api/pilot/incidents', async (request) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'operator');
+    return { incidents: pilot.incidentHistory() };
+  });
+
   app.get('/api/pilot/configurations', async (request) => {
     requireLocalPilot(request.ip);
     return { configurations: pilot.configurations() };
@@ -190,7 +221,7 @@ export async function buildApp(
     if (current !== null && current.id === request.params.sessionId && pilot.isCourtActive(current.courtSlug)) {
       throw new PilotMobileCameraError(409, 'CONFLICT', 'Detén la emisión antes de cambiar cámara, FPS o audio.');
     }
-    return { mobileCamera: mobileCamera.updateDesired(request.params.sessionId, request.body) };
+    return { mobileCamera: await mobileCamera.updateDesired(request.params.sessionId, request.body) };
   });
 
   app.delete<{ Params: { sessionId: string } }>('/api/pilot/mobile-camera/:sessionId', async (request) => {
@@ -236,7 +267,7 @@ export async function buildApp(
   app.put<{ Params: { courtSlug: string } }>('/api/pilot/configurations/:courtSlug', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'production_admin');
-    return { configuration: await pilot.configure(request.params.courtSlug, request.body, request.headers.authorization) };
+    return { configuration: await pilot.configure(request.params.courtSlug, request.body, request.headers.authorization, operationId(request)) };
   });
 
   app.post('/api/pilot/thumbnail-preview', async (request) => {
@@ -249,26 +280,45 @@ export async function buildApp(
   app.post('/api/pilot/sessions', async (request, reply) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'operator');
-    const session = await pilot.prepare(request.body, request.headers.authorization);
+    const session = await pilot.prepare(request.body, request.headers.authorization, operationId(request));
     reply.status(201).send({ session });
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/start', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'operator');
-    return { session: await pilot.start(request.params.sessionId, request.headers.authorization) };
+    return { session: await pilot.start(request.params.sessionId, request.headers.authorization, operationId(request)) };
+  });
+
+  app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/preflight', async (request) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'operator');
+    return { session: await pilot.preflight(request.params.sessionId, request.body, request.headers.authorization, operationId(request)) };
+  });
+
+  app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/preflight/cancel', async (request) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'operator');
+    return { session: await pilot.cancelPreflight(request.params.sessionId) };
+  });
+
+  app.get<{ Params: { sessionId: string; runId: string } }>('/api/pilot/sessions/:sessionId/preflight-preview/:runId', async (request, reply) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'operator');
+    reply.header('cache-control', 'no-store').type('video/mp4');
+    return reply.send(await pilot.preflightPreview(request.params.sessionId, request.params.runId));
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/recover', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'operator');
-    return { session: await pilot.recover(request.params.sessionId, request.headers.authorization) };
+    return { session: await pilot.recover(request.params.sessionId, request.headers.authorization, operationId(request)) };
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/stop', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'operator');
-    return { session: await pilot.stop(request.params.sessionId, request.headers.authorization) };
+    return { session: await pilot.stop(request.params.sessionId, request.headers.authorization, operationId(request)) };
   });
 
   app.get<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/thumbnail', async (request, reply) => {
@@ -318,9 +368,11 @@ export async function buildApp(
   }
 
   app.addHook('onClose', async () => {
-    await pilot.shutdown();
-    await mobileCamera.shutdown();
-    await io.close();
+    try { await pilot.shutdown(); }
+    finally {
+      try { await mobileCamera.shutdown(); }
+      finally { await io.close(); }
+    }
   });
 
   return { app, io, store };
@@ -354,7 +406,7 @@ function mobileCors(request: FastifyRequest, reply: FastifyReply, allowedOrigin:
   // This path is shared by the Android long-poll (GET) and the production
   // panel's desired-camera update (PUT). Keep both methods in the preflight.
   reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
-  reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, Idempotency-Key');
   reply.header('Access-Control-Allow-Private-Network', 'true');
   reply.header('Private-Network-Access-Name', 'kpl-production-runtime');
   reply.header('Private-Network-Access-ID', '02:4b:50:4c:00:01');
@@ -376,16 +428,12 @@ function pilotControlCors(
   }
   reply.header('Access-Control-Allow-Origin', requestOrigin);
   reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, Idempotency-Key');
   reply.header('Access-Control-Allow-Private-Network', 'true');
   reply.header('Private-Network-Access-Name', 'kpl-production-runtime');
   reply.header('Private-Network-Access-ID', '02:4b:50:4c:00:01');
   reply.header('Access-Control-Max-Age', '600');
   reply.header('Vary', 'Origin');
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : 'Error desconocido.';
 }
 
 function requireLocalPilot(ip: string): void {
@@ -395,4 +443,10 @@ function requireLocalPilot(ip: string): void {
   if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1' && ip !== dockerAdminHost) {
     throw new PilotServiceError(403, 'FORBIDDEN', 'El control de producción solo está disponible desde este PC.');
   }
+}
+
+function operationId(request: FastifyRequest): string | undefined {
+  const value = request.headers['idempotency-key'];
+  if (Array.isArray(value)) throw new PilotOperationError('Usa un único identificador de operación.');
+  return value;
 }

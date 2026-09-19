@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { Readable } from 'node:stream';
 import { google } from 'googleapis';
 import type { PilotPrivacy } from '@kpl/production-contracts';
+import { YouTubePreparationError, YouTubePreparationTransaction, type PreparationCheckpoint, type YouTubePreparation } from './pilot-youtube-preparation.js';
 
 const YOUTUBE_SCOPE = 'https://www.googleapis.com/auth/youtube';
 
@@ -115,80 +115,34 @@ export class PilotYouTubeGateway {
     readonly privacyStatus: PilotPrivacy;
     readonly thumbnail: Uint8Array;
     readonly framesPerSecond: 30 | 60;
+    readonly recovery: YouTubePreparation;
+    readonly checkpoint: PreparationCheckpoint;
+    readonly signal?: AbortSignal;
   }): Promise<PilotYouTubePreparedBroadcast> {
-    const youtube = this.client();
     try {
-      const broadcastResponse = await youtube.liveBroadcasts.insert({
-        part: ['snippet', 'status', 'contentDetails'],
-        requestBody: {
-          snippet: {
-            title: input.title,
-            description: input.description,
-            scheduledStartTime: input.scheduledAt,
-          },
-          status: {
-            privacyStatus: input.privacyStatus,
-            selfDeclaredMadeForKids: false,
-          },
-          contentDetails: {
-            enableAutoStart: true,
-            enableAutoStop: true,
-            enableDvr: true,
-            recordFromStart: true,
-            monitorStream: { enableMonitorStream: false },
-          },
-        },
-      });
-      const broadcastId = broadcastResponse.data.id;
-      if (!broadcastId) throw new PilotYouTubeError('API_ERROR');
+      const state = await new YouTubePreparationTransaction(this.client(), input.recovery, input.checkpoint, input.signal).prepare(input);
+      if (!state.broadcastId || !state.streamId || !state.ingestUrl) throw new PilotYouTubeError('API_ERROR');
+      return { broadcastId: state.broadcastId, streamId: state.streamId, ingestUrl: state.ingestUrl,
+        watchUrl: `https://www.youtube.com/watch?v=${state.broadcastId}` };
+    } catch (error) { throw preparationError(error); }
+  }
 
-      const streamResponse = await youtube.liveStreams.insert({
-        part: ['snippet', 'cdn'],
-        requestBody: {
-          snippet: { title: `${input.title} · entrada` },
-          cdn: {
-            frameRate: input.framesPerSecond === 60 ? '60fps' : '30fps',
-            ingestionType: 'rtmp',
-            resolution: '1080p',
-          },
-        },
-      });
-      const streamId = streamResponse.data.id;
-      const ingestion = streamResponse.data.cdn?.ingestionInfo;
-      const ingestionAddress = ingestion?.rtmpsIngestionAddress ?? ingestion?.ingestionAddress;
-      const streamName = ingestion?.streamName;
-      if (!streamId || !ingestionAddress || !streamName) throw new PilotYouTubeError('API_ERROR');
+  public async inspectPreparation(state: YouTubePreparation, checkpoint: PreparationCheckpoint): Promise<YouTubePreparation> {
+    try { return await new YouTubePreparationTransaction(this.client(), state, checkpoint).inspect(); }
+    catch (error) { throw preparationError(error); }
+  }
 
-      await youtube.liveBroadcasts.bind({
-        id: broadcastId,
-        streamId,
-        part: ['id', 'contentDetails'],
-      });
-      await youtube.thumbnails.set({
-        videoId: broadcastId,
-        media: {
-          mimeType: 'image/png',
-          body: Readable.from(Buffer.from(input.thumbnail)),
-        },
-      });
-      return {
-        broadcastId,
-        streamId,
-        ingestUrl: `${ingestionAddress.replace(/\/$/, '')}/${streamName}`,
-        watchUrl: `https://www.youtube.com/watch?v=${broadcastId}`,
-      };
-    } catch (error) {
-      if (error instanceof PilotYouTubeError) throw error;
-      throw new PilotYouTubeError('API_ERROR', youtubeApiErrorMessage(error));
-    }
+  public async cancelPreparation(state: YouTubePreparation, checkpoint: PreparationCheckpoint): Promise<void> {
+    try { await new YouTubePreparationTransaction(this.client(), state, checkpoint).cancel(); }
+    catch (error) { throw preparationError(error); }
   }
 
   public async health(broadcastId: string, streamId: string): Promise<PilotYouTubeHealth> {
     const youtube = this.client();
     try {
       const [streams, broadcasts] = await Promise.all([
-        youtube.liveStreams.list({ id: [streamId], part: ['status'] }),
-        youtube.liveBroadcasts.list({ id: [broadcastId], part: ['status'] }),
+        youtube.liveStreams.list({ id: [streamId], part: ['status'] }, { timeout: 8_000, retry: false }),
+        youtube.liveBroadcasts.list({ id: [broadcastId], part: ['status'] }, { timeout: 8_000, retry: false }),
       ]);
       const stream = streams.data.items?.[0];
       const broadcast = broadcasts.data.items?.[0];
@@ -203,16 +157,19 @@ export class PilotYouTubeGateway {
   }
 
   public async cancelBroadcast(broadcastId: string): Promise<void> {
-    try {
-      await this.client().liveBroadcasts.delete({ id: broadcastId });
-    } catch (error) {
-      throw new PilotYouTubeError('API_ERROR', youtubeApiErrorMessage(error));
-    }
+    await this.completeBroadcast(broadcastId);
   }
 
   public async completeBroadcast(broadcastId: string): Promise<void> {
     const youtube = this.client();
     try {
+      const current = await youtube.liveBroadcasts.list({ id: [broadcastId], part: ['status'] }, { timeout: 8_000, retry: false });
+      const broadcast = current.data.items?.[0];
+      if (!broadcast || ['complete', 'revoked'].includes(broadcast.status?.lifeCycleStatus ?? '')) return;
+      if (['created', 'ready'].includes(broadcast.status?.lifeCycleStatus ?? '')) {
+        await youtube.liveBroadcasts.delete({ id: broadcastId });
+        return;
+      }
       await youtube.liveBroadcasts.transition({
         id: broadcastId,
         broadcastStatus: 'complete',
@@ -300,4 +257,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isTokenRecord(value: unknown): value is Record<string, string | number> {
   return typeof value === 'object' && value !== null
     && Object.values(value).every((item) => typeof item === 'string' || typeof item === 'number');
+}
+
+function preparationError(error: unknown): PilotYouTubeError {
+  if (error instanceof PilotYouTubeError) return error;
+  return new PilotYouTubeError('API_ERROR', error instanceof YouTubePreparationError ? error.message : youtubeApiErrorMessage(error));
 }

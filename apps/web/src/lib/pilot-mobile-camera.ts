@@ -1,3 +1,4 @@
+import { mobileClientIdentity } from './pilot-mobile-identity.js';
 import {
   ClaimPilotMobileCameraResponseSchema,
   PilotMobileCameraDesiredSchema,
@@ -79,7 +80,7 @@ export function profileDimensions(profile: PilotMobileVideoProfile) {
 }
 
 export class PilotMobileCameraRuntime {
-  private readonly clientId = crypto.randomUUID();
+  private readonly clientId: string;
   private readonly abortController = new AbortController();
   private desired: PilotMobileCameraDesired | null = null;
   private applied: PilotMobileCameraApplied | null = null;
@@ -99,7 +100,7 @@ export class PilotMobileCameraRuntime {
   public constructor(
     private readonly link: PilotMobileLink,
     private readonly callbacks: RuntimeCallbacks,
-  ) {}
+  ) { this.clientId = mobileClientIdentity(link.endpoint, link.sessionId); }
 
   public async prepare(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === 'undefined') {

@@ -7,6 +7,7 @@ import type {
   PilotMobileCameraSession,
   PilotReadiness,
   PilotSession,
+  PilotPreflightCheckId,
   PreparePilotSessionInput,
   UpdatePilotMobileCameraDesiredInput,
 } from '@kpl/production-contracts';
@@ -38,6 +39,7 @@ const defaultAdapter = createProductionPilotAdapter();
 export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdapter) {
   const [state, setState] = useState<PilotState>({ kind: 'loading' });
   const refreshSequence = useRef(0);
+  const mutationCounts = useRef(new Map<PilotCourtSlug, number>());
 
   const refresh = useCallback(async (quiet = false) => {
     const requestId = ++refreshSequence.current;
@@ -78,7 +80,8 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
 
   useEffect(() => { void refresh(); }, [refresh]);
   const needsLivePolling = state.kind === 'ready'
-    && (state.sessions.some(({ status }) => ['starting', 'live', 'reconnecting', 'stopping'].includes(status))
+    && (state.pendingCourts.length > 0 || state.sessions.some(({ status, preflight }) => ['preparing', 'starting', 'live', 'reconnecting', 'stopping'].includes(status)
+      || (status === 'prepared' && preflight !== null && preflight !== undefined && ['running', 'ready', 'warning'].includes(preflight.status)))
       || state.mobileCameras.some(({ state }) => state !== 'revoked'));
   useEffect(() => {
     const interval = window.setInterval(() => { void refresh(true); }, needsLivePolling ? 2_000 : 10_000);
@@ -89,6 +92,13 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
     courtSlug: PilotCourtSlug,
     operation: () => Promise<{ readonly kind: 'success'; readonly value: PilotSession } | { readonly kind: 'error'; readonly message: string }>,
   ) => {
+    mutationCounts.current.set(courtSlug, (mutationCounts.current.get(courtSlug) ?? 0) + 1);
+    const settle = () => {
+      const remaining = (mutationCounts.current.get(courtSlug) ?? 1) - 1;
+      if (remaining === 0) mutationCounts.current.delete(courtSlug);
+      else mutationCounts.current.set(courtSlug, remaining);
+      return remaining === 0;
+    };
     setState((current) => current.kind === 'ready' ? {
       ...current,
       pendingCourts: addCourt(current.pendingCourts, courtSlug),
@@ -96,17 +106,20 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
     } : current);
     const result = await operation();
     if (result.kind === 'error') {
+      await refresh(true);
+      const finished = settle();
       setState((current) => current.kind === 'ready' ? {
         ...current,
-        pendingCourts: removeCourt(current.pendingCourts, courtSlug),
+        pendingCourts: finished ? removeCourt(current.pendingCourts, courtSlug) : current.pendingCourts,
         courtErrors: { ...current.courtErrors, [courtSlug]: result.message },
       } : current);
       return;
     }
     await refresh(true);
+    const finished = settle();
     setState((current) => current.kind === 'ready' ? {
       ...current,
-      pendingCourts: removeCourt(current.pendingCourts, courtSlug),
+      pendingCourts: finished ? removeCourt(current.pendingCourts, courtSlug) : current.pendingCourts,
       courtErrors: { ...current.courtErrors, [courtSlug]: undefined },
     } : current);
   }, [refresh]);
@@ -206,6 +219,9 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
     revokeMobileCamera,
     prepare: (input: PreparePilotSessionInput) => mutate(input.courtSlug, () => adapter.prepare(input)),
     start: (session: PilotSession) => mutate(session.courtSlug, () => adapter.start(session.id)),
+    preflight: (session: PilotSession, check?: PilotPreflightCheckId) => mutate(session.courtSlug, () => adapter.preflight(session.id, check)),
+    cancelPreflight: (session: PilotSession) => mutate(session.courtSlug, () => adapter.cancelPreflight(session.id)),
+    preview: adapter.preview,
     recover: (session: PilotSession) => mutate(session.courtSlug, () => adapter.recover(session.id)),
     stop: (session: PilotSession) => mutate(session.courtSlug, () => adapter.stop(session.id)),
   }), [adapter, configure, createMobileCamera, mutate, refresh, revokeMobileCamera, state, updateMobileCamera]);

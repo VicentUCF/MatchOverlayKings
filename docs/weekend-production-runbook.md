@@ -11,15 +11,17 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
   revisar cableado, red o el móvil si hay una incidencia física.
 - El flujo soportado este fin de semana es el centro local servido por Docker,
   Supabase como fuente del marcador y YouTube como destino.
-- El sistema admite tres salidas simultáneas, pero actualmente solo una sesión de
-  cámara Android a la vez. Para varias pistas deben usarse fuentes V4L2 o señal
-  sintética en las demás.
+- El sistema admite tres salidas simultáneas y sesiones Android independientes
+  por pista. Antes de usarlas en una jornada, validar tres dispositivos reales
+  simultáneos durante 30 minutos; las pruebas automatizadas no sustituyen esta
+  comprobación.
 - El `docker-compose.yml` base no expone dispositivos `/dev/video*`. Una fuente
   V4L2 solo se considera soportada cuando se haya añadido explícitamente el
   dispositivo al despliegue y superado una prueba privada; no configurarlo por
   primera vez el día del evento.
-- La recuperación conserva sesiones y destinos, pero una cámara Android debe
-  volver a enlazarse después de reiniciar por completo el servicio local.
+- La recuperación conserva sesiones, destinos y enlaces Android mientras no
+  caduquen ni se revoquen. Mantener el directorio de datos y la dirección LAN
+  configurada; después de reiniciar, esperar la nueva confirmación de cada móvil.
 
 ## El día anterior
 
@@ -58,8 +60,13 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
 - [ ] El marcador cambia en el preview al sumar y deshacer un punto de prueba.
 - [ ] La emisión se prepara inicialmente como `Privado`.
 - [ ] La miniatura, título y descripción son correctos.
+- [ ] Pulsar `Comprobar programa completo` y resolver los bloqueos de cada pista.
+- [ ] Abrir `Ver programa de prueba`, comprobar equipos, tanteo y encuadre, y
+  escuchar su audio. Es un clip local de diez segundos, no una emisión a YouTube.
+- [ ] La pista muestra `Lista` o `Lista con advertencias`; revisar sus advertencias
+  antes de pulsar `Emitir`. La comprobación caduca a los cinco minutos.
 - [ ] Después de pulsar `Emitir`, FPS, bitrate y velocidad empiezan a actualizarse.
-- [ ] YouTube informa `active · good` antes de cambiar la privacidad o compartir
+- [ ] YouTube informa `live · active · good` antes de cambiar la privacidad o compartir
   el enlace.
 - [ ] `KPL_SMOKE_REQUIRE_YOUTUBE=true npm run production:smoke` no devuelve
   errores. Añadir `KPL_SMOKE_REQUIRE_MOBILE=true` cuando la fuente sea Android.
@@ -77,7 +84,88 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
 - Consultar registros con `npm run production:local:logs` desde una terminal de
   soporte, sin cerrar el navegador del operador.
 
+## Historial y recuperación de operaciones
+
+- Abrir **Mandos → Historial de operaciones** y filtrar por pista. Cada solicitud
+  conserva fecha, jornada e identificador de diagnóstico después de reiniciar.
+- **Solicitud completada** confirma que el control terminó la acción. El estado
+  real del directo se consulta en la tarjeta de la pista.
+- Si se pierde una respuesta, reintentar desde la misma pestaña conserva el
+  identificador incluso tras recargar. No borrar el almacenamiento de la pestaña
+  para intentar forzar una operación cuyo resultado sea incierto.
+- Una operación **Interrumpida** no se reproduce automáticamente. Al arrancar se
+  vincula a la configuración o sesión conservada cuando puede identificarse con
+  certeza; la respuesta de reintento devuelve su estado actual. Si existe una
+  sesión, comprobarla y usar **Recuperar emisión** o **Finalizar sesión**.
+- Si falló mientras preparaba YouTube, usar **Recuperar preparación**: busca los
+  recursos en el mismo canal y continúa con sus identificadores. No inicia la
+  emisión; después hay que pulsar **Emitir**. El destino se prepara en privado y
+  adopta la visibilidad configurada al terminar.
+- **Cancelar preparación** está disponible mientras YouTube responde. Si una
+  creación no tiene respuesta confirmada y tampoco aparece en el canal, el cierre
+  pide esperar un minuto y volver a **Finalizar sesión** para comprobar su ausencia.
+  No cambiar de canal ni preparar otro destino para sortear este bloqueo.
+  Preparaciones antiguas sin referencia de recuperación o referencias duplicadas
+  necesitan revisar el destino antes de continuar.
+- Si YouTube no confirma el cierre, el encoder local se detiene y la sesión queda
+  fallida con explicación. Reintentar **Finalizar emisión**; no usar Recuperar.
+- Al recuperar se vuelve a comprobar que Supabase conserva los mismos equipos.
+  Un conflicto mantiene la emisión detenida hasta revisar el partido.
+- Un encoder que deja de producir fotogramas se termina a los 20 segundos y entra
+  en el backoff de recuperación. Tras cinco reintentos sin 30 segundos estables,
+  queda **Fallida** y necesita intervención desde Mandos.
+- Si el proceso MediaMTX termina, el servicio intenta arrancarlo cinco veces con
+  esperas de 1, 2, 4, 8 y 15 segundos. Conserva los enlaces y rutas de las cámaras;
+  cada móvil debe confirmar la nueva revisión antes de volver a aparecer listo.
+  Si se agotan los intentos, **Recuperar emisión** también intenta restablecer
+  MediaMTX. Esperar a que vuelva la cámara y repetir la recuperación de la emisión.
+  Sin una sesión de emisión, revocar y regenerar el enlace permite reintentar.
+- También se comprueba su API cada cinco segundos. Tres respuestas fallidas
+  consecutivas provocan el cierre del proceso y la recuperación; una respuesta
+  correcta reinicia el contador. Esta comprobación funciona sin Mandos abierto.
+- Si MediaMTX rechaza la retirada de un enlace revocado, se cierra el proceso
+  compartido para impedir que ese móvil conserve acceso. Las demás cámaras
+  reconectan con sus enlaces originales; el enlace revocado no se restaura.
+- En Linux se detectan encoders huérfanos con el PID, su instante de inicio y el
+  identificador de arranque del sistema;
+  nunca se termina un proceso distinto que reutilice ese PID. Tras retirarlo,
+  la sesión sigue siendo la misma y puede recuperarse.
+- La sección **Incidencias y cambios de estado** registra también las
+  reconexiones automáticas y fallos, con gravedad escrita y fecha. Un aviso de
+  almacenamiento en la preparación significa que no se pudo guardar el estado
+  recuperable o el historial; evitar reiniciar mientras no se resuelva.
+
+Conservar `pilot-configurations.json`, `.sessions`, `.operations` y
+`mobile-camera-runtime/sessions.json` dentro del
+directorio de datos. `.sessions` contiene entradas protegidas: no adjuntarlo a
+incidencias ni copiarlo al navegador. El historial público excluye estas entradas.
+El snapshot móvil conserva hashes, propietario, caducidad y configuración; nunca
+guarda el token del enlace. No borrarlo para solucionar una reconexión.
+
 ## Matriz de incidencias
+
+### Mandos muestra «Revisar señal» mientras sigue emitiendo
+
+- La tarjeta conserva el estado real del directo y muestra los avisos de calidad
+  por separado. Abrir **Mediciones recientes de señal** para consultar los últimos
+  cinco segundos; las métricas empiezan después de diez segundos de calentamiento.
+- Negro: al menos el 98 % de la imagen oscura durante tres segundos. Imagen
+  inmóvil: ocho segundos sin cambio significativo. Comprobar la cámara; una pista
+  quieta o sin iluminación puede activar el aviso sin que exista un bloqueo.
+- Silencio: ocho segundos por debajo de −50 dB cuando el micrófono está habilitado.
+  Las fuentes de silencio intencionado y el micrófono desactivado no generan este
+  aviso. La detección no demuestra por sí sola que el audio sea inteligible.
+- Rendimiento: menos del 80 % de FPS previstos, velocidad inferior a 0,95×,
+  pérdida superior al 1 % de frames o bitrate inferior al 30 % del objetivo,
+  sostenidos durante cinco segundos. El bitrate bajo también puede corresponder
+  a una imagen sencilla; comprobar el destino antes de actuar.
+- Estos avisos no reinician el directo. Se registran al aparecer y al resolverse
+  en el historial de la pista. La ausencia de muestras también produce un aviso;
+  el watchdog independiente sigue actuando si el encoder deja de avanzar.
+- Calibrar estas comprobaciones con las cámaras previstas durante la prueba
+  privada. Se utiliza una copia reducida del vídeo antes de superponer el marcador.
+
+Referencia técnica: [metadatos y filtros de FFmpeg](https://ffmpeg.org/ffmpeg-filters.html#metadata_002c-ametadata).
 
 ### El navegador no contacta con el runtime
 
@@ -89,7 +177,42 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
 6. Volver a Mandos; la sesión debe aparecer como `Interrumpida`.
 7. Comprobar la fuente y pulsar `Recuperar emisión`.
 
-### FFmpeg, el overlay o una fuente se interrumpen
+### Se interrumpe la cámara durante una emisión
+
+1. Mandos indica `Continuidad · Revisar cámara`. Se muestra el cartel de la pista,
+   con el marcador superpuesto y audio en silencio. El encoder y el compositor
+   siguen activos mientras se recupera la captura.
+2. Si no llegan vídeo y audio válidos durante dos segundos, se reinicia la captura;
+   al arrancar se conceden ocho segundos para recibirlos. Una salida explícita del
+   capturador activa la continuidad inmediatamente.
+3. Comprobar cableado o conectividad. Hay cinco reintentos, con esperas de 1, 2, 4,
+   8 y 15 segundos. No preparar otro broadcast. Los avisos de negro, congelado y
+   silencio quedan suspendidos mientras se muestra el cartel intencionado.
+4. Al agotarse, aparece `Recuperar emisión`. Tras corregir la fuente, esta acción
+   reinicia la captura conservando el encoder, el destino y la sesión.
+5. El cartel se retira cuando vuelve el par de vídeo/audio. Comprobar la imagen y
+   escuchar el micrófono desde otro dispositivo; el avance técnico no acredita
+   por sí solo calidad de audio ni sincronía.
+6. Si se abandona la emisión, pulsar `Detener` o `Finalizar sesión`. El cierre debe
+   confirmarse en Mandos. El historial conserva activación y retirada del cartel.
+
+### Se interrumpe el navegador o la conexión de datos del marcador
+
+1. Mandos indica `Revisar marcador`. Si ya se había recibido una imagen válida,
+   se conserva mientras continúa el vídeo. El tanteo mostrado puede estar
+   desactualizado: comprobarlo con la persona que lleva el resultado.
+2. Si ocurre antes de la primera imagen válida, la salida espera al marcador;
+   no interpretar la sesión `Iniciando` como un directo ya confirmado.
+3. Revisar conexión con Supabase y disponibilidad de la aplicación. No resetear
+   el marcador ni preparar otro broadcast. El navegador realiza cinco reintentos
+   con esperas de 1, 2, 4, 8 y 15 segundos. Cada apertura puede tardar hasta diez
+   segundos antes de fallar.
+4. Si termina en `Fallida`, corregir la causa y pulsar `Recuperar emisión`. Si
+   solo falló el marcador, esta acción conserva la cámara y el encoder de salida.
+5. Al desaparecer el aviso, contrastar el tanteo. El historial conserva el fallo,
+   los reintentos y la recuperación. `Detener`/`Finalizar sesión` siguen disponibles.
+
+### Se interrumpe el encoder de salida
 
 1. El sistema pasa a `Recuperando señal` y realiza hasta cinco intentos con
    backoff.
@@ -98,13 +221,21 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
 4. Si termina en `Fallida`, comprobar la fuente y pulsar `Recuperar emisión`.
 5. Si no es recuperable, pulsar `Finalizar sesión` antes de preparar otra.
 
+Una caída del encoder interrumpe la salida mientras se reconstruye; el cartel
+solo puede mantenerse cuando el encoder continúa funcionando. Las emisiones
+nuevas desactivan el cierre automático de YouTube para poder recuperar el destino.
+Cerrar siempre desde Mandos al terminar: detener el PC no equivale a finalizar
+el broadcast remoto. Las emisiones preparadas antes de esta mejora pueden
+conservar su ajuste anterior de cierre automático.
+
 ### El servicio o el PC se reinician
 
 1. Levantar el servicio con `npm run production:local:up`.
 2. Abrir Mandos y localizar `Interrumpida`.
 3. No preparar otra emisión.
-4. Para una cámara Android, generar un nuevo enlace desde Emisiones, abrirlo en el
-   móvil y esperar a que la cámara figure como lista.
+4. Para una cámara Android, mantener abierta su pestaña y esperar a que recupere
+   la señal con el enlace conservado. Si se recarga esa misma pestaña, pulsar
+   Preparar cámara. No aparece lista hasta confirmar la nueva revisión.
 5. Pulsar `Recuperar emisión`; se reutilizan el ID y la entrada protegida del
    broadcast existente.
 6. Confirmar de nuevo la salud real desde YouTube.
@@ -114,7 +245,13 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
 1. Mantener el móvil desbloqueado, conectado a corriente y con Chrome visible.
 2. Comprobar que móvil y PC siguen en la misma red privada.
 3. Esperar la reconexión automática.
-4. Si el enlace caducó o se reinició el servicio, generar uno nuevo.
+   En `Historial de operaciones`, seleccionar la pista para consultar las
+   incidencias de `Servicio de cámaras`, sus reintentos y recuperación. El fallo
+   compartido aparece en cada pista afectada, también antes de preparar un
+   broadcast. Que el servicio responda de nuevo no confirma todavía la cámara:
+   esperar a que el móvil aplique su revisión y vuelva a entregar señal.
+4. Si el enlace caducó, fue revocado o se ha perdido la pestaña que lo reclamó,
+   generar uno nuevo. Reiniciar el servicio por sí solo no invalida los enlaces.
 5. No cambiar cámara, perfil o audio durante una emisión activa.
 
 ### YouTube muestra mala salud pero el encoder está estable
@@ -129,7 +266,8 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
 ### Supabase o el marcador dejan de responder
 
 1. No detener automáticamente la emisión de vídeo.
-2. El compositor debe conservar el último frame válido del overlay.
+2. Mandos avisará de la pérdida de datos y conservará el último frame válido del
+   overlay mientras reconecta. El tanteo puede estar desactualizado.
 3. Revisar conectividad a Internet desde un segundo dispositivo.
 4. No resetear el marcador ni crear otro partido.
 5. Cuando vuelva la conexión, confirmar la versión y el tanteo antes de continuar.
@@ -176,3 +314,57 @@ evento:
 - La emisión mantiene `speed >= 0.95x` durante 30 minutos.
 - Título, equipos, miniatura, marcador y privacidad son correctos.
 - Toda incidencia queda registrada con su acción de recuperación.
+
+## Comprobación del programa antes de emitir
+
+Después de preparar la sesión, Mandos permite **Comprobar programa completo**.
+La prueba verifica el partido autenticado, perfil aplicado, servicio móvil,
+recursos del PC, acceso al destino y conexión de entrada. Graba diez segundos
+con la cámara, el marcador del partido y audio usando el mismo compositor y
+codificador del directo. El archivo se decodifica para comprobar su integridad.
+El cartel de continuidad no cuenta como cámara válida.
+
+- **Bloqueada**: no se permite iniciar desde Mandos ni desde la API. Resolver el
+  paso señalado y pulsar su botón `Repetir`. Cámara, audio, marcador, codificador
+  y bitrate comparten una muestra y se repiten juntos. Un fallo de preparación
+  puede impedir esa muestra; resolverlo y repetir después el programa.
+- **Lista con advertencias**: revisar cada aviso. Una fuente sintética, una fuente
+  sin micrófono o una imagen inmóvil pueden ser intencionadas. Reproducir siempre
+  el clip y comprobar lo que se oye y se ve.
+- **Comprobación caducada**: repetirla completa. Reiniciar el runtime o cambiar la
+  identidad/perfil de la cámara invalida la comprobación anterior. Repetir un
+  solo paso no renueva la antigüedad de los demás.
+- **Cancelar comprobación**: cancela la captura local sin iniciar ni cancelar el
+  broadcast preparado. Finalizar la sesión también cancela primero la prueba.
+
+La comprobación **Red y capacidad de subida** primero abre TCP o TLS hacia la
+entrada, sin publicar vídeo. Con las salidas detenidas, envía desde el PC hasta
+26 MiB de bytes generados al servicio de pruebas HTTPS de Cloudflare durante un
+máximo de doce segundos. No envía imágenes, audio, claves ni tokens. Las pistas
+comparten una medición durante cinco minutos, conservando su fecha original.
+La comparación suma vídeo y audio de las pistas configuradas/preparadas para
+YouTube, hasta las tres simultáneas de mayor consumo, y añade un 30 % de margen.
+Si la estimación es inferior, bloquea el inicio. Cambiar esa demanda invalida
+las comprobaciones anteriores; preparar todas las pistas antes de comprobarlas.
+
+Usar `Repetir: Red y capacidad de subida` para forzar una medición nueva después
+de cambiar de red, incluso si la anterior salió correcta. Durante un directo
+solo se reutiliza una medición vigente: nunca se inicia una prueba de carga y
+el arranque de una salida cancela cualquier medición pendiente. Si no se dispone
+de medición vigente o el servicio falla, aparece una advertencia explícita.
+La ruta a Cloudflare puede rendir distinto a YouTube. Confirmar la estabilidad
+con la prueba privada de treinta minutos; ni esta estimación ni un clip individual
+de diez segundos acreditan capacidad sostenida de tres pistas. El bitrate del
+programa mostrado en otro paso corresponde al archivo compuesto.
+
+Para la vista previa se exige un mínimo de 128 MB libres y 256 MB de memoria
+disponible; con menos de 2 GB de disco o 1 GB de memoria se advierte del margen
+reducido. Al iniciar se vuelven a comprobar ambos mínimos. Estos límites no son
+una reserva suficiente para grabar partidos completos ni sustituyen su futura
+política de almacenamiento.
+
+Los clips quedan bajo el directorio privado de configuración del runtime, con
+permisos 0600 y descarga autenticada para operadores. Cada prueba de programa
+sustituye su clip anterior; finalizar la sesión lo elimina. No copiar esa carpeta
+como parte de un paquete de soporte público. La interfaz descarga el archivo con
+la sesión del operador y no pone tokens en la dirección del vídeo.

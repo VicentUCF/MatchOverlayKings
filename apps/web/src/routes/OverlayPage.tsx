@@ -38,7 +38,8 @@ export function OverlayPage({ eventId }: { eventId: string }) {
   if ((home || away) && (!match.state || match.state.homeTeamId !== home || match.state.awayTeamId !== away)) {
     return <OverlayScene key="mismatch" match={{ ...match, state: null }} />;
   }
-  return <div data-pilot-match-ready={match.state ? 'true' : 'false'}>
+  return <div data-pilot-match-ready={match.state && match.connectionState === 'connected' ? 'true' : 'false'}
+    data-pilot-confirmed-at={match.confirmedAt ?? ''}>
     <OverlayScene key={`${eventId}:${match.state?.homeTeamId}:${match.state?.awayTeamId}`} match={match} />
   </div>;
 }

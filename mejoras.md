@@ -18,6 +18,11 @@ animaciones. Debe cerrar el ciclo completo:
 
 ## Avance para la primera emisión real
 
+Seguimiento de la ejecución actual: [evidencias y pendientes](docs/mejoras-progress.md).
+Las casillas pendientes conservan su estado hasta completar también la validación
+operativa exigida por este documento; implementar y probar localmente no acredita
+por sí solo una jornada real.
+
 - [x] Convertir el piloto que ya controla YouTube y Android en la ruta operativa
   principal de `Mandos`, sin obligar al operador a alternar entre dos paneles.
 - [x] Persistir localmente cada sesión, su destino, miniatura, fuente e identidad
@@ -33,8 +38,9 @@ animaciones. Debe cerrar el ciclo completo:
 - [x] Completar la unificación operativa: un solo runtime para señal y emisión,
   inventario dinámico autoritativo y retirada del ejecutable de producción
   alternativo. El antiguo reconciliador queda archivado como referencia.
-- [ ] Soportar una cámara móvil independiente por pista; actualmente hay una sola
-  sesión Android global.
+- [ ] Validar una cámara móvil independiente por pista con tres dispositivos
+  reales. El runtime ya conserva sesiones separadas; falta su aceptación en el
+  entorno de producción previsto.
 
 ## Principios obligatorios
 
@@ -429,3 +435,21 @@ Una mejora de este documento solo puede marcarse como cumplida cuando:
 - [ ] No expone secretos ni amplía permisos innecesariamente.
 - [ ] Su documentación operativa está actualizada.
 - [ ] Existe evidencia de que cumple sus criterios de aceptación.
+
+## Ampliación solicitada: enlaces de marcador por pista
+
+Después de las mejoras anteriores, incorporar la solicitud del 19 de septiembre
+de 2026: generar un enlace independiente por pista para que una persona asignada
+a cada pista pueda operar sus mandos visuales e introducir el resultado.
+
+- [ ] Generar desde administración un enlace de acceso al control visual de una
+  pista concreta.
+- [ ] Limitar su autorización al marcador de esa pista, con comprobación en el
+  servidor y sin conceder acceso a otras pistas ni a la administración de emisión.
+- [ ] Permitir revocar y renovar cada enlace de manera independiente.
+- [ ] Mantener sincronización, detección de conflictos y trazabilidad de las
+  acciones deportivas realizadas mediante estos enlaces.
+- [ ] Mostrar estados claros de enlace inválido, caducado o revocado y conservar
+  la recuperación de conexión sin duplicar puntos.
+- [ ] Verificar que varias personas pueden operar simultáneamente sus pistas y
+  que cambiar una URL o reutilizar un enlace revocado no amplía el acceso.

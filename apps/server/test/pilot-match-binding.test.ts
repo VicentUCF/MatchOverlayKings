@@ -74,6 +74,8 @@ describe('pilot match binding', () => {
 
   it('keeps a YouTube preparation locked when cancellation fails and allows a retry', async () => {
     const youtube = new PilotYouTubeGateway({ clientId: null, clientSecret: null, redirectUri: null, tokenPath: null });
+    vi.spyOn(youtube, 'configured', 'get').mockReturnValue(true);
+    vi.spyOn(youtube, 'isAuthorized', 'get').mockReturnValue(true);
     vi.spyOn(youtube, 'prepareBroadcast').mockResolvedValue({
       broadcastId: 'broadcast', streamId: 'stream', ingestUrl: 'rtmp://example.invalid/stream', watchUrl: 'https://youtube.com/watch?v=broadcast',
     });

@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import { supabase } from './supabase.js';
+import { createCommandId } from '../command-id.js';
 import type { Team } from '@kpl/shared';
 import {
   PilotConfigurationSchema,
+  PilotOperationSchema,
+  PilotIncidentSchema,
   PilotConfigurationsSchema,
   PilotReadinessSchema,
   PilotMobileCameraLinkSchema,
@@ -14,6 +17,7 @@ import {
   type PilotCourtSlug,
   type PilotMobileCameraSession,
   type PilotSession,
+  type PilotPreflightCheckId,
   type PreparePilotSessionInput,
   type UpdatePilotMobileCameraDesiredInput,
 } from '@kpl/production-contracts';
@@ -48,16 +52,36 @@ export function createProductionPilotAdapter(
   localAgentBaseUrl = defaultLocalAgentBaseUrl(),
 ) {
   const baseUrl = normalizeBaseUrl(localAgentBaseUrl);
+  const pendingOperations = new Map<string, string>();
   const request = async <Value>(
     path: string,
     schema: z.ZodType<Value>,
     init?: RequestInit,
   ): Promise<PilotApiResult<Value>> => {
+    const journaled = (init?.method === 'POST' || init?.method === 'PUT')
+      && (/^\/api\/pilot\/sessions(?:\/[^/]+\/(?:start|stop|recover|preflight))?$/.test(path)
+        || path.startsWith('/api/pilot/configurations/'));
+    let storageKey: string | null = null;
+    const clearOperation = () => {
+      if (storageKey === null) return;
+      pendingOperations.delete(storageKey);
+      try { globalThis.sessionStorage?.removeItem(storageKey); } catch { /* Storage may be disabled. */ }
+    };
     try {
       const endpoint = `${baseUrl}${path}`;
-      if (init?.method === 'POST' || init?.method === 'PUT' || init?.method === 'DELETE') {
+      if (init?.method === 'POST' || init?.method === 'PUT' || init?.method === 'DELETE'
+        || path === '/api/pilot/operations' || path === '/api/pilot/incidents') {
         const { data } = await supabase.auth.getSession();
-        if (data.session) init = { ...init, headers: { ...init.headers, Authorization: `Bearer ${data.session.access_token}` } };
+        if (journaled) {
+          storageKey = `kpl:operation:${baseUrl}:${data.session?.user.id ?? 'local'}:${path}:${String(init?.body ?? '')}`;
+          let id = pendingOperations.get(storageKey);
+          try { id ??= globalThis.sessionStorage?.getItem(storageKey) ?? undefined; } catch { /* In-memory fallback. */ }
+          id ??= createCommandId();
+          pendingOperations.set(storageKey, id);
+          try { globalThis.sessionStorage?.setItem(storageKey, id); } catch { /* In-memory fallback. */ }
+          init = { ...init, headers: { ...init?.headers, 'Idempotency-Key': id } };
+        }
+        if (data.session) init = { ...init, headers: { ...init?.headers, Authorization: `Bearer ${data.session.access_token}` } };
       }
       const requestInit: LocalNetworkRequestInit | undefined = isLoopbackHttp(baseUrl)
         ? { ...init, targetAddressSpace: 'loopback' }
@@ -66,9 +90,18 @@ export function createProductionPilotAdapter(
       const payload: unknown = await response.json();
       if (!response.ok) {
         const error = ErrorEnvelopeSchema.safeParse(payload);
+        if (error.success && error.data.error.code === 'OPERATION_INTERRUPTED' && path.endsWith('/preflight')) {
+          // A new local check is safe after restart; do not trap the operator on
+          // an interrupted receipt that can never become a valid measurement.
+          clearOperation();
+          return { kind: 'error', message: 'La comprobación se interrumpió al reiniciar. Vuelve a comprobar el programa completo.' };
+        }
+        if (response.status >= 400 && response.status < 500
+          && error.success && error.data.error.code !== 'OPERATION_INTERRUPTED') clearOperation();
         return { kind: 'error', message: error.success ? error.data.error.message : 'El runtime local rechazó la operación.' };
       }
       const parsed = schema.safeParse(payload);
+      if (parsed.success) clearOperation();
       return parsed.success
         ? { kind: 'success', value: parsed.data }
         : { kind: 'error', message: 'La respuesta del runtime local no es válida.' };
@@ -83,6 +116,8 @@ export function createProductionPilotAdapter(
   return Object.freeze({
     localAdminUrl: baseUrl === '' ? '/admin' : `${baseUrl}/admin`,
     readiness: () => request('/api/pilot/readiness', PilotReadinessSchema),
+    operations: () => request('/api/pilot/operations', z.strictObject({ operations: z.array(PilotOperationSchema) })),
+    incidents: () => request('/api/pilot/incidents', z.strictObject({ incidents: z.array(PilotIncidentSchema) })),
     sessions: async (): Promise<PilotApiResult<readonly PilotSession[]>> => {
       const result = await request('/api/pilot/sessions', SessionsEnvelopeSchema);
       return result.kind === 'success'
@@ -151,11 +186,34 @@ export function createProductionPilotAdapter(
         : result;
     },
     start: (id: string) => sessionMutation(id, 'start'),
+    preflight: async (id: string, check?: PilotPreflightCheckId): Promise<PilotApiResult<PilotSession>> => {
+      const result = await request(`/api/pilot/sessions/${encodeURIComponent(id)}/preflight`, SessionEnvelopeSchema, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(check ? { check } : {}),
+      });
+      return result.kind === 'success' ? { kind: 'success', value: localizeSession(result.value.session, baseUrl) } : result;
+    },
+    cancelPreflight: (id: string) => sessionMutation(id, 'preflight/cancel'),
+    preview: async (path: string, signal: AbortSignal): Promise<PilotApiResult<Blob>> => {
+      if (!/^\/api\/pilot\/sessions\/[0-9a-f-]{36}\/preflight-preview\/[0-9a-f-]{36}$/i.test(path)) {
+        return { kind: 'error', message: 'La dirección de la vista previa no es válida.' };
+      }
+      try {
+        const { data } = await supabase.auth.getSession();
+        const init: LocalNetworkRequestInit = { signal, cache: 'no-store',
+          headers: data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {},
+          ...(isLoopbackHttp(baseUrl) ? { targetAddressSpace: 'loopback' as const } : {}) };
+        const response = await fetcher(`${baseUrl}${path}`, init);
+        if (!response.ok || !response.headers.get('content-type')?.startsWith('video/mp4')) {
+          return { kind: 'error', message: 'No se pudo abrir la vista previa. Revisa tu sesión y repite la comprobación si el archivo ya no está disponible.' };
+        }
+        return { kind: 'success', value: await response.blob() };
+      } catch { return { kind: 'error', message: 'No se pudo descargar la vista previa del equipo de emisión.' }; }
+    },
     recover: (id: string) => sessionMutation(id, 'recover'),
     stop: (id: string) => sessionMutation(id, 'stop'),
   });
 
-  async function sessionMutation(id: string, action: 'start' | 'recover' | 'stop'): Promise<PilotApiResult<PilotSession>> {
+  async function sessionMutation(id: string, action: 'start' | 'recover' | 'stop' | 'preflight/cancel'): Promise<PilotApiResult<PilotSession>> {
     const result = await request(`/api/pilot/sessions/${encodeURIComponent(id)}/${action}`, SessionEnvelopeSchema, {
       method: 'POST',
     });

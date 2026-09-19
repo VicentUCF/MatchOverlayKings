@@ -151,12 +151,19 @@ function streamStatus(session: PilotSession | null, loading: boolean, enabled: b
   if (!enabled) return { label: 'Desactivada', tone: 'warning' };
   if (loading) return { label: 'Comprobando', tone: 'info' };
   if (session === null) return { label: 'Sin preparar', tone: 'neutral' };
+  if (session.continuity?.active && ['starting', 'live', 'reconnecting', 'failed'].includes(session.status)) {
+    return { label: 'Continuidad · Revisar cámara', tone: session.continuity.exhausted ? 'danger' : 'warning' };
+  }
+  if (session.overlayHealth && session.overlayHealth.status !== 'ready' && ['starting', 'live', 'reconnecting', 'failed'].includes(session.status)) {
+    return { label: 'Revisar marcador', tone: session.overlayHealth.status === 'failed' ? 'danger' : 'warning' };
+  }
   if (session.status === 'live') return { label: 'Emitiendo', tone: 'success' };
   if (session.status === 'starting') return { label: 'Iniciando', tone: 'info' };
   if (session.status === 'stopping') return { label: 'Deteniendo', tone: 'warning' };
   if (session.status === 'reconnecting') return { label: 'Recuperando', tone: 'warning' };
   if (session.status === 'interrupted') return { label: 'Interrumpida', tone: 'danger' };
   if (session.status === 'failed') return { label: 'Revisar', tone: 'danger' };
+  if (session.status === 'preparing') return { label: 'Preparando destino', tone: 'info' };
   if (session.status === 'prepared') return { label: 'Preparada', tone: 'info' };
   return { label: 'Finalizada', tone: 'neutral' };
 }
