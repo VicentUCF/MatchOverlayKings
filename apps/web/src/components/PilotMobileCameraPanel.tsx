@@ -161,10 +161,10 @@ export function MobileCameraPreview({ url, allowListening = false }: { readonly 
       preview = nextPreview;
       try {
         await nextPreview.connect(controller.signal);
-      } catch {
+      } catch (error) {
         await nextPreview.close();
         if (controller.signal.aborted || attempt !== currentAttempt) return;
-        setMessage('Esperando señal móvil…');
+        setMessage(error instanceof Error ? error.message : 'No se pudo abrir la vista previa. Reintentando conexión…');
         if (retry === null) retry = window.setTimeout(() => { retry = null; void connect(); }, 2_000);
       }
     };

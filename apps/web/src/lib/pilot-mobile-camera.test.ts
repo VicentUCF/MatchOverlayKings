@@ -58,14 +58,45 @@ describe('camera monitor lifecycle', () => {
       const connectionChanged = vi.fn();
       const preview = new WhepPreview('http://127.0.0.1:8889/camera/whep', vi.fn(), connectionChanged);
       await preview.connect(new AbortController().signal);
+      expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:8889/camera/whep', expect.objectContaining({
+        method: 'POST', targetAddressSpace: 'loopback',
+      }));
       peer.connectionState = 'disconnected';
       peer.dispatchEvent(new Event('connectionstatechange'));
       expect(connectionChanged).toHaveBeenCalledWith('disconnected');
       const closing = preview.close();
       expect(peer.close).toHaveBeenCalledOnce();
-      expect(fetch).toHaveBeenLastCalledWith('http://127.0.0.1:8889/camera/session', expect.objectContaining({ method: 'DELETE' }));
+      expect(fetch).toHaveBeenLastCalledWith('http://127.0.0.1:8889/camera/session', expect.objectContaining({ method: 'DELETE', targetAddressSpace: 'loopback' }));
       finishCleanup?.(new Response(null, { status: 204 }));
       await closing;
     } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([
+    ['http://localhost:8889', 'loopback'],
+    ['http://[::1]:8889', 'loopback'],
+    ['http://127.2.3.4:8889', 'loopback'],
+    ['http://192.168.1.20:8889', 'local'],
+    ['http://[fd12::20]:8889', 'local'],
+    ['http://127.camera.example:8889', 'local'],
+  ])('declares the correct address space for %s', async (origin, space) => {
+    vi.stubGlobal('RTCPeerConnection', class extends EventTarget {
+      iceGatheringState = 'complete';
+      localDescription = { type: 'offer', sdp: 'fixture-offer' };
+      addTransceiver() {}
+      async createOffer() { return this.localDescription; }
+      async setLocalDescription() {}
+      async setRemoteDescription() {}
+      close() {}
+    });
+    const fetch = vi.fn(async () => new Response('fixture-answer', { status: 201 }));
+    vi.stubGlobal('fetch', fetch);
+    const preview = new WhepPreview(`${origin}/camera/whep`, vi.fn());
+    try {
+      await preview.connect(new AbortController().signal);
+      expect(fetch).toHaveBeenCalledWith(`${origin}/camera/whep`, expect.objectContaining({ targetAddressSpace: space }));
+      fetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      await expect(preview.connect(new AbortController().signal)).rejects.toThrow('La cámara puede seguir conectada');
+    } finally { await preview.close(); vi.unstubAllGlobals(); }
   });
 });

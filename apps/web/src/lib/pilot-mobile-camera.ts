@@ -399,13 +399,19 @@ export class WhepPreview {
     await waitForIce(peer, signal);
     const offerSdp = peer.localDescription?.sdp;
     if (offerSdp === undefined) throw new Error('No se pudo crear la oferta WebRTC del preview.');
-    const response = await localFetch(this.url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/sdp' },
-      body: offerSdp,
-      signal,
-    });
-    if (!response.ok) throw new Error(`Preview rechazado (${response.status}).`);
+    let response: Response;
+    try {
+      response = await localFetch(this.url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/sdp' },
+        body: offerSdp,
+        signal,
+      });
+    } catch (error) {
+      if (signal.aborted) throw error;
+      throw new Error('No se puede acceder a la vista previa. Revisa CORS, el permiso de red local del navegador y la conexión con el PC. La cámara puede seguir conectada.');
+    }
+    if (!response.ok) throw new Error(`La vista previa ha sido rechazada (HTTP ${response.status}). Comprueba el acceso al servicio de cámaras.`);
     this.resourceUrl = resourceUrl(this.url, response.headers.get('location'));
     await peer.setRemoteDescription({ type: 'answer', sdp: await response.text() });
   }
@@ -639,7 +645,12 @@ async function localJson<T>(
 }
 
 function localFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  return fetch(url, { ...init, targetAddressSpace: 'local' } as RequestInit);
+  const hostname = new URL(url).hostname;
+  // The PC's preview uses loopback; the phone publishes through a LAN address.
+  // Chrome rejects a declared "local" destination that resolves to loopback.
+  const loopback = hostname === 'localhost' || hostname.endsWith('.localhost')
+    || hostname === '[::1]' || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+  return fetch(url, { ...init, targetAddressSpace: loopback ? 'loopback' : 'local' } as RequestInit);
 }
 
 function waitForIce(peer: RTCPeerConnection, signal: AbortSignal): Promise<void> {
