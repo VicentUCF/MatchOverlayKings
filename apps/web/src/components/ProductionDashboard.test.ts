@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { PilotSession } from '@kpl/production-contracts';
+import { PilotMobileCameraSessionSchema, type PilotSession } from '@kpl/production-contracts';
 import type { PilotState } from '../hooks/useProductionPilot.js';
 import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
 import { ProductionDashboardView } from './ProductionDashboard.js';
@@ -45,6 +45,31 @@ const courts: readonly ProductionCourtSlot[] = [1, 2, 3].map((number) => ({
 }));
 
 describe('unified production dashboard', () => {
+  it.each([null, 'pista-1'])('previews camera and its live overlay before broadcasting (selection: %s)', (selectedCourt) => {
+    const mobileCamera = PilotMobileCameraSessionSchema.parse({
+      id: '20000000-0000-4000-8000-000000000001', courtSlug: 'pista-1',
+      state: 'ready', desired: { revision: 1, cameraId: null, profile: '1080p30', audioEnabled: true },
+      applied: null, capabilities: null, metrics: null, claimed: true, lastHeartbeatAt: null,
+      expiresAt: '2026-09-18T12:00:00.000Z', error: null,
+      previewUrl: 'http://127.0.0.1:8889/camera/whep',
+    });
+    const previewState: PilotState = { ...state, configurations: state.kind === 'ready'
+      ? state.configurations.map((config) => ({ ...config, sourceId: 'mobile:pilot' })) : [],
+      mobileCameras: [mobileCamera] };
+    const html = renderToStaticMarkup(createElement(ProductionDashboardView, { state: previewState, courts, selectedCourt }));
+    expect(html).toContain('<video');
+    expect(html).toContain('/overlay/pista-1/scoreboard?preview=muted');
+    expect(html).not.toContain('/overlay/pista-2/scoreboard');
+    expect(html).toContain('Cámara + overlay');
+    if (selectedCourt) expect(html).toContain('Escuchar cámara en este PC');
+    const revoked = renderToStaticMarkup(createElement(ProductionDashboardView, {
+      state: { ...previewState, mobileCameras: [{ ...mobileCamera, state: 'revoked' }] }, courts, selectedCourt,
+    }));
+    expect(revoked).not.toContain('<video');
+    expect(revoked).not.toContain('?preview=muted');
+    expect(revoked).toContain('Sin vista previa de cámara');
+  });
+
   it('shows the actual encoder and preserves the GPU fallback warning', () => {
     const html = renderToStaticMarkup(createElement(ProductionDashboardView, {
       state: { ...state, sessions: [{ ...liveYoutubeSession,
@@ -65,7 +90,7 @@ describe('unified production dashboard', () => {
     expect(html).toContain('data-monitor-court="pista-1"');
     expect(html).toContain('Kings');
     expect(html).toContain('Abrir pista');
-    expect(html).toContain('señal de entrada');
+    expect(html).toContain('Cámara + overlay');
     expect(html).toContain('Emisión sin configurar');
   });
 

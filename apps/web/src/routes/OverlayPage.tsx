@@ -69,7 +69,7 @@ function OverlayScene({ match }: { match: ReturnType<typeof useMatchSocket> }) {
 
   const cardSound = useCardAnnouncementSound({
     announcementId: activeAnnouncement?.id ?? null,
-    enabled: settings?.soundEnabled ?? false,
+    enabled: (settings?.soundEnabled ?? false) && new URLSearchParams(window.location.search).get('preview') !== 'muted',
     volume: settings?.soundVolume ?? 0.55,
   });
 

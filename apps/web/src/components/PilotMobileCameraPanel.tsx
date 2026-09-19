@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type FormEvent } from 'react';
 import { Camera, Copy, Link2, Radio, Trash2 } from 'lucide-react';
 import type {
   PilotCourtSlug,
@@ -134,7 +134,7 @@ export function PilotMobileCameraMonitor({ mobileCamera }: { readonly mobileCame
   </section>;
 }
 
-export function MobileCameraPreview({ url, allowListening = false }: { readonly url: string; readonly allowListening?: boolean }) {
+export function MobileCameraPreview({ url, allowListening = false, children }: { readonly url: string; readonly allowListening?: boolean; readonly children?: ReactNode }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [message, setMessage] = useState('Conectando preview…');
   const [listening, setListening] = useState(false);
@@ -180,6 +180,7 @@ export function MobileCameraPreview({ url, allowListening = false }: { readonly 
   return <div className="pilot-mobile-preview">
     <video ref={videoRef} autoPlay muted={!listening} playsInline aria-label="Preview de cámara móvil"
       onPlaying={() => setMessage('')} onWaiting={() => setMessage('Esperando imagen de cámara…')} />
+    {children}
     {message ? <span role="status">{message}</span> : null}
     {allowListening ? <button type="button" className="refresh-button production-listen" aria-pressed={listening}
       onClick={() => {

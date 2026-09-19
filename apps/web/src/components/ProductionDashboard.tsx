@@ -97,7 +97,7 @@ export function ProductionDashboardView({
         <div className="production-detail-monitors">
           {monitoringActive ? <>
             <CourtScoreMonitor key={court.slug} courtSlug={court.slug} configuration={configuration} now={now} />
-            <CourtCameraMonitor mobileCamera={mobileCamera} source={session?.source.id ?? configuration?.sourceId} detailed />
+            <CourtCameraMonitor courtSlug={court.slug} mobileCamera={mobileCamera} source={session?.source.id ?? configuration?.sourceId} detailed />
             <CourtOverlayMonitor key={`overlay-${court.slug}`} courtSlug={court.slug} />
           </> : null}
           <ScorerAccess key={`scorer-${court.slug}`} courtSlug={court.slug} />
@@ -158,7 +158,7 @@ export function ProductionDashboardView({
           return <article key={item.slug} className="production-dashboard-court" aria-labelledby={`dashboard-${item.slug}`}>
             <header><div><span className="production-court-card__slug">{item.slug}</span><h2 id={`dashboard-${item.slug}`}>{item.name}</h2></div>
               <span className={`production-status ${stale ? 'warning' : status.tone}`}><Activity aria-hidden="true" />{stale ? 'Sin confirmar' : status.label}</span></header>
-            {monitoringActive ? <CourtCameraMonitor mobileCamera={ready?.mobileCameras.find(({ courtSlug }) => courtSlug === item.slug) ?? null}
+            {monitoringActive ? <CourtCameraMonitor courtSlug={item.slug} mobileCamera={ready?.mobileCameras.find(({ courtSlug }) => courtSlug === item.slug) ?? null}
               source={current?.source.id ?? config?.sourceId} /> : null}
             <div className="production-dashboard-court__body">
               {monitoringActive ? <CourtScoreMonitor key={item.slug} courtSlug={item.slug} configuration={config} now={now} /> : null}

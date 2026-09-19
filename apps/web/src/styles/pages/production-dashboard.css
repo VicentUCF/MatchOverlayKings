@@ -284,8 +284,8 @@
 .production-scorer-access svg,
 .production-output-monitor svg { width: 18px; height: 18px; flex-shrink: 0; }
 .production-camera-monitor { min-width: 0; background: var(--kpl-color-surface); }
-.production-camera-monitor .pilot-mobile-preview { margin: 0; border-radius: 0; aspect-ratio: 16 / 9; position: relative; }
-.production-camera-monitor .pilot-mobile-preview video { width: 100%; height: 100%; object-fit: contain; }
+.production-camera-monitor .pilot-mobile-preview { margin: 0; border: 0; border-radius: 0; width: 100%; min-height: 0; aspect-ratio: 16 / 9; position: relative; }
+.production-camera-monitor .pilot-mobile-preview video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
 .production-monitor-placeholder {
   aspect-ratio: 16 / 9;
   display: flex;
@@ -352,7 +352,7 @@
 .production-dashboard-court .production-monitor-placeholder { aspect-ratio: auto; height: 180px; }
 .production-dashboard-court .production-dashboard-court__body { padding: var(--kpl-space-3); }
 .production-dashboard-court .production-dashboard-match > strong { font-size: var(--kpl-font-size-200); }
-.production-dashboard-court .production-camera-monitor .pilot-mobile-preview { max-height: 230px; }
+
 .production-dashboard-court__actions > button, .production-dashboard-court__actions > a { display: flex; align-items: center; justify-content: center; gap: var(--kpl-space-2); }
 .production-dashboard-court .production-dashboard-court__actions { margin-top: var(--kpl-space-1); }
 .production-camera-monitor > .pilot-mobile-technical { padding: var(--kpl-space-3); }
@@ -373,6 +373,18 @@
 @media (width >= 1000px) {
   .production-monitor-incidents { display: flex; gap: var(--kpl-space-4); align-items: center; padding: var(--kpl-space-3); }
   .production-monitor-incidents h2 { font-size: var(--kpl-font-size-200); margin: 0; flex-shrink: 0; }
-  .production-dashboard-court .production-camera-monitor .pilot-mobile-preview { width: 100%; height: 170px; aspect-ratio: auto; max-height: none; min-height: 0; }
+
   .production-dashboard-court .production-monitor-placeholder { height: 170px; }
 }
+
+/* Match the encoder's 1920 × 1080 canvas, including its camera scaling. */
+.production-camera-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.production-camera-overlay iframe {
+  display: block;
+  width: 1920px;
+  height: 1080px;
+  border: 0;
+  background: transparent;
+  transform-origin: top left;
+}
+.production-camera-monitor .pilot-mobile-preview > span { z-index: 1; background: var(--kpl-color-surface); }

@@ -14,26 +14,45 @@ export function useMonitorClock() {
   return now;
 }
 
-export function CourtCameraMonitor({ mobileCamera, source, detailed = false }: {
+export function CourtCameraMonitor({ courtSlug, mobileCamera, source, detailed = false }: {
+  readonly courtSlug: string;
   readonly mobileCamera: PilotMobileCameraSession | null;
   readonly source: string | undefined;
   readonly detailed?: boolean;
 }) {
   const mobile = source === 'mobile:pilot';
-  return <section className="production-camera-monitor" aria-label="Señal de entrada de cámara">
-    <div className="production-monitor-label"><Camera aria-hidden="true" /><strong>Cámara · señal de entrada</strong>
+  return <section className="production-camera-monitor" aria-label="Previsualización de cámara con overlay">
+    <div className="production-monitor-label"><Camera aria-hidden="true" /><strong>Cámara + overlay</strong>
       <span>{mobile ? cameraLabel(mobileCamera) : source === 'synthetic' ? 'Señal de prueba' : 'Fuente local'}</span></div>
     {mobile && mobileCamera?.previewUrl && mobileCamera.state !== 'revoked'
-      ? <MobileCameraPreview key={mobileCamera.id} url={mobileCamera.previewUrl} allowListening={detailed} />
+      ? <MobileCameraPreview key={mobileCamera.id} url={mobileCamera.previewUrl} allowListening={detailed}>
+        <CameraOverlay key={courtSlug} courtSlug={courtSlug} />
+      </MobileCameraPreview>
       : <div className="production-monitor-placeholder"><Camera aria-hidden="true" />
         <strong>{mobile ? 'Sin vista previa de cámara' : 'Esta fuente no ofrece vista previa en vivo'}</strong>
         <p>{mobile ? 'Comprueba el enlace y la conexión del móvil.' : 'Revisa el programa de prueba antes de emitir y la salida en YouTube durante el directo.'}</p>
       </div>}
-    {detailed ? <p className="production-monitor-note">Entrada de cámara sin gráficos. La escucha solo afecta a este PC; no silencia la emisión.</p> : null}
+    {detailed ? <p className="production-monitor-note">Vista previa local con los gráficos de emisión. Disponible antes de iniciar YouTube. La escucha solo afecta a este PC; comprueba el vídeo y audio codificados con la prueba de emisión.</p> : null}
     {detailed && mobile && mobileCamera ? <details className="production-camera-diagnostics"><summary>Formato y conexión de cámara</summary>
       <MobileCameraTechnicalStatus mobileCamera={mobileCamera} /></details> : null}
     {mobileCamera?.error && mobile ? <p className="production-command-feedback warning" role="status">{mobileCamera.error}</p> : null}
   </section>;
+}
+
+function CameraOverlay({ courtSlug }: { readonly courtSlug: string }) {
+  const frame = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (!frame.current) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(entry?.contentRect.width ?? 0));
+    observer.observe(frame.current);
+    return () => observer.disconnect();
+  }, []);
+  return <div className="production-camera-overlay" ref={frame}>
+    <iframe src={`/overlay/${encodeURIComponent(courtSlug)}/scoreboard?preview=muted`}
+      title={`Overlay sobre cámara de ${courtSlug}`} tabIndex={-1}
+      style={{ transform: `scale(${width / 1920})` }} />
+  </div>;
 }
 
 function cameraLabel(camera: PilotMobileCameraSession | null): string {
@@ -99,7 +118,7 @@ export function CourtOverlayMonitor({ courtSlug }: { readonly courtSlug: string 
       <iframe src={`/overlay/${courtSlug}/scoreboard`} title={`Overlay en tiempo real de ${courtSlug}`} tabIndex={-1}
         style={{ transform: `scale(${width / 1920})` }} />
     </div>
-    <p className="production-monitor-note">Gráficos en vivo. La composición final con vídeo y audio se comprueba en YouTube.</p></> : null}
+    <p className="production-monitor-note">Gráficos en vivo, también superpuestos en la vista previa de cámara.</p></> : null}
   </details>;
 }
 
