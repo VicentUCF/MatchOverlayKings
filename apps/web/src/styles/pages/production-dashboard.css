@@ -268,3 +268,111 @@
     border-left: 0;
   }
 }
+
+/* Realization monitor: input, scoring and output remain distinct surfaces. */
+.production-monitor-label {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--kpl-space-2);
+  padding: var(--kpl-space-3);
+  font-size: var(--kpl-font-size-50);
+}
+.production-monitor-label > span { margin-inline-start: auto; color: var(--kpl-color-text-muted); }
+.production-monitor-label svg,
+.production-detail-navigation svg,
+.production-scorer-access svg,
+.production-output-monitor svg { width: 18px; height: 18px; flex-shrink: 0; }
+.production-camera-monitor { min-width: 0; background: var(--kpl-color-surface); }
+.production-camera-monitor .pilot-mobile-preview { margin: 0; border-radius: 0; aspect-ratio: 16 / 9; position: relative; }
+.production-camera-monitor .pilot-mobile-preview video { width: 100%; height: 100%; object-fit: contain; }
+.production-monitor-placeholder {
+  aspect-ratio: 16 / 9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--kpl-space-2);
+  padding: var(--kpl-space-4);
+  text-align: center;
+  border-block: 1px solid var(--kpl-color-border-subtle);
+  color: var(--kpl-color-text-muted);
+  background: var(--kpl-color-surface);
+}
+.production-monitor-placeholder p { margin: 0; max-width: 50ch; font-size: var(--kpl-font-size-50); }
+.production-monitor-placeholder > svg { width: 28px; height: 28px; }
+.production-monitor-note { margin: var(--kpl-space-2) 0; color: var(--kpl-color-text-muted); font-size: var(--kpl-font-size-50); line-height: 1.5; }
+.production-camera-monitor > .production-monitor-note,
+.production-overlay-monitor > .production-monitor-note { padding-inline: var(--kpl-space-3); }
+.production-score-monitor { min-width: 0; }
+.production-score-monitor .production-monitor-label { padding-inline: 0; }
+.production-score-monitor table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.production-score-monitor th, .production-score-monitor td { padding: var(--kpl-space-2); text-align: center; border-bottom: 1px solid var(--kpl-color-border-subtle); }
+.production-score-monitor th:first-child { text-align: start; overflow-wrap: anywhere; }
+.production-score-monitor thead { font-size: var(--kpl-font-size-50); color: var(--kpl-color-text-muted); }
+.production-score-monitor .production-score-points { font-weight: 800; font-size: var(--kpl-font-size-300); background: var(--kpl-color-surface-emphasis); }
+.production-score-serve { color: var(--kpl-color-text); font-size: 12px; }
+.production-monitor-incidents { padding: var(--kpl-space-4); margin-bottom: var(--kpl-space-4); border: 1px solid var(--kpl-color-border-subtle); background: var(--kpl-color-surface-emphasis); }
+.production-monitor-incidents h2 { margin: 0 0 var(--kpl-space-2); font-size: var(--kpl-font-size-300); }
+.production-monitor-incidents ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--kpl-space-2); }
+.production-monitor-incidents li { display: flex; align-items: center; gap: var(--kpl-space-3); }
+.production-monitor-incidents button { flex-shrink: 0; }
+.production-detail-navigation { display: flex; align-items: center; justify-content: space-between; gap: var(--kpl-space-3); margin-top: var(--kpl-space-4); }
+.production-detail-navigation label { display: flex; align-items: center; gap: var(--kpl-space-2); }
+.production-detail-navigation select { width: auto; }
+.production-detail-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); align-items: start; gap: var(--kpl-space-5); }
+.production-detail-monitors, .production-detail-controls { display: grid; gap: var(--kpl-space-4); min-width: 0; }
+.production-detail-monitors > section, .production-output-monitor { border: 1px solid var(--kpl-color-border-subtle); border-radius: var(--kpl-radius-xs); background: var(--kpl-color-surface-raised); overflow: hidden; }
+.production-detail-monitors > .production-score-monitor, .production-scorer-access, .production-output-monitor { padding: var(--kpl-space-4); }
+.production-output-monitor h2, .production-scorer-access h3 { margin: 0; font-size: var(--kpl-font-size-300); }
+.production-output-monitor p, .production-scorer-access p { line-height: 1.5; }
+.production-output-monitor a { display: flex; justify-content: center; gap: var(--kpl-space-2); text-decoration: none; }
+.production-detail-controls .production-pilot-thumbnail { display: none; }
+.production-detail-controls .production-pilot-session { display: block; }
+.production-detail-controls .production-pilot-actions { order: -1; margin: 0; padding: var(--kpl-space-2); background: var(--kpl-color-surface-raised); border: 1px solid var(--kpl-color-border-subtle); }
+.production-detail-controls .production-operation-history { width: 100%; margin: 0; overflow-wrap: anywhere; }
+.production-detail-controls .production-dashboard-health dd { overflow-wrap: anywhere; }
+.production-listen { position: absolute; left: var(--kpl-space-2); bottom: var(--kpl-space-2); z-index: 1; max-width: calc(100% - 16px); }
+.production-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.production-dashboard button:focus-visible, .production-dashboard a:focus-visible, .production-dashboard select:focus-visible { outline: 2px solid var(--kpl-color-focus); outline-offset: 3px; }
+.production-dashboard .production-command-feedback, .production-dashboard .production-page-feedback { overflow-wrap: anywhere; }
+@media (width <= 960px) {
+  .production-detail-layout { grid-template-columns: 1fr; }
+}
+@media (width <= 680px) {
+  .production-detail-navigation, .production-detail-navigation label { align-items: stretch; flex-direction: column; }
+  .production-monitor-incidents li { flex-direction: column; align-items: start; }
+  .production-dashboard-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .production-dashboard-summary div { padding: var(--kpl-space-2); min-width: 0; overflow-wrap: anywhere; }
+  .production-dashboard-summary div + div { border-top: 0; border-left: 1px solid var(--kpl-color-border-subtle); }
+  .production-detail-controls .production-dashboard-health { grid-template-columns: 1fr; }
+}
+.production-dashboard-court > header { padding: var(--kpl-space-3); }
+.production-dashboard-court .production-monitor-label { padding-block: var(--kpl-space-2); }
+.production-dashboard-court .production-monitor-placeholder { aspect-ratio: auto; height: 180px; }
+.production-dashboard-court .production-dashboard-court__body { padding: var(--kpl-space-3); }
+.production-dashboard-court .production-dashboard-match > strong { font-size: var(--kpl-font-size-200); }
+.production-dashboard-court .production-camera-monitor .pilot-mobile-preview { max-height: 230px; }
+.production-dashboard-court__actions > button, .production-dashboard-court__actions > a { display: flex; align-items: center; justify-content: center; gap: var(--kpl-space-2); }
+.production-dashboard-court .production-dashboard-court__actions { margin-top: var(--kpl-space-1); }
+.production-camera-monitor > .pilot-mobile-technical { padding: var(--kpl-space-3); }
+.production-scorer-access label { display: grid; gap: var(--kpl-space-2); margin-block: var(--kpl-space-3); }
+.production-dashboard > .production-dashboard-heading { margin-block: var(--kpl-space-4); }
+.production-detail-monitors > details { border: 1px solid var(--kpl-color-border-subtle); border-radius: var(--kpl-radius-xs); background: var(--kpl-color-surface-raised); overflow: hidden; }
+.production-detail-monitors > details > summary { padding: var(--kpl-space-3); cursor: pointer; font-weight: 700; }
+.production-detail-monitors > .production-scorer-access { padding: 0 var(--kpl-space-3); }
+.production-detail-monitors > .production-scorer-access > summary { padding-inline: 0; }
+.production-camera-diagnostics { padding: var(--kpl-space-3); }
+.production-camera-diagnostics summary { cursor: pointer; margin-bottom: var(--kpl-space-2); }
+.production-detail-controls .production-pilot-control__summary, .production-detail-controls .production-pilot-session__copy > h3 { display: none; }
+.production-dashboard-court .production-dashboard-match { display: flex; flex-wrap: wrap; align-items: center; gap: var(--kpl-space-2); }
+.production-dashboard-court .production-score-monitor th, .production-dashboard-court .production-score-monitor td { padding-block: var(--kpl-space-1); }
+.production-dashboard-court .production-score-monitor .production-monitor-note { font-size: 11px; margin-block: var(--kpl-space-1); }
+.production-dashboard-court .production-dashboard-health { margin: 0; }
+.production-dashboard-court .production-dashboard-court__body { gap: var(--kpl-space-1); }
+@media (width >= 1000px) {
+  .production-monitor-incidents { display: flex; gap: var(--kpl-space-4); align-items: center; padding: var(--kpl-space-3); }
+  .production-monitor-incidents h2 { font-size: var(--kpl-font-size-200); margin: 0; flex-shrink: 0; }
+  .production-dashboard-court .production-camera-monitor .pilot-mobile-preview { width: 100%; height: 170px; aspect-ratio: auto; max-height: none; min-height: 0; }
+  .production-dashboard-court .production-monitor-placeholder { height: 170px; }
+}

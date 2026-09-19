@@ -72,17 +72,27 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
   readonly inventoryStale?: boolean;
 }) {
   const [activeArea, setActiveArea] = useState<AdminArea>(initialArea);
+  const [selectedCourt, setSelectedCourt] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('pista'));
 
   useEffect(() => {
-    const syncFromHistory = () => setActiveArea(areaFromPath(window.location.pathname));
+    const syncFromHistory = () => {
+      setActiveArea(areaFromPath(window.location.pathname));
+      setSelectedCourt(new URLSearchParams(window.location.search).get('pista'));
+    };
     window.addEventListener('popstate', syncFromHistory);
     return () => window.removeEventListener('popstate', syncFromHistory);
   }, []);
 
   const openArea = (area: AdminArea) => {
-    if (area === activeArea) return;
+    if (area === activeArea && !(area === 'dashboard' && selectedCourt)) return;
     window.history.pushState({}, '', pathForArea(area));
     setActiveArea(area);
+    if (area === 'dashboard') setSelectedCourt(null);
+  };
+  const selectCourt = (slug: string | null) => {
+    window.history.pushState({}, '', slug ? `/admin?pista=${encodeURIComponent(slug)}` : '/admin');
+    setSelectedCourt(slug);
   };
 
   return <main className="home-page production-overview-page production-tabbed-workspace">
@@ -92,7 +102,8 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
     {inventoryStale ? <InventoryStaleWarning /> : null}
     <section id="production-panel-dashboard" className="production-workspace-panel" role="tabpanel"
       aria-labelledby="production-tab-dashboard" hidden={activeArea !== 'dashboard'} tabIndex={0}>
-      <ProductionDashboardView state={pilot.state} refresh={pilot.refresh} localAdminUrl={pilot.localAdminUrl} embedded
+      <ProductionDashboardView state={pilot.state} pilot={pilot} refresh={pilot.refresh} localAdminUrl={pilot.localAdminUrl} embedded
+        selectedCourt={selectedCourt} onSelectCourt={selectCourt} monitoringActive={activeArea === 'dashboard'}
         courts={courts} onOpenConfiguration={() => openArea('emissions')} onOpenControls={() => openArea('controls')} />
     </section>
     <section id="production-panel-emissions" className="production-workspace-panel" role="tabpanel"
@@ -102,7 +113,8 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
     </section>
     <section id="production-panel-controls" className="production-workspace-panel" role="tabpanel"
       aria-labelledby="production-tab-controls" hidden={activeArea !== 'controls'} tabIndex={0}>
-      <ProductionPilotWorkspaceView pilot={pilot} initialView="controls" controlsOnly embedded courts={courts} />
+      <ProductionPilotWorkspaceView pilot={pilot} initialView="controls" controlsOnly embedded courts={courts}
+        monitoringActive={activeArea === 'controls'} />
     </section>
   </main>;
 }

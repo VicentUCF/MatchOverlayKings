@@ -60,12 +60,12 @@ describe('unified production dashboard', () => {
     const html = renderToStaticMarkup(createElement(ProductionDashboardView, { state, courts }));
 
     expect((html.match(/class="production-dashboard-court"/g) ?? [])).toHaveLength(3);
-    expect((html.match(/<iframe/g) ?? [])).toHaveLength(3);
-    expect(html).toContain('/overlay/pista-1/scoreboard');
-    expect(html).toContain('/control/pista-1');
+    expect(html).not.toContain('<iframe');
+    expect((html.match(/Marcador del anotador, solo lectura/g) ?? [])).toHaveLength(3);
+    expect(html).toContain('data-monitor-court="pista-1"');
     expect(html).toContain('Kings');
-    expect(html).toContain('Mandos de emisión');
-    expect(html).toContain('Control visual');
+    expect(html).toContain('Abrir pista');
+    expect(html).toContain('señal de entrada');
     expect(html).toContain('Emisión sin configurar');
   });
 
@@ -79,8 +79,8 @@ describe('unified production dashboard', () => {
     expect(html).toContain('Agente desconectado');
     expect(html).toContain('Abrir panel local');
     expect(html).toContain('http://127.0.0.1:4310/admin');
-    expect(html).toContain('/control/pista-1');
-    expect((html.match(/Control visual/g) ?? [])).toHaveLength(3);
+    expect(html).toContain('Datos de emisión sin confirmar');
+    expect((html.match(/Marcador del anotador, solo lectura/g) ?? [])).toHaveLength(3);
   });
 
   it('offers the YouTube live stream from Inicio once broadcasting has started', () => {
@@ -117,6 +117,39 @@ describe('unified production dashboard', () => {
     expect((html.match(/class="production-dashboard-court"/g) ?? [])).toHaveLength(4);
     expect(html).toContain('Pista central');
     expect(html).toContain('Producción desactivada');
-    expect(html).toContain('Configuradas</dt><dd>1/3');
+    expect(html).toContain('Emitiendo</dt><dd>0/3');
+  });
+
+  it('does not count starting or stale sessions as confirmed live output', () => {
+    const starting = renderToStaticMarkup(createElement(ProductionDashboardView, {
+      state: { ...state, sessions: [{ ...liveYoutubeSession, status: 'starting' }] }, courts,
+    }));
+    expect(starting).toContain('Emitiendo</dt><dd>0/3');
+    const stale = renderToStaticMarkup(createElement(ProductionDashboardView, {
+      state: { ...state, error: 'Sin conexión', sessions: [liveYoutubeSession] }, courts,
+    }));
+    expect(stale).toContain('Emitiendo</dt><dd>—');
+    expect(stale).not.toContain('production-status success');
+  });
+
+  it('surfaces signal issues on the global dashboard', () => {
+    const html = renderToStaticMarkup(createElement(ProductionDashboardView, {
+      state: { ...state, sessions: [{ ...liveYoutubeSession, encodingWarning: 'La GPU falló; emisión recuperada con CPU.' }] }, courts,
+    }));
+    expect(html).toContain('Requieren atención');
+    expect(html).toContain('Emitiendo · Revisar señal');
+    expect(html).toContain('Con incidencias</dt><dd>1');
+  });
+
+  it('keeps the individual score monitor available when the streaming runtime is offline', () => {
+    const html = renderToStaticMarkup(createElement(ProductionDashboardView, {
+      state: { kind: 'error', message: 'Sin conexión' }, courts, selectedCourt: 'pista-2',
+    }));
+    expect(html).toContain('Vista individual');
+    expect(html).toContain('overlay en directo');
+    expect(html).toContain('/control/pista-2');
+    expect(html).toContain('Marcador del anotador, solo lectura');
+    expect(html).toContain('Datos de emisión sin confirmar');
+    expect(html).not.toContain('data-monitor-court="pista-1"');
   });
 });

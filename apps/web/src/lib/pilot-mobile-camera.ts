@@ -381,12 +381,14 @@ export class WhepPreview {
   public constructor(
     private readonly url: string,
     private readonly onStream: (stream: MediaStream) => void,
+    private readonly onConnection?: (state: RTCPeerConnectionState) => void,
   ) {}
 
   public async connect(signal: AbortSignal): Promise<void> {
     await this.close();
     const peer = new RTCPeerConnection();
     this.peerConnection = peer;
+    peer.addEventListener('connectionstatechange', () => this.onConnection?.(peer.connectionState));
     peer.addTransceiver('video', { direction: 'recvonly' });
     peer.addTransceiver('audio', { direction: 'recvonly' });
     peer.addEventListener('track', (event) => {
@@ -409,11 +411,17 @@ export class WhepPreview {
   }
 
   public async close(): Promise<void> {
-    const resource = this.resourceUrl;
-    this.resourceUrl = null;
-    if (resource !== null) await localFetch(resource, { method: 'DELETE' }).catch(() => undefined);
     this.peerConnection?.close();
     this.peerConnection = null;
+    const resource = this.resourceUrl;
+    this.resourceUrl = null;
+    if (resource !== null) {
+      const controller = new AbortController();
+      const timer = globalThis.setTimeout(() => controller.abort(), 2_000);
+      try { await localFetch(resource, { method: 'DELETE', signal: controller.signal }); }
+      catch { /* The local decoder is already closed, even if the camera service is offline. */ }
+      finally { globalThis.clearTimeout(timer); }
+    }
   }
 }
 

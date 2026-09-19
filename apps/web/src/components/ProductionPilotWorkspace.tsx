@@ -31,6 +31,7 @@ const DEFAULT_BROADCAST_DESCRIPTION = 'Sigue en directo la jornada de Kings Pade
 type PilotWorkspaceView = 'configuration' | 'controls';
 
 type ProductionPilotWorkspaceProps = {
+  readonly monitoringActive?: boolean;
   readonly courts: readonly ProductionCourtSlot[];
   readonly inventoryStale?: boolean;
   readonly initialView?: PilotWorkspaceView;
@@ -52,7 +53,7 @@ export function ProductionPilotWorkspace(props: ProductionPilotWorkspaceProps) {
 
 export function ProductionPilotWorkspaceView({
   pilot, initialView = 'configuration', controlsOnly = false, navigationRole = 'admin', onSignOut,
-  onOpenControls = () => window.location.assign('/mandos'), embedded = false, courts, inventoryStale = false,
+  onOpenControls = () => window.location.assign('/mandos'), embedded = false, courts, inventoryStale = false, monitoringActive = true,
 }: ProductionPilotWorkspaceViewProps) {
   const view: PilotWorkspaceView = controlsOnly ? 'controls' : initialView;
   const [elapsedByCourt, setElapsedByCourt] = useState<Partial<Record<PilotCourtSlug, number>>>({});
@@ -135,6 +136,7 @@ export function ProductionPilotWorkspaceView({
     </> : <>
       <section className="production-pilot-courts production-pilot-courts--controls" aria-label="Mandos por pista">
         {courts.map((court) => <PilotControlPanel key={court.slug} court={court}
+          showMobileMonitor={monitoringActive}
           configuration={configurationFor(ready.configurations, court.slug)}
           session={latestSession(ready.sessions, court.slug)} pending={ready.pendingCourts.includes(court.slug)}
           error={ready.courtErrors[court.slug] ?? null} onPrepare={(input) => void pilot.prepare(input)}
@@ -304,9 +306,13 @@ function PilotConfigurationPanel({
   </article>;
 }
 
-function PilotControlPanel({
+export function PilotControlPanel({
   court, configuration, session, pending, error, mobileCamera, onPrepare, onStart, onRecover, onStop, onElapsed, preflight,
+  showMobileMonitor = true, showVisualLink = true, idPrefix = 'pilot-control',
 }: {
+  readonly showMobileMonitor?: boolean;
+  readonly showVisualLink?: boolean;
+  readonly idPrefix?: string;
   readonly court: ProductionCourtSlot;
   readonly configuration: PilotConfiguration | null;
   readonly session: PilotSession | null;
@@ -363,9 +369,9 @@ function PilotControlPanel({
     onRecover(session);
   };
 
-  return <article className="production-pilot-court production-pilot-control" aria-labelledby={`pilot-control-title-${court.slug}`}>
+  return <article className="production-pilot-court production-pilot-control" aria-labelledby={`${idPrefix}-title-${court.slug}`}>
     <header className="production-pilot-court__header">
-      <div><span className="production-court-card__slug">{court.slug}</span><h2 id={`pilot-control-title-${court.slug}`}>{court.name}</h2></div>
+      <div><span className="production-court-card__slug">{court.slug}</span><h2 id={`${idPrefix}-title-${court.slug}`}>{court.name}</h2></div>
       <CourtStatus session={session} enabled={court.productionEnabled} />
     </header>
     <div className="production-pilot-control__body">
@@ -377,7 +383,7 @@ function PilotControlPanel({
           <h3>{configuration.homeTeam} vs {configuration.awayTeam}</h3>
           <p>Jornada {configuration.matchdayNumber} · {configuration.sourceId === 'synthetic' ? 'Señal de prueba' : configuration.sourceId}</p>
           <p>{privacyLabel(configuration.privacyStatus)} · <time dateTime={configuration.scheduledAt}>{formatDate(configuration.scheduledAt)}</time></p></div>
-        {configuration.sourceId === PILOT_MOBILE_SOURCE_ID && mobileCamera !== null
+        {showMobileMonitor && configuration.sourceId === PILOT_MOBILE_SOURCE_ID && mobileCamera !== null
           ? <PilotMobileCameraMonitor mobileCamera={mobileCamera} /> : null}
         {session !== null && session.status !== 'stopped'
           ? <PilotSessionCard session={session} pending={pending} elapsedSeconds={elapsedSeconds}
@@ -389,9 +395,9 @@ function PilotControlPanel({
             </button></div>}
       </>}
       {error ? <p className="production-command-feedback danger" role="alert">{error}</p> : null}
-      <a className="refresh-button production-pilot-visual-link" href={`/control/${court.slug}`}>
+      {showVisualLink ? <a className="refresh-button production-pilot-visual-link" href={`/control/${court.slug}`}>
         <MonitorPlay aria-hidden="true" />Abrir control visual
-      </a>
+      </a> : null}
     </div>
   </article>;
 }
@@ -523,8 +529,8 @@ function ValidationDecision({ readiness, sessions, courts, elapsedByCourt }: {
   readonly courts: readonly ProductionCourtSlot[];
   readonly elapsedByCourt: Readonly<Partial<Record<PilotCourtSlug, number>>>;
 }) {
-  const prepared = sessions.filter(Boolean).length;
-  const stable = sessions.filter((session) => session?.encoder && session.encoder.frame > 0 && session.encoder.speed >= 0.95).length;
+  const prepared = sessions.filter((session) => session && ['prepared', 'starting', 'live', 'reconnecting', 'stopping'].includes(session.status)).length;
+  const stable = sessions.filter((session) => session?.status === 'live' && session.encoder && session.encoder.frame > 0 && session.encoder.speed >= 0.95).length;
   const youtubeHealthy = sessions.filter((session) => {
     const health = session?.youtubeStreamStatus?.toLowerCase() ?? '';
     return session?.mode === 'youtube' && session.status === 'live' && health.includes('active') && health.includes('good');
@@ -534,7 +540,8 @@ function ValidationDecision({ readiness, sessions, courts, elapsedByCourt }: {
     return elapsed !== undefined && elapsed <= 120;
   }).length;
   const total = courts.length;
-  const blocked = sessions.filter((session) => !session || (session.status === 'prepared' && !preflightCanStart(session))).length;
+  const blocked = sessions.filter((session) => !session || ['stopped', 'failed', 'interrupted'].includes(session.status)
+    || (session.status === 'prepared' && !preflightCanStart(session))).length;
   const decision = blocked > 0 ? 'Hay pistas pendientes de comprobar'
     : total > 0 && youtubeHealthy === total ? 'YouTube recibe señal de todas las pistas'
     : total > 0 && stable === total ? 'Los programas locales producen señal; falta comprobar YouTube'

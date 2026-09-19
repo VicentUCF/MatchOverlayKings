@@ -15,6 +15,7 @@ import { createProductionPilotAdapter, type ProductionPilotAdapter } from '../li
 
 export type ReadyPilotState = {
   readonly kind: 'ready';
+  readonly confirmedAt?: number;
   readonly readiness: PilotReadiness;
   readonly configurations: readonly PilotConfiguration[];
   readonly teams: readonly Team[];
@@ -65,13 +66,13 @@ export function useProductionPilot(adapter: ProductionPilotAdapter = defaultAdap
       || configurations.kind !== 'success' || teams.kind !== 'success' || mobileCameras.kind !== 'success') return;
     setState((current): PilotState => current.kind === 'ready'
       ? {
-        ...current, readiness: readiness.value, sessions: sessions.value,
+        ...current, confirmedAt: Date.now(), readiness: readiness.value, sessions: sessions.value,
         configurations: configurations.value, teams: teams.value, mobileCameras: mobileCameras.value,
         mobileConnectUrls: activeMobileLinks(current.mobileConnectUrls, mobileCameras.value),
         refreshing: false, error: null,
       }
       : {
-        kind: 'ready', readiness: readiness.value, sessions: sessions.value,
+        kind: 'ready', confirmedAt: Date.now(), readiness: readiness.value, sessions: sessions.value,
         configurations: configurations.value, teams: teams.value, refreshing: false,
         mobileCameras: mobileCameras.value, mobileConnectUrls: {},
         pendingCourts: [], courtErrors: {}, error: null,

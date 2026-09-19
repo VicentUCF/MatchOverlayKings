@@ -7,7 +7,7 @@ const actions = { configure: 'Guardar configuración', prepare: 'Preparar emisi�
 const statuses = { pending: 'Pendiente', completed: 'Solicitud completada', failed: 'Fallida', interrupted: 'Interrumpida' };
 const severities = { info: 'Información', warning: 'Advertencia', critical: 'Crítica' };
 
-export function PilotOperationHistory() {
+export function PilotOperationHistory({ initialCourt = '' }: { readonly initialCourt?: string } = {}) {
   const courtSelectId = useId();
   const [open, setOpen] = useState(false);
   const [operations, setOperations] = useState<readonly PilotOperation[]>([]);
@@ -15,7 +15,7 @@ export function PilotOperationHistory() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
-  const [court, setCourt] = useState('');
+  const [court, setCourt] = useState(initialCourt);
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -35,7 +35,7 @@ export function PilotOperationHistory() {
     <label htmlFor={courtSelectId}>Pista</label>{' '}
     <select id={courtSelectId} value={court} onChange={(event) => setCourt(event.target.value)}>
       <option value="">Todas las pistas</option>
-      {[...new Set([...operations, ...incidents].map(({ courtSlug }) => courtSlug))].sort().map((slug) => <option key={slug}>{slug}</option>)}
+      {[...new Set([...(initialCourt ? [initialCourt] : []), ...[...operations, ...incidents].map(({ courtSlug }) => courtSlug)])].sort().map((slug) => <option key={slug}>{slug}</option>)}
     </select>{' '}
     <button type="button" className="refresh-button" disabled={loading} onClick={() => setRevision((value) => value + 1)}>Actualizar historial</button>
     {loading ? <p role="status">Cargando historial…</p> : null}

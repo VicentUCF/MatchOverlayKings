@@ -134,25 +134,38 @@ export function PilotMobileCameraMonitor({ mobileCamera }: { readonly mobileCame
   </section>;
 }
 
-function MobileCameraPreview({ url }: { readonly url: string }) {
+export function MobileCameraPreview({ url, allowListening = false }: { readonly url: string; readonly allowListening?: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [message, setMessage] = useState('Conectando preview…');
+  const [listening, setListening] = useState(false);
 
   useEffect(() => {
+    setMessage('Conectando preview…');
+    setListening(false);
     const controller = new AbortController();
     let preview: WhepPreview | null = null;
     let retry: number | null = null;
+    let attempt = 0;
     const connect = async () => {
-      preview = new WhepPreview(url, (stream) => {
+      const currentAttempt = ++attempt;
+      await preview?.close();
+      if (controller.signal.aborted || attempt !== currentAttempt) return;
+      const nextPreview = new WhepPreview(url, (stream) => {
+        if (controller.signal.aborted || attempt !== currentAttempt) return;
         if (videoRef.current !== null) videoRef.current.srcObject = stream;
-        setMessage('');
+      }, (state) => {
+        if (controller.signal.aborted || attempt !== currentAttempt || !['failed', 'disconnected'].includes(state) || retry !== null) return;
+        setMessage('Reconectando vista previa…');
+        retry = window.setTimeout(() => { retry = null; void connect(); }, 2_000);
       });
+      preview = nextPreview;
       try {
-        await preview.connect(controller.signal);
+        await nextPreview.connect(controller.signal);
       } catch {
-        if (controller.signal.aborted) return;
+        await nextPreview.close();
+        if (controller.signal.aborted || attempt !== currentAttempt) return;
         setMessage('Esperando señal móvil…');
-        retry = window.setTimeout(() => void connect(), 2_000);
+        if (retry === null) retry = window.setTimeout(() => { retry = null; void connect(); }, 2_000);
       }
     };
     void connect();
@@ -160,16 +173,27 @@ function MobileCameraPreview({ url }: { readonly url: string }) {
       controller.abort();
       if (retry !== null) window.clearTimeout(retry);
       void preview?.close();
+      if (videoRef.current) videoRef.current.srcObject = null;
     };
   }, [url]);
 
   return <div className="pilot-mobile-preview">
-    <video ref={videoRef} autoPlay muted playsInline aria-label="Preview de cámara móvil" />
+    <video ref={videoRef} autoPlay muted={!listening} playsInline aria-label="Preview de cámara móvil"
+      onPlaying={() => setMessage('')} onWaiting={() => setMessage('Esperando imagen de cámara…')} />
     {message ? <span role="status">{message}</span> : null}
+    {allowListening ? <button type="button" className="refresh-button production-listen" aria-pressed={listening}
+      onClick={() => {
+        const next = !listening;
+        setListening(next);
+        if (videoRef.current) {
+          videoRef.current.muted = !next;
+          void videoRef.current.play().catch(() => setListening(false));
+        }
+      }}>{listening ? 'Silenciar escucha en este PC' : 'Escuchar cámara en este PC'}</button> : null}
   </div>;
 }
 
-function MobileCameraTechnicalStatus({ mobileCamera }: { readonly mobileCamera: PilotMobileCameraSession }) {
+export function MobileCameraTechnicalStatus({ mobileCamera }: { readonly mobileCamera: PilotMobileCameraSession }) {
   const applied = mobileCamera.applied;
   const metrics = mobileCamera.metrics;
   return <dl className="pilot-mobile-technical">
