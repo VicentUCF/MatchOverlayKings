@@ -67,7 +67,8 @@ type ControlPhase = 'setup' | 'score';
 type MobilePanel = 'cards' | 'data' | 'ads' | 'edit' | 'menu';
 
 export function ControlPage({ eventId }: { eventId: string }) {
-  const match = useMatchSocket(eventId, 'control', '');
+  const controlToken = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
+  const match = useMatchSocket(eventId, 'control', controlToken);
   const state = match.state;
   const activeSet = useMemo(
     () => state?.sets.find((set) => set.status === 'active') ?? state?.sets.at(-1) ?? null,
@@ -270,7 +271,8 @@ export function ControlPage({ eventId }: { eventId: string }) {
       <h2>Evento</h2>
       <label>
         <span>Pista</span>
-        <select value={eventId} onChange={(event) => window.location.assign(`/control/${event.target.value}`)}>
+        <select value={eventId} disabled={Boolean(controlToken)} onChange={(event) => window.location.assign(`/control/${event.target.value}`)}>
+          {controlToken ? <option value={eventId}>{state?.courtName ?? eventId}</option> : null}
           {match.events.map((event) => (
             <option key={event.id} value={event.id}>
               {event.courtName}

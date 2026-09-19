@@ -123,3 +123,17 @@ internos para ambos roles y permisos por defecto de futuras funciones.
 El runtime local incluye Android, YouTube y la operación de emisiones; Supabase conserva el
 inventario, acceso, identidad de partido y marcador autoritativos. No copies secretos, tokens ni
 valores `local://` con material sensible a migraciones, configuracion de Vite o registros.
+
+## Acceso directo del anotador
+
+En «Enlace y acceso del anotador», generar un enlace crea una URL
+`/control/pista-1#token=…` que permite leer y controlar exclusivamente esa pista
+sin iniciar sesión. Generar otro enlace revoca el anterior. El token no caduca
+por tiempo; se guarda únicamente su digest en una tabla sin acceso de clientes.
+La RPC de generación exige membresía del club. La RPC del enlace limita los
+comandos al marcador y sus gráficos; no permite operar emisiones ni administrar
+el club. Los accesos con sesión existentes siguen funcionando.
+
+Aplicar `20260919120000_visual_control_links.sql` antes de publicar el frontend.
+`tests/visual_control_links.sql` comprueba acceso anónimo por token, aislamiento
+entre pistas, revocación, comandos, idempotencia y ausencia de permisos residuales.

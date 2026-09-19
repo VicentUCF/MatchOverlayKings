@@ -51,7 +51,7 @@ export interface MatchSocketState {
   refreshEvents: () => Promise<void>;
 }
 
-export function useMatchSocket(eventId: string, role: ClientRole, pin: string): MatchSocketState {
+export function useMatchSocket(eventId: string, role: ClientRole, token: string): MatchSocketState {
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [confirmedAt, setConfirmedAt] = useState<number | null>(null);
   const [state, setState] = useState<MatchState | null>(null);
@@ -60,7 +60,15 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const stateRef = useRef<MatchState | null>(null);
-  void pin;
+  const controlToken = role === 'control' ? token : '';
+  const loadState = useCallback(async () => {
+    if (!controlToken) return fetchMatchState(eventId);
+    const { data, error } = await supabase.rpc('visual_control_command', {
+      p_court_slug: eventId, p_token: controlToken, p_action: 'state',
+    });
+    if (error) throw new Error(error.message);
+    return data as MatchState | null;
+  }, [controlToken, eventId]);
 
   const acceptState = useCallback((nextState: MatchState | null) => {
     const current = stateRef.current;
@@ -73,9 +81,9 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
   }, []);
 
   const refreshEvents = useCallback(async () => {
-    const nextEvents = await fetchEventSummaries({ liveOnly: role !== 'control' });
+    const nextEvents = controlToken ? [] : await fetchEventSummaries({ liveOnly: role !== 'control' });
     setEvents(nextEvents);
-  }, [role]);
+  }, [controlToken, role]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,8 +92,8 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
       try {
         const [teamsPayload, eventsPayload, statePayload] = await Promise.all([
           fetchTeams(),
-          fetchEventSummaries({ liveOnly: role !== 'control' }),
-          fetchMatchState(eventId),
+          controlToken ? Promise.resolve([]) : fetchEventSummaries({ liveOnly: role !== 'control' }),
+          loadState(),
         ]);
 
         if (!cancelled) {
@@ -108,9 +116,10 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
     return () => {
       cancelled = true;
     };
-  }, [acceptState, eventId, role]);
+  }, [acceptState, controlToken, eventId, loadState, role]);
 
   useEffect(() => {
+    if (controlToken) return;
     setConnectionState('connecting');
     let unsubscribe: (() => void) | null = null;
 
@@ -132,17 +141,17 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
     return () => {
       unsubscribe?.();
     };
-  }, [acceptState, eventId, role]);
+  }, [acceptState, controlToken, eventId, role]);
 
   useEffect(() => {
-    if (role === 'control') {
+    if (role === 'control' && !controlToken) {
       return undefined;
     }
 
     let cancelled = false;
     const refreshPublicState = async () => {
       try {
-        const nextState = await fetchMatchState(eventId);
+        const nextState = await loadState();
 
         if (cancelled) {
           return;
@@ -150,7 +159,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
 
         if (!acceptState(nextState)) return;
         setConnectionState('connected');
-        setError(null);
+        if (role !== 'control') setError(null);
       } catch (refreshError) {
         if (!cancelled) {
           setError(errorMessage(refreshError));
@@ -166,7 +175,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [acceptState, eventId, role]);
+  }, [acceptState, controlToken, loadState, role]);
 
   const send = useCallback(
     async <TEvent extends RpcEventName>(
@@ -191,7 +200,9 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
           commandId: createCommandId(),
         };
         const { rpcName, params } = toRpcCall(event, commandPayload);
-        const { data, error: rpcError } = await supabase.rpc(rpcName, params);
+        const { data, error: rpcError } = await (controlToken
+          ? supabase.rpc('visual_control_command', { p_court_slug: eventId, p_token: controlToken, p_action: rpcName, p_params: params })
+          : supabase.rpc(rpcName, params));
 
         if (rpcError) {
           setError(rpcError.message);
@@ -209,7 +220,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, pin: string): 
         setPending(false);
       }
     },
-    [acceptState, eventId, refreshEvents],
+    [acceptState, controlToken, eventId, refreshEvents],
   );
 
   return useMemo(

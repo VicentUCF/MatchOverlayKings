@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, Copy, ExternalLink, MonitorPlay } from 'lucide-react';
 import { formatPoint, type MatchState, type Team } from '@kpl/shared';
 import type { PilotConfiguration, PilotMobileCameraSession, PilotSession } from '@kpl/production-contracts';
+import { supabase } from '../lib/supabase.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
 import { MobileCameraPreview, MobileCameraTechnicalStatus } from './PilotMobileCameraPanel.js';
 
@@ -124,24 +125,39 @@ export function CourtOverlayMonitor({ courtSlug }: { readonly courtSlug: string 
 
 export function ScorerAccess({ courtSlug }: { readonly courtSlug: string }) {
   const [copied, setCopied] = useState<'idle' | 'success' | 'error'>('idle');
-  const href = `/control/${courtSlug}`;
-  const [url, setUrl] = useState(`https://live.kingspadelleague.es${href}`);
-  useEffect(() => {
-    // A localhost link cannot be opened from the scorer's phone.
-    const origin = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)
-      ? 'https://live.kingspadelleague.es' : window.location.origin;
-    setUrl(new URL(href, origin).href);
-  }, [href]);
+  const [url, setUrl] = useState('');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setUrl(''); setCopied('idle'); setError(null); }, [courtSlug]);
+  const generate = async () => {
+    setPending(true);
+    setError(null);
+    setCopied('idle');
+    try {
+      const { data, error: rpcError } = await supabase.rpc('create_visual_control_link', { p_court_slug: courtSlug });
+      if (rpcError) throw new Error(rpcError.message);
+      if (typeof data !== 'string' || !/^[a-f0-9]{64}$/.test(data)) throw new Error('No se pudo generar el enlace.');
+      const origin = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)
+        ? 'https://live.kingspadelleague.es' : window.location.origin;
+      setUrl(`${origin}/control/${courtSlug}#token=${data}`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo generar el enlace.');
+    } finally { setPending(false); }
+  };
   const copy = async () => {
     try { await navigator.clipboard.writeText(url); setCopied('success'); }
     catch { setCopied('error'); }
   };
   return <details className="production-scorer-access">
     <summary>Enlace y acceso del anotador</summary>
-    <p>El marcador lo gestiona otra persona desde su dispositivo. Para usar el control necesita una sesión con permisos.</p>
-    <label>Enlace para esta pista<input readOnly value={url} onFocus={(event) => event.currentTarget.select()} /></label>
-    <div className="production-dashboard-actions"><button type="button" className="refresh-button" onClick={() => void copy()}><Copy aria-hidden="true" />Copiar enlace para anotador</button>
-      <a className="refresh-button" href={href} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />Abrir control del anotador</a></div>
+    <p>El enlace permite controlar esta pista directamente, sin iniciar sesión. Compártelo solo con el anotador. Generar otro invalida el anterior.</p>
+    <button type="button" className="refresh-button" disabled={pending} onClick={() => void generate()}>
+      {pending ? 'Generando…' : url ? 'Generar nuevo enlace' : 'Generar enlace de acceso directo'}
+    </button>
+    {url ? <><label>Enlace para esta pista<input readOnly value={url} onFocus={(event) => event.currentTarget.select()} /></label>
+      <div className="production-dashboard-actions"><button type="button" className="refresh-button" disabled={pending} onClick={() => void copy()}><Copy aria-hidden="true" />Copiar enlace para anotador</button>
+        <a className="refresh-button" href={url} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />Abrir control del anotador</a></div></> : null}
+    {error ? <p role="alert">{error}</p> : null}
     <p role="status">{copied === 'success' ? 'Enlace copiado. Entrégalo al anotador de esta pista.'
       : copied === 'error' ? 'No se pudo copiar. Selecciona el enlace y cópialo manualmente.' : 'El estado del marcador confirma los datos, no la presencia de una persona.'}</p>
   </details>;

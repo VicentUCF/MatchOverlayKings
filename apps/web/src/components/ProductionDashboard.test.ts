@@ -172,7 +172,8 @@ describe('unified production dashboard', () => {
     }));
     expect(html).toContain('Vista individual');
     expect(html).toContain('overlay en directo');
-    expect(html).toContain('/control/pista-2');
+    expect(html).toContain('Generar enlace de acceso directo');
+    expect(html).toContain('sin iniciar sesión');
     expect(html).toContain('Marcador del anotador, solo lectura');
     expect(html).toContain('Datos de emisión sin confirmar');
     expect(html).not.toContain('data-monitor-court="pista-1"');
