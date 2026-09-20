@@ -1,6 +1,7 @@
 import { PilotService } from '../src/pilot-service.js';
 import { passingPreflight } from './pilot-preflight-fixture.js';
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -29,6 +30,41 @@ afterEach(async () => {
 });
 
 describe('production pilot', () => {
+  it('records the composed program locally without YouTube and retains its path after restart', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'kpl-recording-'));
+    cleanups.push(() => rm(directory, { recursive: true, force: true }));
+    const app = await createPilotApp('/bin/ffmpeg', directory);
+    const response = await app.inject({ method: 'POST', url: '/api/pilot/sessions', payload: {
+      courtSlug: 'pista-1', mode: 'recording', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
+      matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: new Date().toISOString(), privacyStatus: 'private',
+    } });
+    expect(response.statusCode).toBe(201);
+    const { id } = response.json().session;
+    const start = await app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/start` });
+    expect(start.statusCode).toBe(200);
+    const live = await waitForSession(app, id, (session) => session.status === 'live'
+      && (session.encoder?.frame ?? 0) >= 60, 'recording');
+    expect(live.broadcastId).toBeNull();
+    expect(live.watchUrl).toBeNull();
+    expect(live.recordingFiles).toHaveLength(1);
+    await app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/stop` });
+    await waitForSession(app, id, (session) => session.status === 'stopped', 'recording stopped');
+    const path = live.recordingFiles![0]!;
+    expect(path).toContain(join('recordings', 'pista-1', id));
+    const probe = spawnSync('/bin/ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', path], { encoding: 'utf8' });
+    expect(probe.status, probe.stderr).toBe(0);
+    expect(JSON.parse(probe.stdout).streams).toEqual(expect.arrayContaining([
+      expect.objectContaining({ codec_name: 'h264', width: 1920, height: 1080 }),
+      expect.objectContaining({ codec_name: 'aac' }),
+    ]));
+    const decode = spawnSync('/bin/ffmpeg', ['-v', 'error', '-i', path, '-f', 'null', '-'], { encoding: 'utf8' });
+    expect(decode.status, decode.stderr).toBe(0);
+    await app.close();
+    const restarted = await createPilotApp('/bin/ffmpeg', directory);
+    const saved = await waitForSession(restarted, id, (session) => session.status === 'stopped', 'saved recording');
+    expect(saved.recordingFiles).toEqual([path]);
+  }, 20_000);
+
   it('protects program checks, cancellation and preview files with local operator access', async () => {
     const app = await createPilotApp('/missing/ffmpeg', '', { require: async (authorization) => {
       if (authorization !== 'Bearer operator') throw new PilotServiceError(403, 'FORBIDDEN', 'Acceso de operador requerido.');

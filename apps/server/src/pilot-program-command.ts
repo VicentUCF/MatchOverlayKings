@@ -8,6 +8,7 @@ export function pilotProgramCommand(
   outputFramesPerSecond: 30 | 60,
   videoEncoding: PilotVideoEncoder,
   preview?: { readonly path: string; readonly seconds: number },
+  recordingPath?: string,
 ) {
   const input = ['-thread_queue_size', '8', '-probesize', '32', '-analyzeduration', '0',
     '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv',
@@ -19,6 +20,8 @@ export function pilotProgramCommand(
   const audioFilter = `;[1:a:0]${AUDIO_SIGNAL_FILTER}[aout]`;
   const output = preview
     ? ['-t', String(preview.seconds), '-movflags', '+faststart', '-f', 'mp4', '-n', preview.path]
+    : recordingPath
+    ? ['-movflags', '+frag_keyframe+empty_moov+default_base_moof', '-f', 'mp4', '-n', recordingPath]
     : ingestUrl === null
     ? ['-f', 'null', '-']
     : ['-f', 'flv', ingestUrl];

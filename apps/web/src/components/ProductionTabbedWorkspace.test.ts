@@ -121,6 +121,8 @@ describe('tabbed production workspace', () => {
 
     expect((html.match(/Ver directo en YouTube/g) ?? [])).toHaveLength(2);
     expect((html.match(/href="https:\/\/www.youtube.com\/watch\?v=broadcast-1"/g) ?? [])).toHaveLength(2);
+    expect(html).toContain('Grabación local');
+    expect(html).toContain('MP4 con audio y marcador para emitir después.');
     expect(html).toContain('Datos compartidos');
     expect(html).toContain('Descripción compartida de la jornada');
     expect(html).toContain('aria-label="Información de este PC"');

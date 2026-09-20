@@ -6,7 +6,7 @@ import { PilotPreflightSchema } from './pilot-preflight.js';
 // runtime. Court inventory is authoritative in Supabase, so slugs cannot be an
 // application-level fixed enum.
 export const PilotCourtSlugSchema = z.string().regex(/^pista-[a-z0-9-]+$/).max(80);
-export const PilotModeSchema = z.enum(['simulation', 'youtube']);
+export const PilotModeSchema = z.enum(['simulation', 'youtube', 'recording']);
 export const PilotPrivacySchema = z.enum(['private', 'unlisted', 'public']);
 export const PilotSessionStatusSchema = z.enum([
   'preparing',
@@ -216,6 +216,7 @@ export const PilotSessionSchema = z.strictObject({
   broadcastId: z.string().nullable(),
   watchUrl: z.string().url().nullable(),
   youtubeStreamStatus: z.string().nullable(),
+  recordingFiles: z.array(z.string().min(1)).optional(),
   encoder: PilotEncoderHealthSchema.nullable(),
   signal: PilotSignalHealthSchema.nullable().optional(),
   overlayHealth: PilotOverlayHealthSchema.nullable().optional(),

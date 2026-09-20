@@ -1,9 +1,9 @@
 import { pilotProgramCommand } from './pilot-program-command.js';
 import { spawn, spawnSync, type ChildProcessByStdio } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readdirSync } from 'node:fs';
+import { mkdirSync, readdirSync } from 'node:fs';
 import { mkdir, readFile, rm } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { checkPilotMetadata, checkPilotMedia } from './pilot-preflight-checks.js';
 import { runPilotPreflight } from './pilot-preflight.js';
 import { measurePilotHost, checkIngestTransport } from './pilot-preflight-system.js';
@@ -759,11 +759,20 @@ export class PilotService {
       ? this.mobileCamera?.framesPerSecondForCourt(session.public.courtSlug) ?? 30
       : 30;
     const videoEncoding = selectVideoEncoder(this.videoEncoders, framesPerSecond, session.rejectedEncoders);
+    let recordingPath: string | undefined;
+    if (session.public.mode === 'recording') {
+      const directory = resolve(dirname(this.configurationPath), 'recordings', session.public.courtSlug, session.public.id);
+      try { mkdirSync(directory, { recursive: true, mode: 0o700 }); }
+      catch { throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo crear la carpeta de grabaciones. Revisa el espacio y los permisos.'); }
+      recordingPath = join(directory, `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.mp4`);
+    }
     const command = pilotProgramCommand(
       this.ffmpegPath,
       session.ingestUrl,
       framesPerSecond,
       videoEncoding,
+      undefined,
+      recordingPath,
     );
     const child = spawn(command.executable, command.argv, {
       stdio: ['ignore', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe'],
@@ -779,6 +788,7 @@ export class PilotService {
     session.public = PilotSessionSchema.parse({
       ...session.public,
       status: 'starting',
+      ...(recordingPath ? { recordingFiles: [...(session.public.recordingFiles ?? []), recordingPath] } : {}),
       startedAt: session.public.startedAt ?? new Date().toISOString(),
       stoppedAt: null,
       error: null,
@@ -841,7 +851,7 @@ export class PilotService {
     if (error) session.public = PilotSessionSchema.parse({ ...session.public, status: 'failed', error });
     else if (wasDegraded && ['failed', 'reconnecting'].includes(session.public.status)) {
       session.public = PilotSessionSchema.parse({ ...session.public,
-        status: session.public.mode === 'simulation' && (session.public.encoder?.frame ?? 0) > 0 ? 'live' : 'starting', error: null });
+        status: session.public.mode !== 'youtube' && (session.public.encoder?.frame ?? 0) > 0 ? 'live' : 'starting', error: null });
     }
   }
 
@@ -1341,7 +1351,7 @@ function attachProgress(
         }
         const previousStatus = session.public.status;
         const status = session.public.status === 'starting'
-          && session.public.mode === 'simulation'
+          && session.public.mode !== 'youtube'
           && encoder.frame > 0
           ? 'live'
           : session.public.status;
@@ -1429,6 +1439,7 @@ function numeric(value: string | undefined): number {
 
 function boundedDiagnostic(value: string): string {
   // FFmpeg may print only a suffix of an ingest URL, so replacing the full URL is insufficient.
+  if (/no space left on device|disk quota exceeded/i.test(value)) return 'No queda espacio para guardar la grabación. Libera espacio y recupera la sesión; se conservarán los archivos anteriores.';
   if (/permission denied|operation not permitted/i.test(value)) return 'FFmpeg no tiene permiso para acceder a la fuente o al encoder.';
   if (/connection refused|connection reset|broken pipe/i.test(value)) return 'Se perdió la conexión con la fuente o el destino.';
   if (/timed out|sin producir nuevos fotogramas/i.test(value)) return 'La fuente, el overlay o el destino dejó de responder.';

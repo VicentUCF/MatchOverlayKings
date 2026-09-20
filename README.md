@@ -420,3 +420,18 @@ pendientes. Para convertir YouTube y Android en requisitos obligatorios:
 ```bash
 KPL_SMOKE_REQUIRE_YOUTUBE=true KPL_SMOKE_REQUIRE_MOBILE=true npm run production:smoke
 ```
+
+## Grabación local para falso directo
+
+En la configuración de la pista, selecciona **Grabación local**, guarda y pulsa
+**Preparar grabación** → **Grabar** en Mandos. Se guarda el programa completo
+(cámara, audio y marcador) en MP4 H.264/AAC sin preparar ni enviar vídeo a YouTube.
+Pulsa **Detener** antes de utilizar el archivo como fuente multimedia para emitirlo después.
+
+Los archivos están en `data/recordings/<pista>/<sesión>/` con la configuración por
+defecto; el panel muestra sus rutas en el PC del runtime. Si usas Docker, `/app/data/recordings`
+corresponde a `./data/recordings` en el host. La carpeta se sitúa junto al archivo de configuración
+del runtime. Las grabaciones se conservan al detener o reiniciar el servicio.
+Cada reinicio del encoder crea un archivo nuevo, sin sobrescribir las partes anteriores.
+El MP4 se escribe por fragmentos para conservar las partes completas si se interrumpe el proceso.
+Revisa el espacio disponible antes de grabar partidos largos; la grabación termina si se llena el disco.

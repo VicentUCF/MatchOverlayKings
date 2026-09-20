@@ -7,7 +7,7 @@ import type { PilotUploadMeasurement } from './pilot-upload-check.js';
 
 export async function checkPilotMetadata(id: PilotPreflightCheckId, context: {
   readonly source: PilotSource;
-  readonly mode: 'youtube' | 'simulation';
+  readonly mode: 'youtube' | 'simulation' | 'recording';
   readonly mobile: PilotMobileCameraSession | null;
   readonly assertMatch: () => Promise<void>;
   readonly host: () => Promise<PilotHostMeasurement>;
@@ -43,7 +43,7 @@ export async function checkPilotMetadata(id: PilotPreflightCheckId, context: {
     case 'storage': {
       const free = (await context.host()).availableStorageBytes;
       return { status: free < 128 * 1024 ** 2 ? 'blocked' : free < 2 * 1024 ** 3 ? 'warning' : 'pass',
-        message: `${(free / 1024 ** 3).toFixed(1)} GB libres. Con menos de 128 MB se omite la grabación de prueba. Este aviso no impide emitir.` };
+        message: `${(free / 1024 ** 3).toFixed(1)} GB libres. Con menos de 128 MB se omite la grabación de prueba. Comprueba que haya espacio suficiente para toda la sesión.` };
     }
     case 'memory': {
       const free = (await context.host()).availableMemoryBytes;
@@ -57,7 +57,7 @@ export async function checkPilotMetadata(id: PilotPreflightCheckId, context: {
           : `Carga actual: ${Math.round(host.cpuBusyRatio * 100)} % de ${host.cores.toFixed(1)} núcleos disponibles. La prueba del programa comprueba el codificador con esta carga.` };
     }
     case 'destination': {
-      if (context.mode === 'simulation') return { status: 'not_applicable', message: 'Simulación local: no se enviará vídeo a una plataforma.' };
+      if (context.mode !== 'youtube') return { status: 'not_applicable', message: context.mode === 'recording' ? 'El programa se guardará en un MP4 local.' : 'Simulación local: no se enviará vídeo a una plataforma.' };
       const health = await context.destination();
       const usable = ['created', 'ready', 'testing', 'liveStarting', 'testStarting', 'live'].includes(health.broadcastStatus ?? '')
         && health.streamStatus !== null;
@@ -65,7 +65,7 @@ export async function checkPilotMetadata(id: PilotPreflightCheckId, context: {
         : 'YouTube no confirma un destino utilizable. Revisa la cuenta y si la emisión ya se cerró.' };
     }
     case 'network': {
-      if (context.mode === 'simulation') return { status: 'not_applicable', message: 'La simulación no utiliza una conexión de subida.' };
+      if (context.mode !== 'youtube') return { status: 'not_applicable', message: 'La salida local no utiliza una conexión de subida.' };
       const transport = await context.transport();
       const upload = await context.upload?.().catch(() => null);
       if (upload && context.uploadDemand) {

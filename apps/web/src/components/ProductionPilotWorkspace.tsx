@@ -252,7 +252,9 @@ function PilotConfigurationPanel({
         <legend>Datos de la emisión</legend>
         <div className="production-pilot-mode">
           <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'simulation'} onChange={() => setMode('simulation')} />
-            <span><TestTube2 aria-hidden="true" /><strong>Simulación</strong><small>Solo en este PC.</small></span></label>
+            <span><TestTube2 aria-hidden="true" /><strong>Simulación</strong><small>Prueba sin guardar vídeo.</small></span></label>
+          <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'recording'} onChange={() => setMode('recording')} />
+            <span><MonitorPlay aria-hidden="true" /><strong>Grabación local</strong><small>MP4 con audio y marcador para emitir después.</small></span></label>
           <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'youtube'} onChange={() => setMode('youtube')} />
             <span><Radio aria-hidden="true" /><strong>YouTube</strong><small>Emisión real.</small></span></label>
         </div>
@@ -281,16 +283,16 @@ function PilotConfigurationPanel({
           <input id={`pilot-matchday-${court.slug}`} type="number" min="1" max="999" required value={matchdayNumber}
             onChange={(event) => setMatchdayNumber(event.currentTarget.valueAsNumber)} />
           <label htmlFor={`pilot-scheduled-${court.slug}`}>Fecha y hora</label>
-          <input id={`pilot-scheduled-${court.slug}`} type="datetime-local" required min={toLocalDateTime()} value={scheduledAt}
+          <input id={`pilot-scheduled-${court.slug}`} type="datetime-local" required min={mode === 'youtube' ? toLocalDateTime() : undefined} value={scheduledAt}
             onChange={(event) => setScheduledAt(event.currentTarget.value)} />
-          <label htmlFor={`pilot-privacy-${court.slug}`}>Visibilidad</label>
+          {mode === 'youtube' ? <><label htmlFor={`pilot-privacy-${court.slug}`}>Visibilidad</label>
           <select id={`pilot-privacy-${court.slug}`} value={privacyStatus}
             onChange={(event) => setPrivacyStatus(event.currentTarget.value as PilotPrivacy)}>
             <option value="private">Privado</option><option value="unlisted">No listado</option><option value="public">Público</option>
-          </select>
+          </select></> : null}
         </div>
         <div className="production-pilot-config-note"><strong>Vista previa:</strong> {homeTeam || 'Local'} vs {awayTeam || 'Visitante'} · Jornada {matchdayNumber || '—'}
-          <small>Esta portada se subirá a YouTube al preparar la emisión. Se usará la descripción general.</small></div>
+          <small>{mode === 'youtube' ? 'Esta portada se subirá a YouTube al preparar la emisión. Se usará la descripción general.' : 'Se usará la descripción general del partido.'}</small></div>
         <PilotThumbnailPreview homeTeam={homeTeam} awayTeam={awayTeam} matchdayNumber={matchdayNumber} />
         {active ? <p className="production-command-feedback">Hay una sesión en curso. Esta configuración se usará en la siguiente.</p> : null}
         <button className="production-setup-submit" type="submit" disabled={youtubeUnavailable || pending || !court.productionEnabled}>
@@ -379,19 +381,24 @@ export function PilotControlPanel({
         <h3>Producción desactivada</h3><p>Esta pista está deshabilitada en la configuración autoritativa.</p></div>
         : configuration === null ? <div className="production-pilot-empty-state"><Settings2 aria-hidden="true" />
         <h3>Pista sin configurar</h3><p>Pide al administrador que complete esta pista. Desde Mandos no se pueden cambiar sus datos.</p></div> : <>
-        <div className="production-pilot-control__summary"><span>{configuration.mode === 'youtube' ? 'YouTube' : 'Simulación'}</span>
+        <div className="production-pilot-control__summary"><span>{configuration.mode === 'youtube' ? 'YouTube' : configuration.mode === 'recording' ? 'Grabación local' : 'Simulación'}</span>
           <h3>{configuration.homeTeam} vs {configuration.awayTeam}</h3>
           <p>Jornada {configuration.matchdayNumber} · {configuration.sourceId === 'synthetic' ? 'Señal de prueba' : configuration.sourceId}</p>
-          <p>{privacyLabel(configuration.privacyStatus)} · <time dateTime={configuration.scheduledAt}>{formatDate(configuration.scheduledAt)}</time></p></div>
+          <p>{configuration.mode === 'youtube' ? `${privacyLabel(configuration.privacyStatus)} · ` : ''}<time dateTime={configuration.scheduledAt}>{formatDate(configuration.scheduledAt)}</time></p></div>
         {showMobileMonitor && configuration.sourceId === PILOT_MOBILE_SOURCE_ID && mobileCamera !== null
           ? <PilotMobileCameraMonitor mobileCamera={mobileCamera} /> : null}
+        {session?.recordingFiles?.length ? <div className="production-command-feedback production-pilot-recordings">
+          <strong>{session.status === 'stopped' ? 'Grabaciones guardadas' : 'Archivos de grabación'}</strong>
+          <p>En el PC del runtime. Pulsa Detener antes de utilizarlos para el falso directo.</p>
+          <ul>{session.recordingFiles.map((path) => <li key={path}><code>{path}</code></li>)}</ul>
+        </div> : null}
         {session !== null && session.status !== 'stopped'
           ? <PilotSessionCard session={session} pending={pending} elapsedSeconds={elapsedSeconds}
             preflight={preflight}
             onStart={start} onRecover={recover} onStop={stop} />
           : <div className="production-pilot-ready-action"><p>Configuración lista para preparar.</p>
             <button className="production-setup-submit" type="button" disabled={!canPrepare || pending} onClick={prepare}>
-              {pending ? 'Preparando…' : configuration.mode === 'youtube' ? 'Preparar en YouTube' : 'Preparar señal'}
+              {pending ? 'Preparando…' : configuration.mode === 'youtube' ? 'Preparar en YouTube' : configuration.mode === 'recording' ? 'Preparar grabación' : 'Preparar señal'}
             </button></div>}
       </>}
       {error ? <p className="production-command-feedback danger" role="alert">{error}</p> : null}
@@ -421,7 +428,7 @@ function CourtStatus({ session, enabled }: { readonly session: PilotSession | nu
   return <span className={`production-status ${failed ? 'danger' : recovering || signalWarning || continuity || overlayWarning ? 'warning' : live ? 'success' : 'info'}`} aria-live="polite">
     {failed ? <CircleX aria-hidden="true" /> : signalWarning || overlayWarning || continuity ? <Info aria-hidden="true" /> : live ? <CircleCheck aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
     {continuity ? 'Continuidad · Revisar cámara' : overlayWarning ? 'Revisar marcador'
-      : session ? `${sessionStatus(session.status)}${signalWarning ? ' · Revisar señal' : ''}` : 'Sin preparar'}
+      : session ? `${session.mode === 'recording' && session.status === 'live' ? 'Grabando' : sessionStatus(session.status)}${signalWarning ? ' · Revisar señal' : ''}` : 'Sin preparar'}
   </span>;
 }
 
@@ -440,7 +447,7 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover
   const watchUrl = youtubeWatchUrl(session);
   return <div className="production-pilot-session">
     <div className="production-pilot-thumbnail"><img src={session.thumbnailUrl} alt={`Miniatura de ${session.title}`} /></div>
-    <div className="production-pilot-session__copy"><h3>{session.title}</h3><p>{session.source.label} · {session.mode === 'youtube' ? 'YouTube' : 'Salida local'}</p>
+    <div className="production-pilot-session__copy"><h3>{session.title}</h3><p>{session.source.label} · {session.mode === 'youtube' ? 'YouTube' : session.mode === 'recording' ? 'Grabación local' : 'Simulación'}</p>
       {session.videoEncoding ? <p>Codificación: <strong>{session.videoEncoding.label}</strong></p> : null}
       {session.encodingWarning ? <p className="production-command-feedback warning" role="status">{session.encodingWarning}</p> : null}
       {session.encoder ? <dl className="production-pilot-metrics">
@@ -468,7 +475,7 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover
       {elapsedSeconds !== null ? <p>Preparación hasta señal: <strong>{elapsedSeconds} s</strong></p> : null}
       {session.error ? <p className="production-command-feedback danger" role="alert">{session.error}</p> : null}
       <div className="production-pilot-actions">
-        {session.status === 'prepared' ? <button className="production-setup-submit" type="button" disabled={pending || session.preflight?.status === 'running'} onClick={onStart}>Emitir</button> : null}
+        {session.status === 'prepared' ? <button className="production-setup-submit" type="button" disabled={pending || session.preflight?.status === 'running'} onClick={onStart}>{session.mode === 'recording' ? 'Grabar' : 'Emitir'}</button> : null}
         {session.status === 'interrupted' || session.status === 'failed'
           ? <button className="production-setup-submit" type="button" disabled={pending} onClick={onRecover}>
             {session.preparationPending ? 'Recuperar preparación' : 'Recuperar emisión'}

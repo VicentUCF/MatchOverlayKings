@@ -106,7 +106,7 @@ export function ProductionDashboardView({
           <section className="production-output-monitor">
             <h2>Salida y audio</h2>
             <dl className="production-dashboard-health">
-              <div><dt>Destino</dt><dd>{session?.mode === 'youtube' ? 'YouTube' : configuration?.mode === 'simulation' ? 'Simulación' : 'Sin preparar'}</dd></div>
+              <div><dt>Destino</dt><dd>{session?.mode === 'youtube' ? 'YouTube' : (session?.mode ?? configuration?.mode) === 'recording' ? 'Grabación local' : configuration?.mode === 'simulation' ? 'Simulación' : 'Sin preparar'}</dd></div>
               <div><dt>En emisión</dt><dd>{duration(session, now)}</dd></div>
               <div><dt>Audio de cámara</dt><dd>{session?.continuity?.active ? 'Silenciado en continuidad'
                 : mobileCamera?.applied ? mobileCamera.applied.audioEnabled ? 'Activado' : 'Desactivado'
@@ -164,7 +164,7 @@ export function ProductionDashboardView({
               {monitoringActive ? <CourtScoreMonitor key={item.slug} courtSlug={item.slug} configuration={config} now={now} /> : null}
               {!item.productionEnabled ? <p>Producción desactivada. El marcador sigue disponible.</p>
                 : !config ? <div className="production-dashboard-empty"><strong>{state.kind === 'ready' ? 'Emisión sin configurar' : 'Configuración sin confirmar'}</strong></div>
-                  : <div className="production-dashboard-match"><span>{config.mode === 'youtube' ? 'YouTube' : 'Simulación'} · {privacyLabel(config.privacyStatus)}</span>
+                  : <div className="production-dashboard-match"><span>{config.mode === 'youtube' ? 'YouTube' : config.mode === 'recording' ? 'Grabación local' : 'Simulación'}{config.mode === 'youtube' ? ` · ${privacyLabel(config.privacyStatus)}` : ''}</span>
                     <p>Jornada {config.matchdayNumber} · {duration(current, now)}</p></div>}
               {current?.encoder && current.status !== 'stopped' ? <dl className="production-dashboard-health" aria-label={stale ? 'Últimas métricas conocidas' : 'Métricas de emisión'}>
                 <div><dt>FPS</dt><dd>{current.encoder.framesPerSecond.toFixed(1)}</dd></div>
@@ -208,8 +208,8 @@ export function streamStatus(session: PilotSession | null, loading: boolean, ena
   if (session.status === 'stopped') return { label: 'Finalizada', tone: 'neutral' };
   if (session.continuity?.active) return { label: 'Continuidad · Revisar cámara', tone: 'warning' };
   if (session.overlayHealth && session.overlayHealth.status !== 'ready') return { label: 'Revisar marcador', tone: 'warning' };
-  if (session.status === 'live' && sessionIssues(session).length > 0) return { label: 'Emitiendo · Revisar señal', tone: 'warning' };
-  if (session.status === 'live') return { label: 'Emitiendo', tone: 'success' };
+  if (session.status === 'live' && sessionIssues(session).length > 0) return { label: session.mode === 'recording' ? 'Grabando · Revisar señal' : 'Emitiendo · Revisar señal', tone: 'warning' };
+  if (session.status === 'live') return { label: session.mode === 'recording' ? 'Grabando' : 'Emitiendo', tone: 'success' };
   if (session.status === 'starting') return { label: 'Iniciando', tone: 'info' };
   if (session.status === 'stopping') return { label: 'Deteniendo', tone: 'warning' };
   if (session.status === 'reconnecting') return { label: 'Recuperando', tone: 'warning' };
