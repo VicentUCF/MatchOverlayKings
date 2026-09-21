@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { supabase } from './supabase.js';
 import { createCommandId } from '../command-id.js';
+import { subscribeToProductionEvents } from './production-events.js';
 import type { Team } from '@kpl/shared';
 import {
   PilotConfigurationSchema,
@@ -34,6 +35,11 @@ const ConfigurationEnvelopeSchema = z.strictObject({ configuration: PilotConfigu
 const ConfigurationsEnvelopeSchema = z.strictObject({ configurations: PilotConfigurationsSchema });
 const MobileCameraEnvelopeSchema = z.strictObject({ mobileCamera: PilotMobileCameraSessionSchema.nullable() });
 const MobileCamerasEnvelopeSchema = z.strictObject({ mobileCameras: z.array(PilotMobileCameraSessionSchema) });
+const RuntimeSnapshotSchema = z.strictObject({
+  readiness: PilotReadinessSchema,
+  sessions: PilotSessionsSchema,
+  mobileCameras: z.array(PilotMobileCameraSessionSchema),
+});
 const TeamSchema = z.strictObject({
   id: z.string().min(1), name: z.string().min(1), shortName: z.string().min(1),
   logoUrl: z.string(), primaryColor: z.string(), secondaryColor: z.string(),
@@ -128,7 +134,18 @@ export function createProductionPilotAdapter(
 
   return Object.freeze({
     localAdminUrl: baseUrl === '' ? '/admin' : `${baseUrl}/admin`,
+    subscribeToEvents: (listener: Parameters<typeof subscribeToProductionEvents>[1]) =>
+      subscribeToProductionEvents(baseUrl, listener, fetcher),
     readiness: () => request('/api/pilot/readiness', PilotReadinessSchema),
+    runtimeSnapshot: async () => {
+      const result = await request('/api/pilot/runtime-snapshot', RuntimeSnapshotSchema);
+      return result.kind === 'success'
+        ? { kind: 'success' as const, value: {
+          ...result.value,
+          sessions: result.value.sessions.map((session) => localizeSession(session, baseUrl)),
+        } }
+        : result;
+    },
     operations: () => request('/api/pilot/operations', z.strictObject({ operations: z.array(PilotOperationSchema) })),
     incidents: () => request('/api/pilot/incidents', z.strictObject({ incidents: z.array(PilotIncidentSchema) })),
     recordings: () => request('/api/pilot/recordings', RecordingsEnvelopeSchema),

@@ -108,6 +108,7 @@ export class PilotMobileCameraService {
     private readonly now: () => number = Date.now,
     private readonly apiMutation: typeof mutateMediaMtx = mutateMediaMtx,
     private readonly runtimeHealthProbe: (port: number) => Promise<boolean> = apiReady,
+    private readonly onChange: () => void = () => undefined,
   ) {}
 
   public observeRuntime(observer: (event: PilotMobileRuntimeEvent) => void): () => void {
@@ -160,8 +161,8 @@ export class PilotMobileCameraService {
 
   private snapshotPath(): string { return join(this.dataDir, 'sessions.json'); }
 
-  private persistSessions(replacement?: InternalSession): Promise<void> {
-    return writePrivateJson(this.snapshotPath(), MobileSnapshotSchema.parse({
+  private async persistSessions(replacement?: InternalSession): Promise<void> {
+    await writePrivateJson(this.snapshotPath(), MobileSnapshotSchema.parse({
       version: 1, runtimeProcess: encoderProcessIdentity(this.process?.pid),
       sessions: [...this.sessions.values()].map((current) => {
         const session = current.id === replacement?.id ? replacement : current;
@@ -170,6 +171,7 @@ export class PilotMobileCameraService {
           clientId: session.clientId, revoked: session.revoked };
       }),
     }));
+    this.onChange();
   }
 
   private async commitSession(session: InternalSession, patch: Partial<InternalSession>): Promise<void> {
@@ -372,6 +374,7 @@ export class PilotMobileCameraService {
     session.degradedSamples = isDegradedSample(session.desired, report.data)
       ? session.degradedSamples + 1
       : 0;
+    this.onChange();
     return this.publicSession(session);
   }
 

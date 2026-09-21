@@ -4,7 +4,12 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PublicationJob, RecordingAsset } from '@kpl/production-contracts';
 import { RecordingLibrary } from '../src/recording-library.js';
-import type { PilotYouTubeGateway } from '../src/pilot-youtube.js';
+import { PilotYouTubeError, type PilotYouTubeGateway } from '../src/pilot-youtube.js';
+import type {
+  PublicationReconcileTask,
+  PublicationTaskHandler,
+  PublicationTaskQueue,
+} from '../src/publication-task-queue.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { while (cleanups.length) await cleanups.pop()?.(); });
@@ -59,7 +64,57 @@ describe('recording library', () => {
     expect(library.listJobs()[0]?.youtubeVideoId).toBe('video-recovered');
     await library.shutdown();
   });
+
+  it('keeps reads pure and backs off a queued reconciliation when YouTube quota is exhausted', async () => {
+    const fixture = await createFixture();
+    const now = new Date().toISOString();
+    const processing: PublicationJob = {
+      id: '33333333-3333-4333-8333-333333333333', assetId: fixture.asset.id, state: 'processing',
+      title: fixture.asset.title, description: '', uploadUrl: 'https://www.googleapis.com/upload/youtube/v3/videos?upload_id=kept',
+      uploadedBytes: 16, totalBytes: 16, youtubeVideoId: 'video-processing',
+      watchUrl: 'https://www.youtube.com/watch?v=video-processing', publishAt: null,
+      createdAt: now, updatedAt: now, error: null,
+    };
+    await writeFile(fixture.indexPath, JSON.stringify({ assets: [fixture.asset], jobs: [processing] }));
+    const gateway = fakeGateway();
+    gateway.inspect.mockRejectedValue(new PilotYouTubeError('API_ERROR', 'Se ha agotado la cuota diaria de la API de YouTube.'));
+    const queue = new CapturingPublicationQueue();
+    const library = new RecordingLibrary(fixture.indexPath, '/bin/false', gateway.value, queue);
+
+    await library.initialize();
+    library.listAssets();
+    library.listJobs();
+    expect(gateway.inspect).not.toHaveBeenCalled();
+
+    const outcome = await queue.runNext();
+    expect(outcome).toEqual({ kind: 'retry', delayMs: 30 * 60_000 });
+    expect(gateway.inspect).toHaveBeenCalledOnce();
+    expect(library.listJobs()[0]).toMatchObject({
+      state: 'processing', error: 'Se ha agotado la cuota diaria de la API de YouTube.',
+      retryAt: expect.any(String),
+    });
+    await library.shutdown();
+  });
 });
+
+class CapturingPublicationQueue implements PublicationTaskQueue {
+  private handler: PublicationTaskHandler | null = null;
+  private readonly tasks: PublicationReconcileTask[] = [];
+
+  public async start(handler: PublicationTaskHandler): Promise<void> { this.handler = handler; }
+  public async enqueue(jobId: string, token: string): Promise<void> {
+    this.tasks.push({
+      version: 1, id: '44444444-4444-4444-8444-444444444444', kind: 'reconcile-publication',
+      jobId, token, attempt: 0, createdAt: new Date().toISOString(),
+    });
+  }
+  public async close(): Promise<void> {}
+  public async runNext() {
+    const task = this.tasks.shift();
+    if (!task || !this.handler) throw new Error('No queued publication task');
+    return this.handler(task);
+  }
+}
 
 async function createFixture(): Promise<{ indexPath: string; asset: RecordingAsset }> {
   const root = await mkdtemp(join(tmpdir(), 'kpl-recording-library-'));

@@ -18,27 +18,43 @@ import {
 import { writePrivateJson } from './private-json.js';
 import { PilotServiceError } from './pilot-service.js';
 import { PilotYouTubeError, type PilotYouTubeGateway } from './pilot-youtube.js';
+import {
+  InMemoryPublicationTaskQueue,
+  retryBucket,
+  retryDelay,
+  type PublicationReconcileTask,
+  type PublicationTaskOutcome,
+  type PublicationTaskQueue,
+} from './publication-task-queue.js';
 
 const execFileAsync = promisify(execFile);
 const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 
-type Snapshot = { readonly assets: readonly RecordingAsset[]; readonly jobs: readonly PublicationJob[] };
+type Snapshot = {
+  readonly assets: readonly RecordingAsset[];
+  readonly jobs: readonly PublicationJob[];
+  readonly reconciliations: Readonly<Record<string, string>>;
+};
 
 export class RecordingLibrary {
   private assets = new Map<string, RecordingAsset>();
   private jobs = new Map<string, PublicationJob>();
+  private reconciliations = new Map<string, string>();
   private uploads = new Map<string, AbortController>();
+  private queueRecoveryTimer: NodeJS.Timeout | null = null;
 
   public constructor(
     private readonly path: string,
     private readonly ffprobePath: string,
     private readonly youtube: PilotYouTubeGateway,
+    private readonly tasks: PublicationTaskQueue = new InMemoryPublicationTaskQueue(),
+    private readonly onChange: () => void = () => undefined,
   ) {}
 
   public async initialize(): Promise<void> {
     try {
       const parsed = JSON.parse(await readFile(this.path, 'utf8')) as unknown;
-      if (typeof parsed !== 'object' || parsed === null) return;
+      if (typeof parsed !== 'object' || parsed === null) throw new Error('Invalid recording index');
       const snapshot = parsed as { assets?: unknown; jobs?: unknown };
       const assets = RecordingAssetsSchema.safeParse(snapshot.assets ?? []);
       const jobs = PublicationJobsSchema.safeParse(snapshot.jobs ?? []);
@@ -48,11 +64,17 @@ export class RecordingLibrary {
         ? { ...job, state: 'paused', error: 'La subida se pausó al reiniciar el runtime.' }
         : job]));
       await this.persist();
-      await this.refreshRemoteStates();
     } catch (error) {
-      if (isMissing(error)) return;
-      throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo cargar el índice privado de grabaciones.');
+      if (!isMissing(error)) {
+        throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo cargar el índice privado de grabaciones.');
+      }
     }
+    await this.tasks.start((task) => this.reconcilePublication(task));
+    await Promise.all([...this.jobs.values()]
+      .filter((job) => job.youtubeVideoId !== null && ['processing', 'scheduled'].includes(job.state))
+      .map((job) => this.startReconciliation(job.id)));
+    this.queueRecoveryTimer = setInterval(() => { void this.recoverUnavailableQueue(); }, 30_000);
+    this.queueRecoveryTimer.unref();
   }
 
   public listAssets(): readonly RecordingAsset[] {
@@ -145,10 +167,12 @@ export class RecordingLibrary {
       const next = this.updateJob(jobId, {
         state: remote.privacyStatus === 'public' ? 'published' : 'scheduled',
         publishAt: remote.publishAt ?? parsed.data.publishAt,
+        retryAt: null,
         watchUrl: `https://www.youtube.com/watch?v=${job.youtubeVideoId}`,
         error: null,
       });
       await this.persist();
+      await this.startReconciliation(jobId);
       return next;
     } catch (error) {
       if (error instanceof PilotServiceError) throw error;
@@ -156,25 +180,11 @@ export class RecordingLibrary {
     }
   }
 
-  public async refreshRemoteStates(): Promise<void> {
-    for (const job of this.jobs.values()) {
-      if (!job.youtubeVideoId || !['processing', 'private_ready', 'scheduled'].includes(job.state)) continue;
-      try {
-        const remote = await this.youtube.inspectUploadedVideo(job.youtubeVideoId);
-        const state = remote.privacyStatus === 'public' ? 'published'
-          : remote.publishAt ? 'scheduled'
-            : remote.uploadStatus === 'processed' && remote.privacyStatus === 'private' ? 'private_ready' : 'processing';
-        this.updateJob(job.id, { state, publishAt: remote.publishAt, error: null });
-      } catch (error) {
-        this.updateJob(job.id, { error: mapYouTube(error).message });
-      }
-    }
-    await this.persist();
-  }
-
   public async shutdown(): Promise<void> {
+    if (this.queueRecoveryTimer !== null) clearInterval(this.queueRecoveryTimer);
+    this.queueRecoveryTimer = null;
     for (const controller of this.uploads.values()) controller.abort();
-    await this.persist();
+    try { await this.persist(); } finally { await this.tasks.close(); }
   }
 
   private async validate(id: string): Promise<void> {
@@ -248,9 +258,70 @@ export class RecordingLibrary {
 
   private async completeUpload(jobId: string, videoId: string): Promise<void> {
     this.updateJob(jobId, { state: 'processing', uploadedBytes: this.requireJob(jobId).totalBytes,
-      youtubeVideoId: videoId, watchUrl: `https://www.youtube.com/watch?v=${videoId}`, error: null });
+      youtubeVideoId: videoId, watchUrl: `https://www.youtube.com/watch?v=${videoId}`, retryAt: null, error: null });
     await this.persist();
-    await this.refreshRemoteStates();
+    await this.startReconciliation(jobId);
+  }
+
+  private async startReconciliation(jobId: string): Promise<void> {
+    const token = randomUUID();
+    this.reconciliations.set(jobId, token);
+    await this.persist();
+    try {
+      await this.tasks.enqueue(jobId, token);
+    } catch {
+      const retryAt = new Date(Date.now() + 30_000).toISOString();
+      this.updateJob(jobId, {
+        retryAt,
+        error: 'La publicación está guardada, pero la cola de trabajos no está disponible. Se reintentará automáticamente.',
+      });
+      await this.persist();
+    }
+  }
+
+  private async recoverUnavailableQueue(): Promise<void> {
+    const now = Date.now();
+    const pending = [...this.jobs.values()].filter((job) =>
+      ['processing', 'scheduled'].includes(job.state)
+      && job.error?.startsWith('La publicación está guardada, pero la cola de trabajos')
+      && (job.retryAt === undefined || job.retryAt === null || Date.parse(job.retryAt) <= now));
+    for (const job of pending) await this.startReconciliation(job.id);
+  }
+
+  private async reconcilePublication(task: PublicationReconcileTask): Promise<PublicationTaskOutcome> {
+    const job = this.jobs.get(task.jobId);
+    if (this.reconciliations.get(task.jobId) !== task.token) return { kind: 'complete' };
+    if (!job || !job.youtubeVideoId || !['processing', 'scheduled'].includes(job.state)) return { kind: 'complete' };
+    try {
+      const remote = await this.youtube.inspectUploadedVideo(job.youtubeVideoId);
+      const state = remote.privacyStatus === 'public' ? 'published'
+        : remote.publishAt ? 'scheduled'
+          : remote.uploadStatus === 'processed' && remote.privacyStatus === 'private' ? 'private_ready' : 'processing';
+      if (state === 'published' || state === 'private_ready') {
+        this.reconciliations.delete(job.id);
+        if (job.state !== state || job.publishAt !== remote.publishAt || job.error !== null || job.retryAt !== null) {
+          this.updateJob(job.id, { state, publishAt: remote.publishAt, retryAt: null, error: null });
+          await this.persist();
+        }
+        return { kind: 'complete' };
+      }
+      const requestedDelayMs = state === 'scheduled' && remote.publishAt
+        ? Math.max(30_000, Date.parse(remote.publishAt) - Date.now() + 30_000)
+        : retryDelay(task.attempt);
+      const delayMs = retryBucket(requestedDelayMs);
+      const retryAt = new Date(Date.now() + delayMs).toISOString();
+      if (job.state !== state || job.publishAt !== remote.publishAt || job.error !== null || job.retryAt !== retryAt) {
+        this.updateJob(job.id, { state, publishAt: remote.publishAt, retryAt, error: null });
+        await this.persist();
+      }
+      return { kind: 'retry', delayMs, resetAttempts: true };
+    } catch (error) {
+      const message = mapYouTube(error).message;
+      const delayMs = publicationErrorDelay(error, message, task.attempt);
+      this.updateJob(job.id, { retryAt: new Date(Date.now() + delayMs).toISOString(), error: message });
+      await this.persist();
+      return { kind: 'retry', delayMs };
+    }
   }
 
   private updateJob(id: string, patch: Partial<PublicationJob>): PublicationJob {
@@ -281,9 +352,14 @@ export class RecordingLibrary {
     if (inside.startsWith('..') || isAbsolute(inside)) throw new PilotServiceError(500, 'RUNTIME_ERROR', 'La grabación está fuera de la carpeta configurada.');
   }
 
-  private persist(): Promise<void> {
-    const snapshot: Snapshot = { assets: this.listAssets(), jobs: this.listJobs() };
-    return writePrivateJson(this.path, snapshot);
+  private async persist(): Promise<void> {
+    const snapshot: Snapshot = {
+      assets: this.listAssets(),
+      jobs: this.listJobs(),
+      reconciliations: Object.fromEntries(this.reconciliations),
+    };
+    await writePrivateJson(this.path, snapshot);
+    this.onChange();
   }
 }
 
@@ -294,4 +370,11 @@ function isMissing(error: unknown): boolean {
 function mapYouTube(error: unknown): PilotServiceError {
   const message = error instanceof PilotYouTubeError ? error.message : 'YouTube no pudo completar la publicación.';
   return new PilotServiceError(503, 'NOT_READY', message);
+}
+
+function publicationErrorDelay(error: unknown, message: string, attempt: number): number {
+  if (error instanceof PilotYouTubeError && ['NOT_AUTHORIZED', 'NOT_CONFIGURED'].includes(error.code)) return 30 * 60_000;
+  if (/cuota diaria|autorización.*caducad/i.test(message)) return 30 * 60_000;
+  if (/limitado temporalmente/i.test(message)) return 5 * 60_000;
+  return retryDelay(attempt);
 }

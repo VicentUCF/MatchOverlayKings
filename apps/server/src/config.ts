@@ -28,6 +28,7 @@ export interface ServerConfig {
   dataDir: string;
   webDistDir: string;
   controlPin: string | null;
+  rabbitMq?: { url: string; queuePrefix: string } | null;
   pilot: PilotServerConfig;
 }
 
@@ -44,6 +45,12 @@ export function readConfig(): ServerConfig {
       ? resolve(process.env.KPL_WEB_DIST)
       : resolve(process.cwd(), '../web/dist'),
     controlPin: process.env.KPL_CONTROL_PIN?.trim() || null,
+    rabbitMq: process.env.KPL_RABBITMQ_URL?.trim()
+      ? {
+        url: process.env.KPL_RABBITMQ_URL.trim(),
+        queuePrefix: process.env.KPL_RABBITMQ_QUEUE_PREFIX?.trim() || 'kpl.publications',
+      }
+      : null,
     pilot: {
       supabase: {
         url: process.env.VITE_SUPABASE_URL?.trim() ?? '',

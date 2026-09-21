@@ -19,6 +19,12 @@ import { BrowserPilotOverlayRenderer, type PilotOverlayRenderer } from './pilot-
 import { SupabaseProductionAccessGuard, type ProductionAccessGuard } from './production-access.js';
 import { RecordingLibrary } from './recording-library.js';
 import { browseRecordingDirectories } from './recording-directory-browser.js';
+import {
+  InMemoryPublicationTaskQueue,
+  RabbitMqPublicationTaskQueue,
+  type PublicationTaskQueue,
+} from './publication-task-queue.js';
+import { ProductionEventBus, productionSseEvent, type ProductionEventScope } from './production-events.js';
 
 export async function buildApp(
   config: ServerConfig,
@@ -33,6 +39,8 @@ export async function buildApp(
     readonly pilotStreamLink?: PilotStreamLink;
     readonly pilotPreflight?: ConstructorParameters<typeof PilotService>[8];
     readonly productionAccessGuard?: ProductionAccessGuard;
+    readonly publicationTaskQueue?: PublicationTaskQueue;
+    readonly productionEventBus?: ProductionEventBus;
   } = {},
 ) {
   const app = Fastify({
@@ -45,6 +53,7 @@ export async function buildApp(
       },
     },
   });
+  const productionEvents = dependencies.productionEventBus ?? new ProductionEventBus();
   const store = new FileStore(config.dataDir);
   const mobileCamera = new PilotMobileCameraService(
     config.pilot.mobileCamera,
@@ -55,6 +64,7 @@ export async function buildApp(
     dependencies.mobileCameraNow,
     dependencies.mobileCameraApiMutation,
     dependencies.mobileCameraHealthProbe,
+    () => productionEvents.publish('runtime'),
   );
   const browserPath = chromiumExecutablePath();
   const youtube = new PilotYouTubeGateway(config.pilot.youtube);
@@ -71,22 +81,33 @@ export async function buildApp(
     dependencies.pilotStreamLink ?? new SupabasePilotStreamLink(config.pilot.supabase),
     undefined,
     dependencies.pilotPreflight,
+    (scope) => productionEvents.publish(scope),
   );
   const productionAccess = dependencies.productionAccessGuard
     ?? new SupabaseProductionAccessGuard(config.pilot.supabase);
+  const publicationTasks = dependencies.publicationTaskQueue
+    ?? (config.rabbitMq == null
+      ? new InMemoryPublicationTaskQueue()
+      : new RabbitMqPublicationTaskQueue(config.rabbitMq.url, config.rabbitMq.queuePrefix, (event) => {
+        if (event.type === 'connected') app.log.info({ queue: config.rabbitMq?.queuePrefix }, 'RabbitMQ publication queue connected');
+        else app.log.warn({ queue: config.rabbitMq?.queuePrefix, ...event }, 'RabbitMQ publication queue state changed');
+      }));
   await pilot.initialize();
   const recordings = new RecordingLibrary(
     resolve(config.dataDir, 'recording-library.json'),
     join(dirname(config.pilot.ffmpegPath), 'ffprobe'),
     youtube,
+    publicationTasks,
+    () => productionEvents.publish('recordings'),
   );
   try {
     await recordings.initialize();
-    for (const session of await pilot.list()) await recordings.reconcileSession(session, pilot.configurations());
+    for (const session of pilot.snapshot()) await recordings.reconcileSession(session, pilot.configurations());
     await mobileCamera.initialize();
     await pilot.flushOperationalHistory();
   } catch (error) {
     await Promise.allSettled([recordings.shutdown(), pilot.shutdown(), mobileCamera.shutdown()]);
+    productionEvents.close();
     throw error;
   }
   const io: KplSocketServer = new SocketServer<
@@ -185,9 +206,56 @@ export async function buildApp(
     return pilot.readiness();
   });
 
+  app.get('/api/pilot/runtime-snapshot', async (request) => {
+    requireLocalPilot(request.ip);
+    return {
+      readiness: pilot.readiness(),
+      sessions: pilot.snapshot(),
+      mobileCameras: mobileCamera.list(),
+    };
+  });
+
+  app.get('/api/pilot/events', async (request, reply) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    for (const [name, value] of Object.entries(reply.getHeaders())) {
+      if (value !== undefined) reply.raw.setHeader(name, value);
+    }
+    reply.raw.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    reply.raw.setHeader('Cache-Control', 'no-cache, no-transform');
+    reply.raw.setHeader('Connection', 'keep-alive');
+    reply.raw.setHeader('X-Accel-Buffering', 'no');
+    reply.hijack();
+    reply.raw.flushHeaders();
+    reply.raw.write('retry: 3000\n\n');
+    const scopes: readonly ProductionEventScope[] = ['runtime', 'configurations', 'recordings'];
+    for (const scope of scopes) reply.raw.write(productionSseEvent(productionEvents.snapshot(scope)));
+    const unsubscribe = productionEvents.subscribe(
+      (event) => { reply.raw.write(productionSseEvent(event)); },
+      () => { reply.raw.end(); },
+    );
+    const heartbeat = setInterval(() => { reply.raw.write(': keepalive\n\n'); }, 15_000);
+    heartbeat.unref();
+    // Reauthorize periodically by making the browser reconnect with its latest token.
+    const expire = setTimeout(() => { reply.raw.end(); }, 5 * 60_000);
+    expire.unref();
+    let closed = false;
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(heartbeat);
+      clearTimeout(expire);
+      unsubscribe();
+    };
+    request.raw.once('close', cleanup);
+    reply.raw.once('close', cleanup);
+  });
+
+  app.addHook('preClose', async () => { productionEvents.close(); });
+
   app.get('/api/pilot/sessions', async (request) => {
     requireLocalPilot(request.ip);
-    return { sessions: await pilot.list() };
+    return { sessions: pilot.snapshot() };
   });
 
   app.get('/api/pilot/operations', async (request) => {
@@ -347,7 +415,6 @@ export async function buildApp(
   app.get('/api/pilot/recordings', async (request) => {
     requireLocalPilot(request.ip);
     await productionAccess.require(request.headers.authorization, 'production_admin');
-    await recordings.refreshRemoteStates();
     return { assets: recordings.listAssets(), jobs: recordings.listJobs() };
   });
 
@@ -429,7 +496,9 @@ export async function buildApp(
       try { await pilot.shutdown(); }
       finally {
         try { await mobileCamera.shutdown(); }
-        finally { await io.close(); }
+        finally {
+          await io.close();
+        }
       }
     }
   });

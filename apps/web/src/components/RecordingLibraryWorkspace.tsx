@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { CalendarClock, CircleAlert, ExternalLink, Film, HardDrive, Pause, Play, RefreshCw, Upload } from 'lucide-react';
 import type { PublicationJob, RecordingAsset } from '@kpl/production-contracts';
 import { createProductionPilotAdapter } from '../lib/production-pilot-adapter.js';
 
 const adapter = createProductionPilotAdapter();
 
-type LibraryState =
+export type LibraryState =
   | { readonly kind: 'loading' }
   | { readonly kind: 'error'; readonly message: string }
   | { readonly kind: 'ready'; readonly assets: readonly RecordingAsset[]; readonly jobs: readonly PublicationJob[] };
@@ -16,6 +16,8 @@ export function RecordingLibraryWorkspace() {
   const [courtFilter, setCourtFilter] = useState('all');
   const [matchdayFilter, setMatchdayFilter] = useState('all');
   const [stateFilter, setStateFilter] = useState('all');
+  const eventRefreshActive = useRef(false);
+  const eventRefreshQueued = useRef(false);
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setState((current) => current.kind === 'ready' ? current : { kind: 'loading' });
     const result = await adapter.recordings();
@@ -24,12 +26,62 @@ export function RecordingLibraryWorkspace() {
       : { kind: 'error', message: result.message });
   }, []);
   useEffect(() => { void load(); }, [load]);
-  const polling = state.kind === 'ready' && state.jobs.some(({ state: jobState }) => ['uploading', 'processing'].includes(jobState));
+  const refreshFromEvent = useCallback(() => {
+    if (eventRefreshActive.current) {
+      eventRefreshQueued.current = true;
+      return;
+    }
+    eventRefreshActive.current = true;
+    void (async () => {
+      try {
+        do {
+          eventRefreshQueued.current = false;
+          await load(true);
+        } while (eventRefreshQueued.current);
+      } finally {
+        eventRefreshActive.current = false;
+      }
+    })();
+  }, [load]);
+  useEffect(() => adapter.subscribeToEvents(({ scope }) => {
+    if (scope === 'recordings') refreshFromEvent();
+  }), [refreshFromEvent]);
+  const pollDelay = recordingPollDelay(state);
   useEffect(() => {
-    if (!polling) return undefined;
-    const timer = window.setInterval(() => void load(true), 2_000);
-    return () => window.clearInterval(timer);
-  }, [load, polling]);
+    if (pollDelay === null) return undefined;
+    let active = true;
+    let polling = false;
+    let timer: number | undefined;
+    const schedule = (delay: number) => {
+      if (!active) return;
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        void poll();
+      }, delay);
+    };
+    const poll = async () => {
+      if (!active || polling) return;
+      polling = true;
+      try { await load(true); }
+      finally {
+        polling = false;
+        schedule(document.visibilityState === 'visible' ? pollDelay : 60_000);
+      }
+    };
+    const visibilityChanged = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
+      if (polling) return;
+      schedule(document.visibilityState === 'visible' ? 0 : 60_000);
+    };
+    document.addEventListener('visibilitychange', visibilityChanged);
+    schedule(pollDelay);
+    return () => {
+      active = false;
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', visibilityChanged);
+    };
+  }, [load, pollDelay]);
 
   const mutate = async (key: string, action: () => Promise<{ readonly kind: 'success' } | { readonly kind: 'error'; readonly message: string }>) => {
     setPending(key);
@@ -83,6 +135,12 @@ export function RecordingLibraryWorkspace() {
   </section>;
 }
 
+export function recordingPollDelay(state: LibraryState): number | null {
+  if (state.kind !== 'ready') return null;
+  if (state.jobs.some((job) => ['uploading', 'processing'].includes(job.state))) return 60_000;
+  return null;
+}
+
 function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onSchedule }: {
   readonly asset: RecordingAsset;
   readonly job: PublicationJob | null;
@@ -119,6 +177,7 @@ function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onSch
       <div className="recording-publication__status"><strong>{publicationLabel(job)}</strong><span>{progress}% subido</span></div>
       <progress max="100" value={progress}>{progress}%</progress>
       {job.error ? <p className="production-command-feedback danger" role="alert">{job.error}</p> : null}
+      {job.retryAt ? <p className="production-command-feedback">Reintento automático: {new Date(job.retryAt).toLocaleString('es-ES')}</p> : null}
       <div className="recording-publication__actions">
         {job.state === 'uploading' ? <button type="button" className="refresh-button" disabled={pending === job.id} onClick={() => void onPause(job)}><Pause aria-hidden="true" />Pausar</button> : null}
         {['paused', 'failed'].includes(job.state) && !job.youtubeVideoId ? <button type="button" className="production-setup-submit" disabled={pending === job.id} onClick={() => void onResume(job)}><Play aria-hidden="true" />Reanudar</button> : null}

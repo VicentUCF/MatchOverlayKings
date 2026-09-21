@@ -169,6 +169,7 @@ export class PilotService {
     private readonly streamLink?: PilotStreamLink,
     private readonly programFactory: (options: ProgramFeedOptions) => ProgramFeed = (options) => new PilotProgramFeed(options),
     private readonly preflightDependencies: PilotPreflightDependencies = {},
+    private readonly onChange: (scope: 'runtime' | 'configurations') => void = () => undefined,
   ) {
     this.operations = new PilotOperationJournal(`${configurationPath}.operations`);
     this.uploadCheck = new PilotUploadCheck(preflightDependencies.upload);
@@ -298,6 +299,7 @@ export class PilotService {
   public async completeAuthorization(code: string, state: string): Promise<void> {
     try {
       await this.youtube.completeAuthorization(code, state);
+      this.onChange('runtime');
     } catch (error) {
       throw mapYouTubeError(error);
     }
@@ -486,6 +488,10 @@ export class PilotService {
   public async list(): Promise<readonly PilotSession[]> {
     await Promise.all([...this.sessions.values()].map((session) => this.refreshYouTubeHealth(session)));
     for (const session of this.sessions.values()) this.invalidatePreflight(session);
+    return this.snapshot();
+  }
+
+  public snapshot(): readonly PilotSession[] {
     return [...this.sessions.values()].map(({ public: session }) => session);
   }
 
@@ -1227,6 +1233,7 @@ export class PilotService {
     try {
       await writePrivateJson(path, payload);
       this.persistenceError = null;
+      this.onChange('runtime');
     } catch {
       throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo guardar el estado recuperable de las emisiones.');
     }
@@ -1293,7 +1300,10 @@ export class PilotService {
         updatedAt: configuration.updatedAt,
       })),
     });
-    try { await writePrivateJson(this.configurationPath, snapshot); }
+    try {
+      await writePrivateJson(this.configurationPath, snapshot);
+      this.onChange('configurations');
+    }
     catch { throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo guardar la configuración de las pistas.'); }
   }
 }

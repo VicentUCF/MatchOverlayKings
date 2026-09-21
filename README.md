@@ -446,3 +446,7 @@ del runtime. Las grabaciones se conservan al detener o reiniciar el servicio.
 Cada reinicio del encoder crea un archivo nuevo, sin sobrescribir las partes anteriores.
 El MP4 se escribe por fragmentos para conservar las partes completas si se interrumpe el proceso.
 Revisa el espacio disponible antes de grabar partidos largos; la grabación termina si se llena el disco.
+
+La reconciliación posterior con YouTube se ejecuta mediante RabbitMQ y no desde
+las consultas del navegador. La topología, despliegue, observabilidad y rollback
+están documentados en [la migración de publicaciones](docs/rabbitmq-publication-migration.md).

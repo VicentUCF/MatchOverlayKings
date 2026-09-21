@@ -1,4 +1,23 @@
 services:
+  rabbitmq:
+    image: rabbitmq:4.1-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${KPL_RABBITMQ_USER:-kpl}
+      RABBITMQ_DEFAULT_PASS: ${KPL_RABBITMQ_PASSWORD:-kpl-local}
+      RABBITMQ_DEFAULT_VHOST: ${KPL_RABBITMQ_VHOST:-kpl}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      default:
+        ipv4_address: 172.30.0.3
+
   kpl-pilot:
     build:
       context: .
@@ -26,6 +45,11 @@ services:
       KPL_PILOT_FFMPEG_PATH: /usr/bin/ffmpeg
       KPL_PILOT_MEDIAMTX_PATH: /usr/local/bin/mediamtx
       KPL_PILOT_ADMIN_HOST: 172.30.0.1
+      KPL_RABBITMQ_URL: amqp://${KPL_RABBITMQ_USER:-kpl}:${KPL_RABBITMQ_PASSWORD:-kpl-local}@rabbitmq:5672/${KPL_RABBITMQ_VHOST:-kpl}
+      KPL_RABBITMQ_QUEUE_PREFIX: kpl.publications
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     ports:
       - "4310:4310/tcp"
       - "8889:8889/tcp"
@@ -54,3 +78,6 @@ networks:
     ipam:
       config:
         - subnet: 172.30.0.0/24
+
+volumes:
+  rabbitmq-data:

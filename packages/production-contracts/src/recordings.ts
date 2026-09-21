@@ -45,6 +45,7 @@ export const PublicationJobSchema = z.strictObject({
   youtubeVideoId: z.string().min(1).max(128).nullable(),
   watchUrl: z.string().url().nullable(),
   publishAt: z.iso.datetime({ offset: true }).nullable(),
+  retryAt: z.iso.datetime({ offset: true }).nullable().optional(),
   createdAt: z.iso.datetime({ offset: true }),
   updatedAt: z.iso.datetime({ offset: true }),
   error: z.string().max(500).nullable(),
