@@ -14,13 +14,14 @@ type MobileCameraPanelProps = {
   readonly connectUrl: string | null;
   readonly active: boolean;
   readonly pending: boolean;
+  readonly guided?: boolean;
   readonly onCreate: () => Promise<unknown>;
   readonly onUpdate: (id: string, input: UpdatePilotMobileCameraDesiredInput) => Promise<boolean>;
   readonly onRevoke: (id: string) => Promise<boolean>;
 };
 
 export function PilotMobileCameraPanel({
-  courtSlug, mobileCamera, connectUrl, active, pending, onCreate, onUpdate, onRevoke,
+  courtSlug, mobileCamera, connectUrl, active, pending, guided = false, onCreate, onUpdate, onRevoke,
 }: MobileCameraPanelProps) {
   const owned = mobileCamera?.courtSlug === courtSlug && mobileCamera.state !== 'revoked' ? mobileCamera : null;
   const [cameraId, setCameraId] = useState(owned?.desired.cameraId ?? '');
@@ -74,9 +75,9 @@ export function PilotMobileCameraPanel({
   const requestedApplied = requestedRevision !== null
     && (owned?.applied?.revision ?? 0) >= requestedRevision;
 
-  return <section className="pilot-mobile-camera" aria-labelledby={`mobile-camera-${courtSlug}`}>
+  return <section className={`pilot-mobile-camera${guided ? ' pilot-mobile-camera--guided' : ''}`} aria-labelledby={`mobile-camera-${courtSlug}`}>
     <div className="pilot-mobile-camera__heading">
-      <div><Camera aria-hidden="true" /><h3 id={`mobile-camera-${courtSlug}`}>Cámara Android</h3></div>
+      <div><Camera aria-hidden="true" /><h3 id={`mobile-camera-${courtSlug}`}>{guided ? 'Conecta tu móvil' : 'Cámara Android'}</h3></div>
       {owned === null ? null : <CameraState state={owned.state} />}
     </div>
 
@@ -99,12 +100,12 @@ export function PilotMobileCameraPanel({
 
       {owned.capabilities === null ? <p className="production-command-feedback">Esperando que el móvil pulse “Preparar cámara”.</p> : <form onSubmit={(event) => void save(event)}>
         <fieldset disabled={active || saving}>
-          <legend>Configuración remota</legend>
+          <legend>{guided ? 'Cámara y sonido' : 'Configuración remota'}</legend>
           <label htmlFor={`mobile-device-${courtSlug}`}>Cámara</label>
           <select id={`mobile-device-${courtSlug}`} value={cameraId} onChange={(event) => setCameraId(event.currentTarget.value)}>
             {owned.capabilities.cameras.map((camera) => <option key={camera.id} value={camera.id}>{camera.label}</option>)}
           </select>
-          <label htmlFor={`mobile-profile-${courtSlug}`}>Resolución y FPS</label>
+          <label htmlFor={`mobile-profile-${courtSlug}`}>{guided ? 'Calidad de imagen' : 'Resolución y FPS'}</label>
           <select id={`mobile-profile-${courtSlug}`} value={profile} onChange={(event) => setProfile(event.currentTarget.value as PilotMobileVideoProfile)}>
             {profiles.map((candidate) => <option value={candidate} key={candidate}>{profileLabel(candidate)}</option>)}
           </select>
@@ -112,7 +113,7 @@ export function PilotMobileCameraPanel({
             disabled={!owned.capabilities.audioAvailable} onChange={(event) => setAudioEnabled(event.currentTarget.checked)} />
             Usar micrófono del móvil</label>
           <button type="submit" disabled={cameraId === '' || profiles.length === 0 || (applyingRemotely && !owned.error)}>
-            {saving ? 'Enviando…' : applyingRemotely && !owned.error ? 'Aplicando en el móvil…' : 'Aplicar al móvil'}
+            {saving ? 'Enviando…' : applyingRemotely && !owned.error ? 'Aplicando en el móvil…' : guided ? 'Confirmar cámara' : 'Aplicar al móvil'}
           </button>
         </fieldset>
         {applyingRemotely ? <p role="status" aria-live="polite">Android está cambiando la cámara y reconectando la señal…</p>

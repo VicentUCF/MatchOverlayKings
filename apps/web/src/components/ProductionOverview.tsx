@@ -5,9 +5,9 @@ import { useProductionPilot, type ProductionPilotController } from '../hooks/use
 import type { ProductionCourtSlots, ProductionOverviewAccess } from '../lib/production-overview-types.js';
 import { ProductionCourtCard } from './ProductionCourtCard.js';
 import { ProductionDashboardView } from './ProductionDashboard.js';
-import { ProductionPilotWorkspaceView } from './ProductionPilotWorkspace.js';
 import { ProductionNavigation } from './ProductionNavigation.js';
 import { RecordingLibraryWorkspace } from './RecordingLibraryWorkspace.js';
+import { ProductionSetupWizard } from './ProductionSetupWizard.js';
 
 export type ProductionDestination = 'production' | 'recordings';
 type AdminArea = ProductionDestination;
@@ -108,12 +108,15 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
     {inventoryStale ? <InventoryStaleWarning /> : null}
     <section id="production-panel-production" className="production-workspace-panel" role="tabpanel"
       aria-labelledby="production-tab-production" hidden={activeArea !== 'production'} tabIndex={0}>
-      <div className="production-workspace-toolbar">
+      {!newProductionOpen ? <><div className="production-workspace-toolbar">
         <div><p className="production-kicker">Administración y realización</p><h1>Producción</h1>
           <p>Configura una salida y contrólala desde el detalle de su pista.</p></div>
         <button className="production-setup-submit" type="button" onClick={beginNewProduction}><Plus aria-hidden="true" />Nueva producción</button>
       </div>
-      {newProductionOpen ? <section className="production-new-flow" aria-labelledby="new-production-title">
+      <ProductionDashboardView state={pilot.state} pilot={pilot} refresh={pilot.refresh} localAdminUrl={pilot.localAdminUrl} embedded
+        selectedCourt={selectedCourt} onSelectCourt={selectCourt} monitoringActive={activeArea === 'production'}
+        courts={courts} onOpenConfiguration={beginNewProduction} onOpenControls={() => undefined} /></> : null}
+      {newProductionOpen && newProduction === null ? <section className="production-new-flow" aria-labelledby="new-production-title">
         <header><div><p className="production-kicker">Nueva producción</p><h2 id="new-production-title">Elige primero el destino</h2></div>
           <button type="button" className="refresh-button" onClick={closeNewProduction} aria-label="Cerrar configuración"><X aria-hidden="true" /></button></header>
         <div className="production-new-flow__choices" role="radiogroup" aria-label="Tipo de producción">
@@ -122,12 +125,9 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
           <button type="button" role="radio" aria-checked={newProduction === 'youtube'} onClick={() => setNewProduction('youtube')}>
             <Radio aria-hidden="true" /><strong>Emitir en directo</strong><span>Salida excepcional a YouTube Live.</span></button>
         </div>
-        {newProduction ? <ProductionPilotWorkspaceView pilot={pilot} initialView="configuration" embedded courts={courts}
-          preferredMode={newProduction} onOpenControls={closeNewProduction} /> : null}
       </section> : null}
-      <ProductionDashboardView state={pilot.state} pilot={pilot} refresh={pilot.refresh} localAdminUrl={pilot.localAdminUrl} embedded
-        selectedCourt={selectedCourt} onSelectCourt={selectCourt} monitoringActive={activeArea === 'production'}
-        courts={courts} onOpenConfiguration={beginNewProduction} onOpenControls={() => undefined} />
+      {newProductionOpen && newProduction !== null ? <ProductionSetupWizard pilot={pilot} courts={courts} kind={newProduction}
+        onBack={() => setNewProduction(null)} onComplete={closeNewProduction} /> : null}
     </section>
     <section id="production-panel-recordings" className="production-workspace-panel" role="tabpanel"
       aria-labelledby="production-tab-recordings" hidden={activeArea !== 'recordings'} tabIndex={0}>

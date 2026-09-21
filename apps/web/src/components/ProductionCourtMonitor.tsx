@@ -123,16 +123,21 @@ export function CourtOverlayMonitor({ courtSlug }: { readonly courtSlug: string 
   </details>;
 }
 
-export function ScorerAccess({ courtSlug, seasonLabel, matchdayNumber }: {
+export function ScorerAccess({ courtSlug, seasonLabel, matchdayNumber, expanded = false, variant = 'default', onLinkCreated }: {
   readonly courtSlug: string;
   readonly seasonLabel: string;
   readonly matchdayNumber: number;
+  readonly expanded?: boolean;
+  readonly variant?: 'default' | 'wizard';
+  readonly onLinkCreated?: (created: boolean) => void;
 }) {
   const [copied, setCopied] = useState<'idle' | 'success' | 'error'>('idle');
   const [url, setUrl] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setUrl(''); setCopied('idle'); setError(null); }, [courtSlug]);
+  useEffect(() => {
+    setUrl(''); setCopied('idle'); setError(null); onLinkCreated?.(false);
+  }, [courtSlug, onLinkCreated]);
   const generate = async () => {
     setPending(true);
     setError(null);
@@ -147,6 +152,7 @@ export function ScorerAccess({ courtSlug, seasonLabel, matchdayNumber }: {
       const origin = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)
         ? 'https://live.kingspadelleague.es' : window.location.origin;
       setUrl(`${origin}/control/${courtSlug}#token=${payload.token}`);
+      onLinkCreated?.(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo generar el enlace.');
     } finally { setPending(false); }
@@ -160,9 +166,9 @@ export function ScorerAccess({ courtSlug, seasonLabel, matchdayNumber }: {
     const { error: rpcError } = await supabase.rpc('revoke_visual_control_link', { p_court_slug: courtSlug });
     setPending(false);
     if (rpcError) { setError(rpcError.message); return; }
-    setUrl(''); setCopied('idle');
+    setUrl(''); setCopied('idle'); onLinkCreated?.(false);
   };
-  return <details className="production-scorer-access">
+  return <details className={`production-scorer-access production-scorer-access--${variant}`} open={expanded || undefined}>
     <summary>Enlace y acceso del anotador</summary>
     <p>Válido para {seasonLabel}, jornada {matchdayNumber}, durante 18 horas. El anotador puede usarlo sin iniciar sesión y generar otro invalida el anterior.</p>
     <button type="button" className="refresh-button" disabled={pending} onClick={() => void generate()}>
