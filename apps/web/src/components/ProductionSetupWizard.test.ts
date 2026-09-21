@@ -62,6 +62,11 @@ describe('guided production setup', () => {
 
     expect(html).toContain('¿Qué pistas quieres grabar?');
     expect(html).toContain('Grabación local');
+    expect(html).toContain('Ajustes para toda la producción');
+    expect(html).toContain('Temporada');
+    expect(html).toContain('Jornada');
+    expect(html).toContain('Carpeta de grabaciones');
+    expect(html).toContain('Todos los archivos de esta producción se guardarán aquí.');
     expect((html.match(/type="checkbox"/g) ?? [])).toHaveLength(3);
     expect(html).toContain('Selecciona al menos una pista');
     expect(html).not.toContain('1 Partido');
@@ -83,6 +88,8 @@ describe('guided production setup', () => {
 
     expect(html).toContain('¿Qué pistas quieres emitir?');
     expect(html).toContain('Directo en YouTube');
+    expect(html).toContain('Ajustes para toda la producción');
+    expect(html).not.toContain('Carpeta de grabaciones');
     expect(html).toContain('Después configuraremos cada pista por separado.');
   });
 });

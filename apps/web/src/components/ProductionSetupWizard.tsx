@@ -43,6 +43,11 @@ export function ProductionSetupWizard({ pilot, courts, kind, onBack, onComplete 
   const headingRef = useRef<HTMLHeadingElement>(null);
 
   const ready = pilot.state.kind === 'ready' ? pilot.state : null;
+  const initialConfiguration = ready?.configurations.find((configuration) => configuration.mode === kind) ?? null;
+  const [seasonLabel, setSeasonLabel] = useState(initialConfiguration?.seasonLabel ?? 'T2');
+  const [matchdayNumber, setMatchdayNumber] = useState(initialConfiguration?.matchdayNumber ?? 1);
+  const [recordingDirectory, setRecordingDirectory] = useState(initialConfiguration?.recordingDirectory ?? '');
+  const commonSettingsInitialized = useRef(initialConfiguration !== null);
   const enabledCourts = courts.filter(({ productionEnabled }) => productionEnabled);
   const selected = selectedCourts
     .map((slug) => enabledCourts.find((court) => court.slug === slug))
@@ -53,12 +58,25 @@ export function ProductionSetupWizard({ pilot, courts, kind, onBack, onComplete 
     if (selectionDone) headingRef.current?.focus();
   }, [courtIndex, selectionDone, step]);
 
+  useEffect(() => {
+    if (ready === null || commonSettingsInitialized.current) return;
+    const configuration = ready.configurations.find((candidate) => candidate.mode === kind);
+    if (configuration) {
+      setSeasonLabel(configuration.seasonLabel);
+      setMatchdayNumber(configuration.matchdayNumber);
+      setRecordingDirectory(configuration.recordingDirectory ?? '');
+    }
+    commonSettingsInitialized.current = true;
+  }, [kind, ready]);
+
   if (ready === null) {
     return <div className="production-page-feedback" role="status">Preparando el asistente de configuración…</div>;
   }
 
   if (!selectionDone) {
     return <CourtSelection kind={kind} courts={enabledCourts} state={ready} selected={selectedCourts}
+      seasonLabel={seasonLabel} matchdayNumber={matchdayNumber} recordingDirectory={recordingDirectory}
+      onSeasonLabel={setSeasonLabel} onMatchdayNumber={setMatchdayNumber} onRecordingDirectory={setRecordingDirectory}
       onToggle={(slug) => setSelectedCourts((current) => current.includes(slug)
         ? current.filter((candidate) => candidate !== slug)
         : [...current, slug])}
@@ -106,6 +124,7 @@ export function ProductionSetupWizard({ pilot, courts, kind, onBack, onComplete 
         })}
       </nav>
       <CourtWizard key={`${currentCourt.slug}:${kind}`} court={currentCourt} kind={kind} ready={ready} pilot={pilot}
+        seasonLabel={seasonLabel} matchdayNumber={matchdayNumber} recordingDirectory={recordingDirectory}
         step={step} setStep={setStep} headingRef={headingRef}
         onBackToSelection={() => { setSelectionDone(false); setStep('match'); }} onFinish={finishCourt}
         nextCourtName={selected[courtIndex + 1]?.name ?? null} />
@@ -113,11 +132,18 @@ export function ProductionSetupWizard({ pilot, courts, kind, onBack, onComplete 
   </section>;
 }
 
-function CourtSelection({ kind, courts, state, selected, onToggle, onBack, onContinue }: {
+function CourtSelection({ kind, courts, state, selected, seasonLabel, matchdayNumber, recordingDirectory,
+  onSeasonLabel, onMatchdayNumber, onRecordingDirectory, onToggle, onBack, onContinue }: {
   readonly kind: ProductionKind;
   readonly courts: readonly ProductionCourtSlot[];
   readonly state: ReadyPilotState;
   readonly selected: readonly PilotCourtSlug[];
+  readonly seasonLabel: string;
+  readonly matchdayNumber: number;
+  readonly recordingDirectory: string;
+  readonly onSeasonLabel: (value: string) => void;
+  readonly onMatchdayNumber: (value: number) => void;
+  readonly onRecordingDirectory: (value: string) => void;
   readonly onToggle: (slug: PilotCourtSlug) => void;
   readonly onBack: () => void;
   readonly onContinue: () => void;
@@ -128,36 +154,55 @@ function CourtSelection({ kind, courts, state, selected, onToggle, onBack, onCon
       <p>Selecciona una o varias. Después configuraremos cada pista por separado.</p></div>
       <span className="production-wizard__kind"><MonitorPlay aria-hidden="true" />{kind === 'recording' ? 'Grabación local' : 'Directo en YouTube'}</span>
     </header>
-    <fieldset className="production-wizard__court-selection">
-      <legend className="production-sr-only">Pistas incluidas</legend>
-      {courts.length === 0 ? <p className="production-page-feedback" role="status">
-        No hay pistas habilitadas. Activa al menos una pista antes de crear una producción.
-      </p> : null}
-      {courts.map((court) => {
-        const active = state.sessions.some((session) => session.courtSlug === court.slug && session.status !== 'stopped');
-        const checked = selected.includes(court.slug);
-        const configured = state.configurations.some((configuration) => configuration.courtSlug === court.slug);
-        return <label key={court.slug} className={checked ? 'is-selected' : ''}>
-          <input type="checkbox" checked={checked} disabled={active} onChange={() => onToggle(court.slug)} />
-          <span className="production-wizard__selection-check"><Check aria-hidden="true" /></span>
-          <span><strong>{court.name}</strong><small>{active ? 'Tiene una sesión activa' : configured ? 'Configurada anteriormente' : 'Disponible'}</small></span>
-        </label>;
-      })}
-    </fieldset>
-    <WizardFooter onBack={onBack} backLabel="Cambiar tipo">
-      <button className="production-setup-submit" type="button" disabled={selected.length === 0} onClick={onContinue}>
-        {selected.length === 0 ? 'Selecciona al menos una pista' : `Configurar ${selected.length} ${selected.length === 1 ? 'pista' : 'pistas'}`}
-        <ArrowRight aria-hidden="true" />
-      </button>
-    </WizardFooter>
+    <form className="production-wizard__selection-form" onSubmit={(event) => { event.preventDefault(); onContinue(); }}>
+      <fieldset className="production-wizard__common-settings">
+        <legend>Ajustes para toda la producción</legend>
+        <p>Se aplicarán automáticamente a todas las pistas seleccionadas.</p>
+        <div className="production-wizard__fields">
+          <label>Temporada<input required value={seasonLabel} onChange={(event) => onSeasonLabel(event.currentTarget.value)} /></label>
+          <label>Jornada<input type="number" min="1" max="999" required value={matchdayNumber}
+            onChange={(event) => onMatchdayNumber(event.currentTarget.valueAsNumber)} /></label>
+          {kind === 'recording' ? <label>Carpeta de grabaciones<span className="production-wizard__folder-input">
+            <FolderOpen aria-hidden="true" /><input value={recordingDirectory} placeholder="Usar la carpeta predeterminada"
+              onChange={(event) => onRecordingDirectory(event.currentTarget.value)} /></span>
+            <small>Todos los archivos de esta producción se guardarán aquí.</small></label> : null}
+        </div>
+      </fieldset>
+      <fieldset className="production-wizard__court-selection">
+        <legend className="production-sr-only">Pistas incluidas</legend>
+        {courts.length === 0 ? <p className="production-page-feedback" role="status">
+          No hay pistas habilitadas. Activa al menos una pista antes de crear una producción.
+        </p> : null}
+        {courts.map((court) => {
+          const active = state.sessions.some((session) => session.courtSlug === court.slug && session.status !== 'stopped');
+          const checked = selected.includes(court.slug);
+          const configured = state.configurations.some((configuration) => configuration.courtSlug === court.slug);
+          return <label key={court.slug} className={checked ? 'is-selected' : ''}>
+            <input type="checkbox" checked={checked} disabled={active} onChange={() => onToggle(court.slug)} />
+            <span className="production-wizard__selection-check"><Check aria-hidden="true" /></span>
+            <span><strong>{court.name}</strong><small>{active ? 'Tiene una sesión activa' : configured ? 'Configurada anteriormente' : 'Disponible'}</small></span>
+          </label>;
+        })}
+      </fieldset>
+      <WizardFooter onBack={onBack} backLabel="Cambiar tipo">
+        <button className="production-setup-submit" type="submit" disabled={selected.length === 0}>
+          {selected.length === 0 ? 'Selecciona al menos una pista' : `Configurar ${selected.length} ${selected.length === 1 ? 'pista' : 'pistas'}`}
+          <ArrowRight aria-hidden="true" />
+        </button>
+      </WizardFooter>
+    </form>
   </section>;
 }
 
-function CourtWizard({ court, kind, ready, pilot, step, setStep, headingRef, onBackToSelection, onFinish, nextCourtName }: {
+function CourtWizard({ court, kind, ready, pilot, seasonLabel, matchdayNumber, recordingDirectory,
+  step, setStep, headingRef, onBackToSelection, onFinish, nextCourtName }: {
   readonly court: ProductionCourtSlot;
   readonly kind: ProductionKind;
   readonly ready: ReadyPilotState;
   readonly pilot: ProductionPilotController;
+  readonly seasonLabel: string;
+  readonly matchdayNumber: number;
+  readonly recordingDirectory: string;
   readonly step: CourtStep;
   readonly setStep: (step: CourtStep) => void;
   readonly headingRef: RefObject<HTMLHeadingElement | null>;
@@ -172,12 +217,9 @@ function CourtWizard({ court, kind, ready, pilot, step, setStep, headingRef, onB
       ? PILOT_MOBILE_SOURCE_ID : ready.readiness.sources[0]?.id ?? 'synthetic');
   const [homeTeam, setHomeTeam] = useState(configuration?.homeTeam ?? teamName(ready.teams, court.assignment?.score?.homeTeamId, 0));
   const [awayTeam, setAwayTeam] = useState(configuration?.awayTeam ?? teamName(ready.teams, court.assignment?.score?.awayTeamId, 1));
-  const [seasonLabel, setSeasonLabel] = useState(configuration?.seasonLabel ?? 'T2');
-  const [matchdayNumber, setMatchdayNumber] = useState(configuration?.matchdayNumber ?? 1);
   const [scheduledAt, setScheduledAt] = useState(() => toLocalDateTime(configuration?.scheduledAt));
   const [privacyStatus, setPrivacyStatus] = useState<PilotPrivacy>(configuration?.privacyStatus ?? 'private');
   const [description, setDescription] = useState(configuration?.description ?? 'Sigue la jornada de Kings Padel League.');
-  const [recordingDirectory, setRecordingDirectory] = useState(configuration?.recordingDirectory ?? '');
   const [sourceId, setSourceId] = useState(initialSource);
   const [saving, setSaving] = useState(false);
   const active = ready.sessions.some((session) => session.courtSlug === court.slug && session.status !== 'stopped');
@@ -207,11 +249,9 @@ function CourtWizard({ court, kind, ready, pilot, step, setStep, headingRef, onB
       </ol>
     </header>
     {step === 'match' ? <MatchStep court={court} kind={kind} teams={ready.teams} active={active}
-      homeTeam={homeTeam} awayTeam={awayTeam} seasonLabel={seasonLabel} matchdayNumber={matchdayNumber}
-      scheduledAt={scheduledAt} privacyStatus={privacyStatus} description={description} recordingDirectory={recordingDirectory}
-      onHomeTeam={setHomeTeam} onAwayTeam={setAwayTeam} onSeasonLabel={setSeasonLabel}
-      onMatchdayNumber={setMatchdayNumber} onScheduledAt={setScheduledAt} onPrivacyStatus={setPrivacyStatus}
-      onDescription={setDescription} onRecordingDirectory={setRecordingDirectory}
+      homeTeam={homeTeam} awayTeam={awayTeam} scheduledAt={scheduledAt} privacyStatus={privacyStatus} description={description}
+      onHomeTeam={setHomeTeam} onAwayTeam={setAwayTeam} onScheduledAt={setScheduledAt} onPrivacyStatus={setPrivacyStatus}
+      onDescription={setDescription}
       onBack={onBackToSelection} onContinue={() => setStep('camera')} /> : null}
     {step === 'camera' ? <CameraStep court={court} ready={ready} sourceId={sourceId} setSourceId={setSourceId}
       mobileCamera={mobileCamera} connectUrl={connectUrl} active={active} pending={pending}
@@ -224,16 +264,15 @@ function CourtWizard({ court, kind, ready, pilot, step, setStep, headingRef, onB
   </article>;
 }
 
-function MatchStep({ court, kind, teams, active, homeTeam, awayTeam, seasonLabel, matchdayNumber, scheduledAt,
-  privacyStatus, description, recordingDirectory, onHomeTeam, onAwayTeam, onSeasonLabel, onMatchdayNumber,
-  onScheduledAt, onPrivacyStatus, onDescription, onRecordingDirectory, onBack, onContinue }: {
+function MatchStep({ court, kind, teams, active, homeTeam, awayTeam, scheduledAt,
+  privacyStatus, description, onHomeTeam, onAwayTeam,
+  onScheduledAt, onPrivacyStatus, onDescription, onBack, onContinue }: {
   readonly court: ProductionCourtSlot; readonly kind: ProductionKind; readonly teams: readonly Team[]; readonly active: boolean;
-  readonly homeTeam: string; readonly awayTeam: string; readonly seasonLabel: string; readonly matchdayNumber: number;
-  readonly scheduledAt: string; readonly privacyStatus: PilotPrivacy; readonly description: string; readonly recordingDirectory: string;
+  readonly homeTeam: string; readonly awayTeam: string;
+  readonly scheduledAt: string; readonly privacyStatus: PilotPrivacy; readonly description: string;
   readonly onHomeTeam: (value: string) => void; readonly onAwayTeam: (value: string) => void;
-  readonly onSeasonLabel: (value: string) => void; readonly onMatchdayNumber: (value: number) => void;
   readonly onScheduledAt: (value: string) => void; readonly onPrivacyStatus: (value: PilotPrivacy) => void;
-  readonly onDescription: (value: string) => void; readonly onRecordingDirectory: (value: string) => void;
+  readonly onDescription: (value: string) => void;
   readonly onBack: () => void; readonly onContinue: () => void;
 }) {
   const duplicateTeams = homeTeam !== '' && homeTeam === awayTeam;
@@ -251,9 +290,6 @@ function MatchStep({ court, kind, teams, active, homeTeam, awayTeam, seasonLabel
     </div>
     {duplicateTeams ? <p className="production-command-feedback danger" role="alert">Selecciona dos equipos diferentes.</p> : null}
     <div className="production-wizard__fields">
-      <label>Temporada<input required value={seasonLabel} onChange={(event) => onSeasonLabel(event.currentTarget.value)} /></label>
-      <label>Jornada<input type="number" min="1" max="999" required value={matchdayNumber}
-        onChange={(event) => onMatchdayNumber(event.currentTarget.valueAsNumber)} /></label>
       <label>Fecha y hora<input type="datetime-local" required min={kind === 'youtube' ? toLocalDateTime() : undefined}
         value={scheduledAt} onChange={(event) => onScheduledAt(event.currentTarget.value)} /></label>
       {kind === 'youtube' ? <label>Visibilidad<select value={privacyStatus}
@@ -261,12 +297,8 @@ function MatchStep({ court, kind, teams, active, homeTeam, awayTeam, seasonLabel
         <option value="private">Privado</option><option value="unlisted">No listado</option><option value="public">Público</option>
       </select></label> : null}
     </div>
-    {kind === 'recording' ? <details className="production-wizard__optional"><summary><FolderOpen aria-hidden="true" />Dónde guardar el archivo</summary>
-      <label>Carpeta del ordenador<input value={recordingDirectory} placeholder="Usar la carpeta predeterminada"
-        onChange={(event) => onRecordingDirectory(event.currentTarget.value)} />
-        <small>Déjalo vacío para usar la carpeta configurada por el sistema.</small></label></details>
-      : <label className="production-wizard__description">Descripción de YouTube<textarea required maxLength={5_000} value={description}
-        onChange={(event) => onDescription(event.currentTarget.value)} /></label>}
+    {kind === 'youtube' ? <label className="production-wizard__description">Descripción de YouTube<textarea required maxLength={5_000} value={description}
+        onChange={(event) => onDescription(event.currentTarget.value)} /></label> : null}
     <WizardFooter onBack={onBack} backLabel="Elegir pistas"><button className="production-setup-submit" type="submit"
       disabled={active || duplicateTeams}>Continuar a Cámara<ArrowRight aria-hidden="true" /></button></WizardFooter>
   </form>;
