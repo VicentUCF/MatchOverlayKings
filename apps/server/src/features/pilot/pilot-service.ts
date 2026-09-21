@@ -57,6 +57,9 @@ const MAX_ACTIVE_SESSIONS = 3;
 const MAX_DIAGNOSTIC_LENGTH = 2_000;
 const MAX_AUTOMATIC_RETRIES = 5;
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000] as const;
+const YOUTUBE_HEALTH_TIMER_MS = 5_000;
+const YOUTUBE_TRANSITION_CHECK_MS = 5_000;
+const YOUTUBE_STABLE_CHECK_MS = 30_000;
 
 const PersistedPilotSessionSchema = z.strictObject({
   public: PilotSessionSchema,
@@ -194,7 +197,9 @@ export class PilotService {
         });
       }
     }));
-    await Promise.all([...this.sessions.values()].map((session) => this.refreshYouTubeHealth(session)));
+    await Promise.all([...this.sessions.values()]
+      .filter(({ public: session }) => session.status !== 'stopped')
+      .map((session) => this.refreshYouTubeHealth(session)));
     await this.operations.reconcileSessions([...this.sessions.values()]);
     await this.operations.reconcileConfigurations(this.configurations());
     await this.persistSessions();
@@ -202,7 +207,7 @@ export class PilotService {
       if (this.pendingMobileIncidents.length > 0) this.queuePersistSessions();
       void Promise.all([...this.sessions.values()].filter(({ public: session }) => session.status !== 'stopped')
         .map((session) => this.refreshYouTubeHealth(session)));
-    }, 5_000);
+    }, YOUTUBE_HEALTH_TIMER_MS);
     this.healthTimer.unref();
   }
 
@@ -478,7 +483,6 @@ export class PilotService {
   }
 
   public async list(): Promise<readonly PilotSession[]> {
-    await Promise.all([...this.sessions.values()].map((session) => this.refreshYouTubeHealth(session)));
     for (const session of this.sessions.values()) this.invalidatePreflight(session);
     return this.snapshot();
   }
@@ -1232,9 +1236,13 @@ export class PilotService {
   }
 
   private async refreshYouTubeHealth(session: InternalPilotSession): Promise<boolean> {
+    if (session.public.status === 'stopped') return true;
     if (session.public.preparationPending) return true;
     if (session.public.mode !== 'youtube' || session.public.broadcastId === null || session.streamId === null) return true;
-    if (Date.now() - session.lastYouTubeCheckAt < 5_000) return true;
+    const interval = ['starting', 'reconnecting', 'stopping'].includes(session.public.status)
+      ? YOUTUBE_TRANSITION_CHECK_MS
+      : YOUTUBE_STABLE_CHECK_MS;
+    if (Date.now() - session.lastYouTubeCheckAt < interval) return true;
     session.lastYouTubeCheckAt = Date.now();
     try {
       const health = await this.youtube.health(session.public.broadcastId, session.streamId);

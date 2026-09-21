@@ -75,6 +75,51 @@ async function fixture(mode: 'simulation' | 'youtube' = 'simulation', checked = 
 }
 
 describe('production runtime recovery', () => {
+  it('keeps session reads quota-free and never polls stopped YouTube sessions after restart', async () => {
+    vi.useFakeTimers();
+    const { service, session, health, createService } = await fixture('youtube', false);
+    health.mockClear();
+
+    await service.list();
+    await service.list();
+    expect(health).not.toHaveBeenCalled();
+
+    await service.stop(session.id);
+    await service.shutdown();
+    const restarted = createService();
+    await restarted.initialize();
+    cleanups.push(() => restarted.shutdown());
+    await restarted.list();
+    expect(restarted.get(session.id).public.status).toBe('stopped');
+    expect(health).not.toHaveBeenCalled();
+  });
+
+  it('polls YouTube quickly while starting and backs off once the emission is live', async () => {
+    vi.useFakeTimers();
+    const { service, session, health, encoders } = await fixture('youtube');
+    const checks: number[] = [];
+    health.mockImplementation(async () => {
+      checks.push(Date.now());
+      return { broadcastStatus: 'live', streamStatus: 'active', healthStatus: 'good' };
+    });
+    health.mockClear();
+    await service.start(session.id);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(health).toHaveBeenCalledOnce();
+    expect(service.get(session.id).public.status).toBe('live');
+
+    encoders[0]?.progress(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    encoders[0]?.progress(2);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(health).toHaveBeenCalledOnce();
+    encoders[0]?.progress(3);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(health).toHaveBeenCalledTimes(2);
+    expect(checks[1]! - checks[0]!).toBe(30_000);
+  });
+
   it('restores legacy sessions from court settings and persists them across another restart', async () => {
     const { directory, service, session, createService } = await fixture('simulation', false);
     await service.shutdown();
