@@ -432,7 +432,7 @@ exec /bin/ffmpeg "$@"
     cleanups.push(async () => { await app.close(); await rm(dataDir, { recursive: true, force: true }); });
 
     const readiness = PilotReadinessSchema.parse((await app.inject({ method: 'GET', url: '/api/pilot/readiness' })).json());
-    expect(readiness.sources).toContainEqual({ id: 'mobile:pilot', kind: 'mobile', label: 'Móvil Android · WebRTC' });
+    expect(readiness.sources).toContainEqual({ id: 'mobile:pilot', kind: 'mobile', label: 'Puerta de enlace · WebRTC' });
     const remoteAdmin = await app.inject({
       method: 'GET', url: '/api/pilot/mobile-camera', remoteAddress: '192.168.1.45',
     });

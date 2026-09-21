@@ -52,7 +52,7 @@ describe('tabbed production workspace', () => {
     const readyPilot: ProductionPilotController = { ...pilot, state: {
       kind: 'ready', readiness: {
         ffmpeg: { available: true, version: 'test' }, youtube: { configured: false, authorized: false, authorizationUrl: null },
-        sources: [{ id: 'mobile:pilot', kind: 'mobile', label: 'Móvil Android' }], limitations: [],
+        sources: [{ id: 'mobile:pilot', kind: 'mobile', label: 'Puerta de enlace · WebRTC' }], limitations: [],
       }, teams: [], configurations: courts.map(({ slug }) => ({
         courtSlug: slug, sourceId: 'mobile:pilot', mode: 'simulation', homeTeam: 'Kings', awayTeam: 'Lions',
         matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: '2026-09-18T12:00:00.000Z',
@@ -64,6 +64,8 @@ describe('tabbed production workspace', () => {
     const html = renderToStaticMarkup(createElement(ProductionPilotWorkspaceView, { pilot: readyPilot, courts }));
     expect(html).toContain('id="mobile-link-pista-1" readOnly="" value="https://live.kingspadelleague.es/camera/pilot#pista-1"');
     expect(html).toContain('id="mobile-link-pista-2" readOnly="" value="https://live.kingspadelleague.es/camera/pilot#pista-2"');
+    expect(html).toContain('Puerta de enlace · WebRTC');
+    expect(html).not.toContain('Móvil Android');
     expect((html.match(/Generar enlace/g) ?? [])).toHaveLength(1);
     expect(html).not.toContain('asignada a');
     expect(html).not.toMatch(/<option[^>]*disabled/);
@@ -123,6 +125,7 @@ describe('tabbed production workspace', () => {
     expect((html.match(/href="https:\/\/www.youtube.com\/watch\?v=broadcast-1"/g) ?? [])).toHaveLength(2);
     expect(html).toContain('Grabación local');
     expect(html).toContain('MP4 con audio y marcador para emitir después.');
+    expect(html).not.toContain('Simulación');
     expect(html).toContain('Datos compartidos');
     expect(html).toContain('Descripción compartida de la jornada');
     expect(html).toContain('aria-label="Información de este PC"');

@@ -5,7 +5,7 @@ import { PilotPreflightPanel } from './PilotPreflightPanel.js';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
 import {
   CircleCheck, CircleX, ExternalLink, Info, MonitorPlay, Radio, RefreshCw,
-  Settings, Settings2, SlidersHorizontal, TestTube2, X,
+  Settings, Settings2, SlidersHorizontal, X,
 } from 'lucide-react';
 import {
   PILOT_MOBILE_SOURCE_ID,
@@ -199,7 +199,7 @@ function PilotConfigurationPanel({
   readonly onRevokeMobile: (id: string) => Promise<boolean>;
   readonly onSave: (input: PreparePilotSessionInput) => Promise<boolean>;
 }) {
-  const [mode, setMode] = useState<PilotMode>(configuration?.mode ?? 'simulation');
+  const [mode, setMode] = useState<PilotMode>(selectablePilotMode(configuration?.mode));
   const [homeTeam, setHomeTeam] = useState(configuration?.homeTeam
     ?? teamName(teams, court.assignment?.score?.homeTeamId, 0));
   const [awayTeam, setAwayTeam] = useState(configuration?.awayTeam
@@ -217,7 +217,7 @@ function PilotConfigurationPanel({
   useEffect(() => {
     const savedConfiguration = configurationRef.current;
     if (savedConfiguration === null) return;
-    setMode(savedConfiguration.mode);
+    setMode(selectablePilotMode(savedConfiguration.mode));
     setHomeTeam(savedConfiguration.homeTeam);
     setAwayTeam(savedConfiguration.awayTeam);
     setSeasonLabel(savedConfiguration.seasonLabel);
@@ -251,8 +251,6 @@ function PilotConfigurationPanel({
       <fieldset disabled={pending || active || !court.productionEnabled}>
         <legend>Datos de la emisión</legend>
         <div className="production-pilot-mode">
-          <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'simulation'} onChange={() => setMode('simulation')} />
-            <span><TestTube2 aria-hidden="true" /><strong>Simulación</strong><small>Prueba sin guardar vídeo.</small></span></label>
           <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'recording'} onChange={() => setMode('recording')} />
             <span><MonitorPlay aria-hidden="true" /><strong>Grabación local</strong><small>MP4 con audio y marcador para emitir después.</small></span></label>
           <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'youtube'} onChange={() => setMode('youtube')} />
@@ -306,6 +304,10 @@ function PilotConfigurationPanel({
         active={active} pending={pending} onCreate={onCreateMobile} onUpdate={onUpdateMobile} onRevoke={onRevokeMobile} />
     </div> : null}
   </article>;
+}
+
+function selectablePilotMode(mode: PilotMode | undefined): PilotMode {
+  return mode === 'youtube' ? 'youtube' : 'recording';
 }
 
 export function PilotControlPanel({

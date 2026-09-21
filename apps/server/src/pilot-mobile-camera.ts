@@ -193,7 +193,7 @@ export class PilotMobileCameraService {
 
   public source(): PilotSource | null {
     return this.available()
-      ? { id: PILOT_MOBILE_SOURCE_ID, kind: 'mobile', label: 'Móvil Android · WebRTC' }
+      ? { id: PILOT_MOBILE_SOURCE_ID, kind: 'mobile', label: 'Puerta de enlace · WebRTC' }
       : null;
   }
 
