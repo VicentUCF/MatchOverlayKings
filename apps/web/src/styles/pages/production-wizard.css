@@ -264,24 +264,6 @@
   font-weight: 500;
 }
 
-.production-wizard__folder-input {
-  position: relative;
-  display: block;
-}
-
-.production-wizard__folder-input svg {
-  position: absolute;
-  top: 50%;
-  left: var(--kpl-space-3);
-  width: var(--kpl-font-size-200);
-  height: var(--kpl-font-size-200);
-  transform: translateY(-50%);
-  color: var(--kpl-color-text-muted);
-  pointer-events: none;
-}
-
-.production-wizard__folder-input input { padding-left: calc(var(--kpl-space-6) + var(--kpl-space-1)); }
-
 .production-wizard__court-selection label {
   display: grid;
   grid-template-columns: auto 1fr;

@@ -18,6 +18,7 @@ import { PilotMobileCameraError, PilotMobileCameraService } from './pilot-mobile
 import { BrowserPilotOverlayRenderer, type PilotOverlayRenderer } from './pilot-overlay.js';
 import { SupabaseProductionAccessGuard, type ProductionAccessGuard } from './production-access.js';
 import { RecordingLibrary } from './recording-library.js';
+import { browseRecordingDirectories } from './recording-directory-browser.js';
 
 export async function buildApp(
   config: ServerConfig,
@@ -204,6 +205,17 @@ export async function buildApp(
   app.get('/api/pilot/configurations', async (request) => {
     requireLocalPilot(request.ip);
     return { configurations: pilot.configurations() };
+  });
+
+  app.get<{ Querystring: { path?: string } }>('/api/pilot/recording-directories', async (request) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    try {
+      return await browseRecordingDirectories(config.dataDir, request.query.path);
+    } catch (error) {
+      throw new PilotServiceError(400, 'DIRECTORY_UNAVAILABLE',
+        error instanceof Error ? error.message : 'No se puede abrir esta carpeta.');
+    }
   });
 
   app.get('/api/pilot/mobile-camera', async (request) => {

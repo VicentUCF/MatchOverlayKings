@@ -41,6 +41,13 @@ const TeamSchema = z.strictObject({
 const TeamsEnvelopeSchema = z.strictObject({ teams: z.array(TeamSchema).readonly() });
 const RecordingsEnvelopeSchema = z.strictObject({ assets: RecordingAssetsSchema, jobs: PublicationJobsSchema });
 const PublicationEnvelopeSchema = z.strictObject({ job: PublicationJobSchema });
+const RecordingDirectoryListingSchema = z.strictObject({
+  current: z.string().min(1),
+  parent: z.string().min(1).nullable(),
+  directories: z.array(z.strictObject({ name: z.string().min(1), path: z.string().min(1) })).readonly(),
+});
+
+export type RecordingDirectoryListing = z.infer<typeof RecordingDirectoryListingSchema>;
 
 export type PilotApiResult<Value> =
   | { readonly kind: 'success'; readonly value: Value }
@@ -76,7 +83,7 @@ export function createProductionPilotAdapter(
       const endpoint = `${baseUrl}${path}`;
       if (init?.method === 'POST' || init?.method === 'PUT' || init?.method === 'DELETE'
         || path === '/api/pilot/operations' || path === '/api/pilot/incidents'
-        || path === '/api/pilot/recordings') {
+        || path === '/api/pilot/recordings' || path.startsWith('/api/pilot/recording-directories')) {
         const { data } = await supabase.auth.getSession();
         if (journaled) {
           storageKey = `kpl:operation:${baseUrl}:${data.session?.user.id ?? 'local'}:${path}:${String(init?.body ?? '')}`;
@@ -125,6 +132,10 @@ export function createProductionPilotAdapter(
     operations: () => request('/api/pilot/operations', z.strictObject({ operations: z.array(PilotOperationSchema) })),
     incidents: () => request('/api/pilot/incidents', z.strictObject({ incidents: z.array(PilotIncidentSchema) })),
     recordings: () => request('/api/pilot/recordings', RecordingsEnvelopeSchema),
+    recordingDirectories: (path?: string) => request(
+      `/api/pilot/recording-directories${path ? `?path=${encodeURIComponent(path)}` : ''}`,
+      RecordingDirectoryListingSchema,
+    ),
     createPublication: (assetId: string, input: { readonly title: string; readonly description: string }) => request(
       `/api/pilot/recordings/${encodeURIComponent(assetId)}/uploads`, PublicationEnvelopeSchema, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),

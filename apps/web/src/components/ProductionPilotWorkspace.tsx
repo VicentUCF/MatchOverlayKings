@@ -25,6 +25,7 @@ import { youtubeWatchUrl } from '../lib/pilot-youtube-watch.js';
 import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
 import { ProductionNavigation, type ProductionNavigationRole } from './ProductionNavigation.js';
 import { PilotMobileCameraMonitor, PilotMobileCameraPanel } from './PilotMobileCameraPanel.js';
+import { RecordingDirectoryPicker } from './RecordingDirectoryPicker.js';
 
 const DEFAULT_BROADCAST_DESCRIPTION = 'Sigue en directo la jornada de Kings Padel League.';
 
@@ -127,7 +128,8 @@ export function ProductionPilotWorkspaceView({
     {view === 'configuration' ? <>
       <GeneralBroadcastSettingsDialog dialogRef={generalSettingsDialog}
         description={description} onDescriptionChange={setDescription}
-        recordingDirectory={recordingDirectory} onRecordingDirectoryChange={setRecordingDirectory} />
+        recordingDirectory={recordingDirectory} onRecordingDirectoryChange={setRecordingDirectory}
+        browseRecordingDirectories={pilot.recordingDirectories} />
       <section className="production-pilot-courts" aria-label="Configuración de producción por pista">
         {courts.map((court) => <PilotConfigurationPanel key={court.slug} court={court}
           teams={ready.teams} description={description} recordingDirectory={recordingDirectory}
@@ -163,13 +165,14 @@ export function ProductionPilotWorkspaceView({
 }
 
 function GeneralBroadcastSettingsDialog({
-  dialogRef, description, onDescriptionChange, recordingDirectory, onRecordingDirectoryChange,
+  dialogRef, description, onDescriptionChange, recordingDirectory, onRecordingDirectoryChange, browseRecordingDirectories,
 }: {
   readonly dialogRef: RefObject<HTMLDialogElement | null>;
   readonly description: string;
   readonly onDescriptionChange: (value: string) => void;
   readonly recordingDirectory: string;
   readonly onRecordingDirectoryChange: (value: string) => void;
+  readonly browseRecordingDirectories: ProductionPilotController['recordingDirectories'];
 }) {
   return <dialog className="production-pilot-settings-dialog" ref={dialogRef}
     aria-labelledby="pilot-general-title"
@@ -185,12 +188,8 @@ function GeneralBroadcastSettingsDialog({
           onChange={(event) => onDescriptionChange(event.currentTarget.value)} />
         <small>{description.length}/5000 caracteres</small>
       </label>
-      <label htmlFor="pilot-recording-directory">Carpeta de salida de las grabaciones
-        <input id="pilot-recording-directory" type="text" maxLength={4_096} value={recordingDirectory}
-          placeholder="Predeterminada: data/recordings" autoComplete="off" spellCheck={false}
-          onChange={(event) => onRecordingDirectoryChange(event.currentTarget.value)} />
-        <small>Introduce una ruta absoluta visible para el runtime, por ejemplo <code>/mnt/grabaciones</code>. Se crearán subcarpetas por pista y sesión.</small>
-      </label>
+      <RecordingDirectoryPicker label="Carpeta de salida de las grabaciones" value={recordingDirectory}
+        onChange={onRecordingDirectoryChange} browse={browseRecordingDirectories} />
       <form method="dialog"><button className="production-setup-submit" type="submit">Listo</button></form>
     </div>
   </dialog>;

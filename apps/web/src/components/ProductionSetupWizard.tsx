@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
 import {
-  ArrowLeft, ArrowRight, Camera, Check, Circle, Eye, EyeOff, FolderOpen,
+  ArrowLeft, ArrowRight, Camera, Check, Circle, Eye, EyeOff,
   MonitorPlay, Smartphone, Video,
 } from 'lucide-react';
 import {
@@ -17,6 +17,7 @@ import { useMatchSocket } from '../hooks/useMatchSocket.js';
 import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
 import { PilotMobileCameraPanel, MobileCameraPreview } from './PilotMobileCameraPanel.js';
 import { ScorerAccess } from './ProductionCourtMonitor.js';
+import { RecordingDirectoryPicker } from './RecordingDirectoryPicker.js';
 
 type ProductionKind = 'recording' | 'youtube';
 type CourtStep = 'match' | 'camera' | 'view' | 'operator';
@@ -76,6 +77,7 @@ export function ProductionSetupWizard({ pilot, courts, kind, onBack, onComplete 
   if (!selectionDone) {
     return <CourtSelection kind={kind} courts={enabledCourts} state={ready} selected={selectedCourts}
       seasonLabel={seasonLabel} matchdayNumber={matchdayNumber} recordingDirectory={recordingDirectory}
+      browseRecordingDirectories={pilot.recordingDirectories}
       onSeasonLabel={setSeasonLabel} onMatchdayNumber={setMatchdayNumber} onRecordingDirectory={setRecordingDirectory}
       onToggle={(slug) => setSelectedCourts((current) => current.includes(slug)
         ? current.filter((candidate) => candidate !== slug)
@@ -133,7 +135,7 @@ export function ProductionSetupWizard({ pilot, courts, kind, onBack, onComplete 
 }
 
 function CourtSelection({ kind, courts, state, selected, seasonLabel, matchdayNumber, recordingDirectory,
-  onSeasonLabel, onMatchdayNumber, onRecordingDirectory, onToggle, onBack, onContinue }: {
+  browseRecordingDirectories, onSeasonLabel, onMatchdayNumber, onRecordingDirectory, onToggle, onBack, onContinue }: {
   readonly kind: ProductionKind;
   readonly courts: readonly ProductionCourtSlot[];
   readonly state: ReadyPilotState;
@@ -141,6 +143,7 @@ function CourtSelection({ kind, courts, state, selected, seasonLabel, matchdayNu
   readonly seasonLabel: string;
   readonly matchdayNumber: number;
   readonly recordingDirectory: string;
+  readonly browseRecordingDirectories: ProductionPilotController['recordingDirectories'];
   readonly onSeasonLabel: (value: string) => void;
   readonly onMatchdayNumber: (value: number) => void;
   readonly onRecordingDirectory: (value: string) => void;
@@ -162,10 +165,8 @@ function CourtSelection({ kind, courts, state, selected, seasonLabel, matchdayNu
           <label>Temporada<input required value={seasonLabel} onChange={(event) => onSeasonLabel(event.currentTarget.value)} /></label>
           <label>Jornada<input type="number" min="1" max="999" required value={matchdayNumber}
             onChange={(event) => onMatchdayNumber(event.currentTarget.valueAsNumber)} /></label>
-          {kind === 'recording' ? <label>Carpeta de grabaciones<span className="production-wizard__folder-input">
-            <FolderOpen aria-hidden="true" /><input value={recordingDirectory} placeholder="Usar la carpeta predeterminada"
-              onChange={(event) => onRecordingDirectory(event.currentTarget.value)} /></span>
-            <small>Todos los archivos de esta producción se guardarán aquí.</small></label> : null}
+          {kind === 'recording' ? <RecordingDirectoryPicker value={recordingDirectory}
+            onChange={onRecordingDirectory} browse={browseRecordingDirectories} /> : null}
         </div>
       </fieldset>
       <fieldset className="production-wizard__court-selection">
