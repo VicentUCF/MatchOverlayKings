@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { PilotMobileCameraSessionSchema, type PilotSession } from '@kpl/production-contracts';
 import type { PilotState } from '../hooks/useProductionPilot.js';
-import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
+import type { ProductionCourtSlot } from '../features/production/production-overview-types.js';
 import { ProductionDashboardView } from './ProductionDashboard.js';
 
 const state: PilotState = {

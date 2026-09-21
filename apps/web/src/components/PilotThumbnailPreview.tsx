@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createProductionPilotAdapter } from '../lib/production-pilot-adapter.js';
+import { createProductionPilotAdapter } from '../features/production/production-pilot-adapter.js';
 
 const adapter = createProductionPilotAdapter();
 export function PilotThumbnailPreview({ homeTeam, awayTeam, matchdayNumber }: {

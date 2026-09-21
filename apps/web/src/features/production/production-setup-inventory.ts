@@ -7,7 +7,7 @@ import {
   SupabaseSafeOutputRowSchema,
   PilotCourtSlugSchema,
 } from '@kpl/production-contracts';
-import { supabase } from './supabase.js';
+import { supabase } from '../../lib/supabase.js';
 import type {
   ProductionSetupInventoryAdapter,
   ProductionSetupInventoryLoadResult,

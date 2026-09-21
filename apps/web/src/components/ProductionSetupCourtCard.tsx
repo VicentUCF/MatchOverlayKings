@@ -1,6 +1,6 @@
 import type { ChangeEvent } from 'react';
 import { CircleCheck, CircleDashed } from 'lucide-react';
-import type { SetupCourtDraft } from '../lib/production-setup-types.js';
+import type { SetupCourtDraft } from '../features/production/production-setup-types.js';
 
 type CourtDraftField = 'captureAuthUserId' | 'captureRef' | 'outputRef' | 'title'
   | 'scheduledStartAt' | 'scheduledEndAt';

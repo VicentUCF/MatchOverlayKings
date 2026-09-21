@@ -6,7 +6,7 @@ import {
   TriangleAlert,
   WifiOff,
 } from 'lucide-react';
-import type { ProductionCourtAssignment } from '../lib/production-overview-types.js';
+import type { ProductionCourtAssignment } from '../features/production/production-overview-types.js';
 import {
   desiredLifecycleLabel,
   healthPresentation,

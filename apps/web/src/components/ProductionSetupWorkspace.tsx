@@ -1,7 +1,7 @@
 import { useEffect, useRef, type FormEvent, type ReactNode } from 'react';
 import { useProductionSetup } from '../hooks/useProductionSetup.js';
-import { deriveProductionSetupCompletion } from '../lib/production-setup-orchestrator.js';
-import type { ProductionSetupWorkspaceState, SetupCourtDraft } from '../lib/production-setup-types.js';
+import { deriveProductionSetupCompletion } from '../features/production/production-setup-orchestrator.js';
+import type { ProductionSetupWorkspaceState, SetupCourtDraft } from '../features/production/production-setup-types.js';
 import { ProductionSetupCourtCard } from './ProductionSetupCourtCard.js';
 import { ProductionNavigation } from './ProductionNavigation.js';
 

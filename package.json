@@ -23,15 +23,16 @@
     "production:local:logs": "./scripts/local-production.sh logs",
     "production:smoke": "node scripts/check-live-readiness.mjs",
     "start:server": "npm run start -w @kpl/server",
-    "build": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/production-agent && npm run build -w @kpl/production-assets && npm run build -w @kpl/server && npm run build -w @kpl/web",
+    "build": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/production-assets && npm run build -w @kpl/server && npm run build -w @kpl/web",
     "build:vercel": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/web",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run packages apps/server apps/web --maxWorkers=1",
+    "verify:archived-agent": "npm run build -w @kpl/production-agent && npm run test -w @kpl/production-agent && npm run typecheck:test -w @kpl/production-agent",
     "test:e2e": "playwright test",
     "supabase:deploy": "node scripts/apply-supabase-migrations.mjs",
     "supabase:ensure-admin": "node scripts/ensure-supabase-admin.mjs",
     "supabase:check": "node scripts/check-supabase.mjs",
-    "verify": "npm run lint && npm run test && npm run build && npm run typecheck:test -w @kpl/production-agent"
+    "verify": "npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

@@ -7,7 +7,7 @@ import {
   type LeagueSnapshot,
   type LeagueTeam,
   fetchLeagueSnapshot,
-} from '../lib/league-data.js';
+} from '../../lib/league-data.js';
 
 export function OverlayDataScene({
   scene,

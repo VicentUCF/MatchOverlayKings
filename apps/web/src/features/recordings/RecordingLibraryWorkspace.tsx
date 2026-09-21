@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { CalendarClock, CircleAlert, ExternalLink, Film, HardDrive, Pause, Play, RefreshCw, Upload } from 'lucide-react';
 import type { PublicationJob, RecordingAsset } from '@kpl/production-contracts';
-import { createProductionPilotAdapter } from '../lib/production-pilot-adapter.js';
+import { createProductionPilotAdapter } from '../production/production-pilot-adapter.js';
 
 const adapter = createProductionPilotAdapter();
 
@@ -119,7 +119,8 @@ export function RecordingLibraryWorkspace() {
         <option value="all">Todos</option><option value="recording">Grabando</option><option value="validating">Validando</option>
         <option value="ready">MP4 listo</option><option value="invalid">No válido</option><option value="uploading">Subiendo</option>
         <option value="paused">Pausado</option><option value="processing">Procesando</option><option value="private_ready">Privado listo</option>
-        <option value="scheduled">Programado</option><option value="published">Publicado</option><option value="failed">Fallido</option></select></label>
+        <option value="scheduled">Programado</option><option value="published">Publicado</option><option value="failed">Fallido</option>
+        <option value="reconciliation_failed">Comprobación detenida</option></select></label>
     </div>
     {state.assets.length === 0 ? <div className="production-pilot-empty-state"><Film aria-hidden="true" />
       <h2>Todavía no hay grabaciones</h2><p>Los archivos aparecerán aquí al detener una grabación desde Producción.</p></div> : null}
@@ -130,6 +131,7 @@ export function RecordingLibraryWorkspace() {
         onCreate={(input) => mutate(asset.id, () => adapter.createPublication(asset.id, input))}
         onPause={(job) => mutate(job.id, () => adapter.pausePublication(job.id))}
         onResume={(job) => mutate(job.id, () => adapter.resumePublication(job.id))}
+        onRetry={(job) => mutate(job.id, () => adapter.retryPublication(job.id))}
         onSchedule={(job, publishAt) => mutate(job.id, () => adapter.schedulePublication(job.id, publishAt))} />)}
     </div>
   </section>;
@@ -141,13 +143,14 @@ export function recordingPollDelay(state: LibraryState): number | null {
   return null;
 }
 
-function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onSchedule }: {
+function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onRetry, onSchedule }: {
   readonly asset: RecordingAsset;
   readonly job: PublicationJob | null;
   readonly pending: string | null;
   readonly onCreate: (input: { readonly title: string; readonly description: string }) => Promise<void>;
   readonly onPause: (job: PublicationJob) => Promise<void>;
   readonly onResume: (job: PublicationJob) => Promise<void>;
+  readonly onRetry: (job: PublicationJob) => Promise<void>;
   readonly onSchedule: (job: PublicationJob, publishAt: string) => Promise<void>;
 }) {
   const [title, setTitle] = useState(asset.title.slice(0, 100));
@@ -181,6 +184,7 @@ function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onSch
       <div className="recording-publication__actions">
         {job.state === 'uploading' ? <button type="button" className="refresh-button" disabled={pending === job.id} onClick={() => void onPause(job)}><Pause aria-hidden="true" />Pausar</button> : null}
         {['paused', 'failed'].includes(job.state) && !job.youtubeVideoId ? <button type="button" className="production-setup-submit" disabled={pending === job.id} onClick={() => void onResume(job)}><Play aria-hidden="true" />Reanudar</button> : null}
+        {job.state === 'reconciliation_failed' ? <button type="button" className="production-setup-submit" disabled={pending === job.id} onClick={() => void onRetry(job)}><RefreshCw aria-hidden="true" />Reintentar comprobación</button> : null}
         {job.watchUrl ? <a className="refresh-button" href={job.watchUrl} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />Abrir en YouTube</a> : null}
       </div>
       {['private_ready', 'scheduled'].includes(job.state) ? <form className="recording-card__schedule" onSubmit={submitSchedule}>
@@ -201,7 +205,8 @@ function assetLabel(asset: RecordingAsset): string {
 }
 function publicationLabel(job: PublicationJob): string {
   return ({ uploading: 'Subiendo como privado', paused: 'Subida pausada', processing: 'Procesando en YouTube',
-    private_ready: 'Privado y listo', scheduled: 'Publicación programada', published: 'Publicado', failed: 'Subida interrumpida' } as const)[job.state];
+    private_ready: 'Privado y listo', scheduled: 'Publicación programada', published: 'Publicado', failed: 'Subida interrumpida',
+    reconciliation_failed: 'Comprobación automática detenida' } as const)[job.state];
 }
 function duration(seconds: number): string { return `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, '0')}`; }
 function bytes(value: number): string {

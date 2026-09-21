@@ -56,7 +56,7 @@ import type {
   SponsorTickerPatch,
   Team,
 } from '@kpl/shared';
-import { Scoreboard } from '../components/Scoreboard.js';
+import { Scoreboard } from '../features/match-display/Scoreboard.js';
 import { ProductionNavigation } from '../components/ProductionNavigation.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
 import { fetchLeagueSnapshot, type LeaguePlayer, type LeagueSnapshot } from '../lib/league-data.js';

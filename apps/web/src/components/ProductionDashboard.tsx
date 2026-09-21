@@ -3,7 +3,7 @@ import { Activity, ArrowLeft, ExternalLink, Radio, Settings2 } from 'lucide-reac
 import type { PilotConfiguration, PilotCourtSlug, PilotSession } from '@kpl/production-contracts';
 import { useProductionPilot, type PilotState, type ProductionPilotController } from '../hooks/useProductionPilot.js';
 import { youtubeWatchUrl } from '../lib/pilot-youtube-watch.js';
-import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
+import type { ProductionCourtSlot } from '../features/production/production-overview-types.js';
 import { ProductionNavigation } from './ProductionNavigation.js';
 import { PilotControlPanel } from './ProductionPilotWorkspace.js';
 import { PilotOperationHistory } from './PilotOperationHistory.js';

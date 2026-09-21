@@ -2,7 +2,6 @@ import type {
   EventDefinition,
   ManualScorePatch,
   MatchCardId,
-  MatchCardsState,
   MatchCardUse,
   MatchConfig,
   MatchGameScore,
@@ -11,14 +10,9 @@ import type {
   TeamLineup,
   MatchMetaPatch,
   OverlayDataSceneKind,
-  OverlayDataSceneState,
   OverlayDataSceneTarget,
-  OverlaySettings,
   OverlaySettingsPatch,
-  SponsorAdsState,
-  SponsorFullscreenState,
   SponsorTickerPatch,
-  SponsorTickerState,
   MatchSetScore,
   MatchState,
   MatchStatus,
@@ -27,51 +21,34 @@ import type {
   Side,
 } from './types.js';
 import { createEmptyLineups } from './validation.js';
+import {
+  DEFAULT_MATCH_CARDS,
+  DEFAULT_MATCH_CONFIG,
+} from './score-defaults.js';
+import {
+  clearSponsorFullscreen,
+  cloneDataScene,
+  cloneMatchCards,
+  cloneSponsorAds,
+  isMatchCardId,
+  isOverlayDataSceneKind,
+  normalizeDataSceneTarget,
+  normalizeMatchCards,
+  normalizeOverlaySettings,
+  normalizeSponsorAds,
+  normalizeSponsorDuration,
+  normalizeSponsorIds,
+  normalizeSponsorTicker,
+} from './score-state-normalization.js';
 
-export const DEFAULT_MATCH_CONFIG: MatchConfig = {
-  setsToWin: 2,
-  gamesPerSet: 6,
-  tieBreakAt: 6,
-  tieBreakTarget: 7,
-  tieBreakWinBy: 2,
-  deuceMode: 'golden-point',
-};
-
-export const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = {
-  visible: true,
-  size: 'standard',
-  position: 'top-left',
-  dataScenesAuto: false,
-  soundEnabled: false,
-  soundVolume: 0.55,
-};
-
-export const DEFAULT_MATCH_CARDS: MatchCardsState = {
-  home: null,
-  away: null,
-  announcement: null,
-};
-
-export const DEFAULT_SPONSOR_ADS: SponsorAdsState = {
-  ticker: {
-    visible: false,
-    sponsorIds: [],
-    label: 'Patrocinadores oficiales',
-    speedSeconds: 28,
-  },
-  fullscreen: null,
-};
+export {
+  DEFAULT_MATCH_CARDS,
+  DEFAULT_MATCH_CONFIG,
+  DEFAULT_OVERLAY_SETTINGS,
+  DEFAULT_SPONSOR_ADS,
+} from './score-defaults.js';
 
 const POINT_LABELS = ['0', '15', '30', '40'] as const;
-const MATCH_CARD_IDS = ['2vs1', 'restas-tu', 'cambiate', 'robo-saque', 'solo-un-saque', 'comodin', 'robo-carta'] as const;
-const OVERLAY_DATA_SCENE_KINDS = [
-  'standings',
-  'player-ranking',
-  'team-roster',
-  'calendar',
-  'upcoming-matches',
-  'latest-results',
-] as const;
 
 export class ScoreEngineError extends Error {
   constructor(
@@ -675,188 +652,6 @@ function cloneLineup(lineup: TeamLineup | undefined, fallback: TeamLineup): Team
     ...(player1Id ? { player1Id } : {}),
     ...(player2Id ? { player2Id } : {}),
   };
-}
-
-function normalizeOverlaySettings(settings: Partial<OverlaySettings> | undefined): OverlaySettings {
-  return {
-    visible: typeof settings?.visible === 'boolean' ? settings.visible : DEFAULT_OVERLAY_SETTINGS.visible,
-    size: isOverlaySize(settings?.size) ? settings.size : DEFAULT_OVERLAY_SETTINGS.size,
-    position: isOverlayPosition(settings?.position) ? settings.position : DEFAULT_OVERLAY_SETTINGS.position,
-    dataScenesAuto:
-      typeof settings?.dataScenesAuto === 'boolean'
-        ? settings.dataScenesAuto
-        : DEFAULT_OVERLAY_SETTINGS.dataScenesAuto,
-    soundEnabled:
-      typeof settings?.soundEnabled === 'boolean'
-        ? settings.soundEnabled
-        : DEFAULT_OVERLAY_SETTINGS.soundEnabled,
-    soundVolume:
-      typeof settings?.soundVolume === 'number'
-        ? clampNumber(settings.soundVolume, 0, 1, DEFAULT_OVERLAY_SETTINGS.soundVolume)
-        : DEFAULT_OVERLAY_SETTINGS.soundVolume,
-  };
-}
-
-function clampNumber(value: number, min: number, max: number, fallback: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
-
-  return Math.min(max, Math.max(min, value));
-}
-
-function normalizeMatchCards(cards: Partial<MatchCardsState> | undefined): MatchCardsState {
-  const announcement = cloneCardUse(cards?.announcement);
-
-  return {
-    home: cloneCardUse(cards?.home),
-    away: cloneCardUse(cards?.away),
-    announcement: cards?.announcement && announcement
-      ? {
-          ...announcement,
-          id: cards.announcement.id || cards.announcement.usedAt,
-        }
-      : null,
-  };
-}
-
-function cloneMatchCards(cards: MatchCardsState | undefined): MatchCardsState {
-  return normalizeMatchCards(cards);
-}
-
-function cloneCardUse(cardUse: MatchCardUse | null | undefined): MatchCardUse | null {
-  if (!cardUse || !isMatchCardId(cardUse.cardId)) {
-    return null;
-  }
-
-  return {
-    side: cardUse.side === 'away' ? 'away' : 'home',
-    teamId: cardUse.teamId,
-    cardId: cardUse.cardId,
-    cardName: cardUse.cardName,
-    usedAt: cardUse.usedAt,
-  };
-}
-
-function cloneDataScene(scene: OverlayDataSceneState | null | undefined): OverlayDataSceneState | null {
-  if (!scene || !isOverlayDataSceneKind(scene.kind)) {
-    return null;
-  }
-
-  return {
-    id: scene.id,
-    kind: scene.kind,
-    target: normalizeDataSceneTarget(scene.target),
-    triggeredAt: scene.triggeredAt,
-  };
-}
-
-function normalizeSponsorAds(ads: Partial<SponsorAdsState> | undefined): SponsorAdsState {
-  return {
-    ticker: normalizeSponsorTicker(ads?.ticker),
-    fullscreen: normalizeSponsorFullscreen(ads?.fullscreen),
-  };
-}
-
-function normalizeSponsorTicker(ticker: Partial<SponsorTickerState> | undefined): SponsorTickerState {
-  return {
-    visible: typeof ticker?.visible === 'boolean' ? ticker.visible : DEFAULT_SPONSOR_ADS.ticker.visible,
-    sponsorIds: normalizeSponsorIds(ticker?.sponsorIds),
-    label: ticker?.label?.trim() || DEFAULT_SPONSOR_ADS.ticker.label,
-    speedSeconds: normalizeTickerSpeed(ticker?.speedSeconds),
-  };
-}
-
-function normalizeSponsorFullscreen(
-  fullscreen: (SponsorFullscreenState & { sponsorId?: string }) | null | undefined,
-): SponsorFullscreenState | null {
-  if (!fullscreen) {
-    return null;
-  }
-
-  const sponsorIds = normalizeSponsorIds(fullscreen.sponsorIds);
-  const legacySponsorId = typeof fullscreen.sponsorId === 'string' ? fullscreen.sponsorId.trim() : '';
-  const normalizedSponsorIds = sponsorIds.length > 0 ? sponsorIds : legacySponsorId ? [legacySponsorId] : [];
-
-  if (normalizedSponsorIds.length === 0) {
-    return null;
-  }
-
-  return {
-    id: fullscreen.id || normalizedSponsorIds.join('-'),
-    sponsorIds: normalizedSponsorIds,
-    triggeredAt: fullscreen.triggeredAt,
-    durationSeconds: normalizeSponsorDuration(fullscreen.durationSeconds),
-  };
-}
-
-function cloneSponsorAds(ads: SponsorAdsState | undefined): SponsorAdsState {
-  return normalizeSponsorAds(ads);
-}
-
-function clearSponsorFullscreen(ads: SponsorAdsState | undefined): SponsorAdsState {
-  return {
-    ...normalizeSponsorAds(ads),
-    fullscreen: null,
-  };
-}
-
-function normalizeSponsorIds(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return [...new Set(value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean))];
-}
-
-function normalizeTickerSpeed(value: unknown): number {
-  return normalizeNumber(value, 12, 90, DEFAULT_SPONSOR_ADS.ticker.speedSeconds);
-}
-
-function normalizeSponsorDuration(value: unknown): number {
-  return normalizeNumber(value, 4, 30, 8);
-}
-
-function normalizeNumber(value: unknown, min: number, max: number, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
-  }
-
-  return Math.min(max, Math.max(min, value));
-}
-
-function normalizeDataSceneTarget(target: unknown): OverlayDataSceneTarget {
-  if (!target || typeof target !== 'object' || Array.isArray(target)) {
-    return { type: 'league' };
-  }
-
-  const record = target as Record<string, unknown>;
-
-  if (record.type === 'side') {
-    return { type: 'side', side: record.side === 'away' ? 'away' : 'home' };
-  }
-
-  if (record.type === 'team' && typeof record.teamId === 'string' && record.teamId.trim()) {
-    return { type: 'team', teamId: record.teamId.trim() };
-  }
-
-  return { type: 'league' };
-}
-
-function isOverlaySize(value: unknown): value is OverlaySettings['size'] {
-  return value === 'compact' || value === 'standard' || value === 'large';
-}
-
-function isOverlayPosition(value: unknown): value is OverlaySettings['position'] {
-  return value === 'top-left' || value === 'center' || value === 'bottom-center';
-}
-
-function isMatchCardId(value: unknown): value is MatchCardId {
-  return MATCH_CARD_IDS.includes(value as MatchCardId);
-}
-
-function isOverlayDataSceneKind(value: unknown): value is OverlayDataSceneKind {
-  return OVERLAY_DATA_SCENE_KINDS.includes(value as OverlayDataSceneKind);
 }
 
 function oppositeSide(side: Side): Side {

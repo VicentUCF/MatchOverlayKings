@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from 'react';
 import { ArrowUp, Folder, FolderOpen, RotateCcw, X } from 'lucide-react';
 import type { ProductionPilotController } from '../hooks/useProductionPilot.js';
-import type { RecordingDirectoryListing } from '../lib/production-pilot-adapter.js';
+import type { RecordingDirectoryListing } from '../features/production/production-pilot-adapter.js';
 
 export function RecordingDirectoryPicker({ value, onChange, browse, label = 'Carpeta de grabaciones' }: {
   readonly value: string;

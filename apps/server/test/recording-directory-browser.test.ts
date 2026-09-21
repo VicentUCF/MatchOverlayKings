@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { browseRecordingDirectories } from '../src/recording-directory-browser.js';
+import { browseRecordingDirectories } from '../src/features/recordings/recording-directory-browser.js';
 
 const cleanups: string[] = [];
 

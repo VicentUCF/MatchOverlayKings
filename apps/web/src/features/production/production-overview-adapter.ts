@@ -5,7 +5,12 @@ import {
   DesiredOutputSpecSchema,
   SupabaseDesiredOutputStateRowSchema,
 } from '@kpl/production-contracts';
-import { createCommandId } from '../command-id.js';
+import { createCommandId } from '../../command-id.js';
+import {
+  PRODUCTION_TABLES,
+  type ProductionBackend,
+  type RealtimeProductionTable,
+} from './production-overview-backend.js';
 import { mapProductionOverviewData, resolveProductionIdentity } from './production-overview-mapper.js';
 import type {
   ProductionCourtAssignment,
@@ -14,51 +19,12 @@ import type {
   ProductionOverviewAdapter,
 } from './production-overview-types.js';
 import { createSupabaseProductionBackend } from './production-supabase-backend.js';
-import { supabase } from './supabase.js';
+import { supabase } from '../../lib/supabase.js';
 
-export const PRODUCTION_TABLES = [
-  'production_principals',
-  'production_principal_roles',
-  'courts',
-  'production_assignments',
-  'production_events',
-  'production_outputs',
-  'production_desired_states',
-  'production_observed_states',
-  'production_operations',
-  'production_operation_claims',
-  'score_states',
-] as const;
+export { PRODUCTION_TABLES } from './production-overview-backend.js';
+export type { ProductionBackend, ProductionTable } from './production-overview-backend.js';
 
-export type ProductionTable = (typeof PRODUCTION_TABLES)[number];
-const REALTIME_TABLES = [
-  'production_principals',
-  'production_principal_roles',
-  'courts',
-  'production_assignments',
-  'production_events',
-  'production_outputs',
-  'production_desired_states',
-  'production_observed_states',
-  'production_operations',
-  'production_operation_claims',
-  'score_states',
-] as const;
-type RealtimeProductionTable = (typeof REALTIME_TABLES)[number];
-
-export type ProductionBackend = {
-  readonly currentUser: () => Promise<unknown>;
-  readonly select: (
-    table: ProductionTable,
-    filter: { readonly column: string; readonly value: string },
-  ) => Promise<unknown>;
-  readonly rpc: (name: string, args: Record<string, unknown>) => Promise<unknown>;
-  readonly subscribe: (
-    table: RealtimeProductionTable,
-    clubId: string,
-    onChange: () => void,
-  ) => { readonly remove: () => Promise<unknown> };
-};
+const REALTIME_TABLES: readonly RealtimeProductionTable[] = PRODUCTION_TABLES;
 
 const ErrorSchema = z.object({ code: z.string().optional(), message: z.string() });
 const ResponseSchema = z.object({ data: z.unknown(), error: ErrorSchema.nullable() });

@@ -22,7 +22,7 @@ import {
 import type { Team } from '@kpl/shared';
 import { useProductionPilot, type ProductionPilotController } from '../hooks/useProductionPilot.js';
 import { youtubeWatchUrl } from '../lib/pilot-youtube-watch.js';
-import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
+import type { ProductionCourtSlot } from '../features/production/production-overview-types.js';
 import { ProductionNavigation, type ProductionNavigationRole } from './ProductionNavigation.js';
 import { PilotMobileCameraMonitor, PilotMobileCameraPanel } from './PilotMobileCameraPanel.js';
 import { RecordingDirectoryPicker } from './RecordingDirectoryPicker.js';

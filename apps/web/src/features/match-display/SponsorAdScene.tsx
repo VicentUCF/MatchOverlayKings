@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { CSSProperties } from 'react';
 import { animate, stagger } from 'animejs';
 import type { SponsorFullscreenState, SponsorTickerState } from '@kpl/shared';
-import { resolveSponsors, type SponsorDefinition } from '../lib/sponsors.js';
+import { resolveSponsors, type SponsorDefinition } from '../../lib/sponsors.js';
 
 export function SponsorAdScene({
   ticker,

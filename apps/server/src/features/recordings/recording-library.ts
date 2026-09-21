@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { readFile, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -15,17 +15,18 @@ import {
   type RecordingAsset,
   type RecordingStream,
 } from '@kpl/production-contracts';
-import { writePrivateJson } from './private-json.js';
-import { PilotServiceError } from './pilot-service.js';
-import { PilotYouTubeError, type PilotYouTubeGateway } from './pilot-youtube.js';
+import { PilotServiceError } from '../../pilot-service-error.js';
+import { JsonRecordingSnapshotStore, type RecordingSnapshotStore } from './recording-snapshot-store.js';
+import { PilotYouTubeError, type PilotYouTubeGateway } from '../../pilot-youtube.js';
 import {
   InMemoryPublicationTaskQueue,
+  PUBLICATION_MAX_ATTEMPTS,
   retryBucket,
   retryDelay,
   type PublicationReconcileTask,
   type PublicationTaskOutcome,
   type PublicationTaskQueue,
-} from './publication-task-queue.js';
+} from '../../infrastructure/queues/publication-task-queue.js';
 
 const execFileAsync = promisify(execFile);
 const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
@@ -49,11 +50,12 @@ export class RecordingLibrary {
     private readonly youtube: PilotYouTubeGateway,
     private readonly tasks: PublicationTaskQueue = new InMemoryPublicationTaskQueue(),
     private readonly onChange: () => void = () => undefined,
+    private readonly snapshots: RecordingSnapshotStore = new JsonRecordingSnapshotStore(path),
   ) {}
 
   public async initialize(): Promise<void> {
     try {
-      const parsed = JSON.parse(await readFile(this.path, 'utf8')) as unknown;
+      const parsed = await this.snapshots.read();
       if (typeof parsed !== 'object' || parsed === null) throw new Error('Invalid recording index');
       const snapshot = parsed as { assets?: unknown; jobs?: unknown };
       const assets = RecordingAssetsSchema.safeParse(snapshot.assets ?? []);
@@ -180,11 +182,26 @@ export class RecordingLibrary {
     }
   }
 
+  public async retryReconciliation(jobId: string): Promise<PublicationJob> {
+    const job = this.requireJob(jobId);
+    if (job.state !== 'reconciliation_failed' || !job.youtubeVideoId) {
+      throw new PilotServiceError(409, 'CONFLICT', 'Esta publicación no necesita reintentar la comprobación de YouTube.');
+    }
+    const next = this.updateJob(jobId, {
+      state: job.publishAt ? 'scheduled' : 'processing',
+      retryAt: null,
+      error: null,
+    });
+    await this.persist();
+    await this.startReconciliation(jobId);
+    return this.jobs.get(jobId) ?? next;
+  }
+
   public async shutdown(): Promise<void> {
     if (this.queueRecoveryTimer !== null) clearInterval(this.queueRecoveryTimer);
     this.queueRecoveryTimer = null;
     for (const controller of this.uploads.values()) controller.abort();
-    try { await this.persist(); } finally { await this.tasks.close(); }
+    try { await this.tasks.close(); } finally { await this.persist(); }
   }
 
   private async validate(id: string): Promise<void> {
@@ -317,6 +334,16 @@ export class RecordingLibrary {
       return { kind: 'retry', delayMs, resetAttempts: true };
     } catch (error) {
       const message = mapYouTube(error).message;
+      if (task.attempt >= PUBLICATION_MAX_ATTEMPTS) {
+        this.reconciliations.delete(job.id);
+        this.updateJob(job.id, {
+          state: 'reconciliation_failed',
+          retryAt: null,
+          error: `${message} La comprobación automática se detuvo tras agotar los reintentos.`.slice(0, 500),
+        });
+        await this.persist();
+        return { kind: 'dead-letter', reason: 'attempts-exhausted' };
+      }
       const delayMs = publicationErrorDelay(error, message, task.attempt);
       this.updateJob(job.id, { retryAt: new Date(Date.now() + delayMs).toISOString(), error: message });
       await this.persist();
@@ -358,7 +385,7 @@ export class RecordingLibrary {
       jobs: this.listJobs(),
       reconciliations: Object.fromEntries(this.reconciliations),
     };
-    await writePrivateJson(this.path, snapshot);
+    await this.snapshots.write(snapshot);
     this.onChange();
   }
 }

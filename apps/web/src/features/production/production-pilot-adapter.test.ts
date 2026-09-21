@@ -19,6 +19,19 @@ const session = {
 } as const;
 
 describe('production pilot adapter', () => {
+  it('exposes an explicit retry for a terminal publication reconciliation', async () => {
+    const job = {
+      id: '11111111-1111-4111-8111-111111111111', assetId: 'a'.repeat(64), state: 'processing',
+      title: 'Partido', description: '', uploadUrl: null, uploadedBytes: 10, totalBytes: 10,
+      youtubeVideoId: 'video-1', watchUrl: 'https://www.youtube.com/watch?v=video-1', publishAt: null,
+      retryAt: null, createdAt: '2026-09-21T10:00:00.000Z', updatedAt: '2026-09-21T10:00:00.000Z', error: null,
+    };
+    const fetcher = vi.fn(async () => Response.json({ job }));
+    const adapter = createProductionPilotAdapter(fetcher as typeof fetch);
+    await expect(adapter.retryPublication(job.id)).resolves.toEqual({ kind: 'success', value: { job } });
+    expect(fetcher).toHaveBeenCalledWith(`/api/pilot/publications/${job.id}/retry`, { method: 'POST' });
+  });
+
   it('opens a real runtime folder without asking the browser for a hidden local path', async () => {
     const listing = {
       current: '/srv/kpl/recordings', parent: '/srv/kpl',

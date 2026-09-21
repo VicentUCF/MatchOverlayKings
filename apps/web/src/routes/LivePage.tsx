@@ -4,8 +4,8 @@ import { ArrowLeft, Wifi, WifiOff } from 'lucide-react';
 import { animate, stagger } from 'animejs';
 import { formatPoint, getCompletedSetCount } from '@kpl/shared';
 import type { MatchSetScore, MatchState, Side, Team } from '@kpl/shared';
-import { CardAnnouncementScene } from '../components/CardAnnouncementScene.js';
-import { Scoreboard } from '../components/Scoreboard.js';
+import { CardAnnouncementScene } from '../features/match-display/CardAnnouncementScene.js';
+import { Scoreboard } from '../features/match-display/Scoreboard.js';
 import { useCardAnnouncementQueue } from '../hooks/useCardAnnouncementQueue.js';
 import {
   type LeaguePlayer,

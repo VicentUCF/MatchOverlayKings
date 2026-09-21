@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { animate, stagger } from 'animejs';
 import type { MatchCardAnnouncement, Team } from '@kpl/shared';
-import { findMatchCard } from '../lib/match-cards.js';
+import { findMatchCard } from '../../lib/match-cards.js';
 
 const CARD_SCENE_DURATION_MS = 5_000;
 const CARD_SCENE_EXIT_MS = 520;

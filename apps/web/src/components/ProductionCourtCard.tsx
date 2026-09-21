@@ -7,7 +7,7 @@ import type {
   ProductionCourtSlot,
   ProductionMutationResult,
   ProductionOverviewAccess,
-} from '../lib/production-overview-types.js';
+} from '../features/production/production-overview-types.js';
 import {
   desiredLifecycleLabel,
   isCapacityDeferred,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PilotPreflightCheckId, PilotSession } from '@kpl/production-contracts';
-import type { ProductionPilotAdapter } from '../lib/production-pilot-adapter.js';
+import type { ProductionPilotAdapter } from '../features/production/production-pilot-adapter.js';
 
 export function preflightIsFresh(session: PilotSession): boolean {
   const report = session.preflight;

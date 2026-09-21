@@ -31,7 +31,7 @@ export const RecordingAssetSchema = z.strictObject({
 export const RecordingAssetsSchema = z.array(RecordingAssetSchema).readonly();
 
 export const PublicationJobStateSchema = z.enum([
-  'uploading', 'paused', 'processing', 'private_ready', 'scheduled', 'published', 'failed',
+  'uploading', 'paused', 'processing', 'private_ready', 'scheduled', 'published', 'failed', 'reconciliation_failed',
 ]);
 export const PublicationJobSchema = z.strictObject({
   id: z.uuid(),

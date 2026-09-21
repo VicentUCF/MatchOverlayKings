@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import type { PilotIncident, PilotOperation } from '@kpl/production-contracts';
-import { createProductionPilotAdapter } from '../lib/production-pilot-adapter.js';
+import { createProductionPilotAdapter } from '../features/production/production-pilot-adapter.js';
 
 const adapter = createProductionPilotAdapter();
 const actions = { configure: 'Guardar configuración', prepare: 'Preparar emisión', preflight: 'Comprobar programa', start: 'Iniciar emisión', recover: 'Recuperar emisión', stop: 'Finalizar emisión' };

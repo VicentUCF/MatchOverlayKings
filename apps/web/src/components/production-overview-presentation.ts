@@ -1,5 +1,5 @@
 import type { DesiredLifecycle, ObservedOutputState, OperationClaim } from '@kpl/production-contracts';
-import type { ProductionCourtAssignment } from '../lib/production-overview-types.js';
+import type { ProductionCourtAssignment } from '../features/production/production-overview-types.js';
 
 const OBSERVED_STATUSES = [
   'running',

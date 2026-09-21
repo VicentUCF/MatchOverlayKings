@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createProductionOverviewAdapter } from '../lib/production-overview-adapter.js';
-import { productionDataset, USER_ID } from '../lib/production-overview-test-fixtures.js';
+import { createProductionOverviewAdapter } from '../features/production/production-overview-adapter.js';
+import { productionDataset, USER_ID } from '../features/production/production-overview-test-fixtures.js';
 import { createProductionOverviewStore } from './useProductionOverview.js';
 
 describe('production overview store', () => {

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
-import { createProductionOverviewAdapter } from '../lib/production-overview-adapter.js';
+import { createProductionOverviewAdapter } from '../features/production/production-overview-adapter.js';
 import type {
   ProductionLoadResult,
   ProductionOverviewAccess,
   ProductionOverviewAdapter,
-} from '../lib/production-overview-types.js';
+} from '../features/production/production-overview-types.js';
 
 const DEFAULT_PRODUCTION_OVERVIEW_ADAPTER = createProductionOverviewAdapter();
 

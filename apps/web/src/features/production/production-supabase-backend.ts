@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { ProductionBackend, ProductionTable } from './production-overview-adapter.js';
+import type { ProductionBackend, ProductionTable } from './production-overview-backend.js';
 
 const COLUMNS = {
   production_principals: 'id,club_id,auth_user_id,kind,display_name,active,version,created_at,updated_at',

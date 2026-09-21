@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createProductionProvisioningAdapter } from '../lib/production-provisioning-adapter.js';
-import { createProductionSetupInventoryAdapter } from '../lib/production-setup-inventory.js';
-import { createProductionSetupDraft, runProductionSetup } from '../lib/production-setup-orchestrator.js';
+import { createProductionProvisioningAdapter } from '../features/production/production-provisioning-adapter.js';
+import { createProductionSetupInventoryAdapter } from '../features/production/production-setup-inventory.js';
+import { createProductionSetupDraft, runProductionSetup } from '../features/production/production-setup-orchestrator.js';
 import type {
   ProductionSetupDraft,
   ProductionSetupWorkspaceState,
   SetupCourtDraft,
-} from '../lib/production-setup-types.js';
+} from '../features/production/production-setup-types.js';
 
 const inventoryAdapter = createProductionSetupInventoryAdapter();
 const provisioningAdapter = createProductionProvisioningAdapter();

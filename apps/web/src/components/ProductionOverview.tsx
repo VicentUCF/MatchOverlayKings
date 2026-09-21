@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { MonitorPlay, Plus, Radio, X } from 'lucide-react';
 import { useProductionOverview, type ProductionOverviewState } from '../hooks/useProductionOverview.js';
 import { useProductionPilot, type ProductionPilotController } from '../hooks/useProductionPilot.js';
-import type { ProductionCourtSlots, ProductionOverviewAccess } from '../lib/production-overview-types.js';
+import type { ProductionCourtSlots, ProductionOverviewAccess } from '../features/production/production-overview-types.js';
 import { ProductionCourtCard } from './ProductionCourtCard.js';
 import { ProductionDashboardView } from './ProductionDashboard.js';
 import { ProductionNavigation } from './ProductionNavigation.js';
-import { RecordingLibraryWorkspace } from './RecordingLibraryWorkspace.js';
+import { RecordingLibraryWorkspace } from '../features/recordings/RecordingLibraryWorkspace.js';
 import { ProductionSetupWizard } from './ProductionSetupWizard.js';
 
 export type ProductionDestination = 'production' | 'recordings';

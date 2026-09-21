@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { supabase } from './supabase.js';
-import { createCommandId } from '../command-id.js';
+import { supabase } from '../../lib/supabase.js';
+import { createCommandId } from '../../command-id.js';
 import { subscribeToProductionEvents } from './production-events.js';
 import type { Team } from '@kpl/shared';
 import {
@@ -161,6 +161,8 @@ export function createProductionPilotAdapter(
       `/api/pilot/publications/${encodeURIComponent(jobId)}/pause`, PublicationEnvelopeSchema, { method: 'POST' }),
     resumePublication: (jobId: string) => request(
       `/api/pilot/publications/${encodeURIComponent(jobId)}/resume`, PublicationEnvelopeSchema, { method: 'POST' }),
+    retryPublication: (jobId: string) => request(
+      `/api/pilot/publications/${encodeURIComponent(jobId)}/retry`, PublicationEnvelopeSchema, { method: 'POST' }),
     schedulePublication: (jobId: string, publishAt: string) => request(
       `/api/pilot/publications/${encodeURIComponent(jobId)}/schedule`, PublicationEnvelopeSchema, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ publishAt }),

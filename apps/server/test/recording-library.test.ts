@@ -3,13 +3,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PublicationJob, RecordingAsset } from '@kpl/production-contracts';
-import { RecordingLibrary } from '../src/recording-library.js';
+import { RecordingLibrary } from '../src/features/recordings/recording-library.js';
 import { PilotYouTubeError, type PilotYouTubeGateway } from '../src/pilot-youtube.js';
 import type {
   PublicationReconcileTask,
   PublicationTaskHandler,
   PublicationTaskQueue,
-} from '../src/publication-task-queue.js';
+} from '../src/infrastructure/queues/publication-task-queue.js';
+import { PUBLICATION_MAX_ATTEMPTS } from '../src/infrastructure/queues/publication-task-queue.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { while (cleanups.length) await cleanups.pop()?.(); });
@@ -95,6 +96,35 @@ describe('recording library', () => {
     });
     await library.shutdown();
   });
+
+  it('makes exhausted reconciliation visible and allows an explicit retry', async () => {
+    const fixture = await createFixture();
+    const now = new Date().toISOString();
+    const processing: PublicationJob = {
+      id: '33333333-3333-4333-8333-333333333333', assetId: fixture.asset.id, state: 'processing',
+      title: fixture.asset.title, description: '', uploadUrl: 'https://www.googleapis.com/upload/youtube/v3/videos?upload_id=kept',
+      uploadedBytes: 16, totalBytes: 16, youtubeVideoId: 'video-processing',
+      watchUrl: 'https://www.youtube.com/watch?v=video-processing', publishAt: null,
+      createdAt: now, updatedAt: now, error: null,
+    };
+    await writeFile(fixture.indexPath, JSON.stringify({ assets: [fixture.asset], jobs: [processing] }));
+    const gateway = fakeGateway();
+    gateway.inspect.mockRejectedValue(new PilotYouTubeError('API_ERROR', 'YouTube no responde.'));
+    const queue = new CapturingPublicationQueue();
+    const library = new RecordingLibrary(fixture.indexPath, '/bin/false', gateway.value, queue);
+
+    await library.initialize();
+    await expect(queue.runNext(PUBLICATION_MAX_ATTEMPTS)).resolves.toEqual({
+      kind: 'dead-letter', reason: 'attempts-exhausted',
+    });
+    expect(library.listJobs()[0]).toMatchObject({ state: 'reconciliation_failed', retryAt: null });
+
+    await expect(library.retryReconciliation(processing.id)).resolves.toMatchObject({
+      state: 'processing', error: null, retryAt: null,
+    });
+    expect(queue.pending()).toBe(1);
+    await library.shutdown();
+  });
 });
 
 class CapturingPublicationQueue implements PublicationTaskQueue {
@@ -109,11 +139,12 @@ class CapturingPublicationQueue implements PublicationTaskQueue {
     });
   }
   public async close(): Promise<void> {}
-  public async runNext() {
+  public async runNext(attempt?: number) {
     const task = this.tasks.shift();
     if (!task || !this.handler) throw new Error('No queued publication task');
-    return this.handler(task);
+    return this.handler(attempt === undefined ? task : { ...task, attempt });
   }
+  public pending(): number { return this.tasks.length; }
 }
 
 async function createFixture(): Promise<{ indexPath: string; asset: RecordingAsset }> {

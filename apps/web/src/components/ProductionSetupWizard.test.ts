@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { PilotSession } from '@kpl/production-contracts';
 import type { ProductionPilotController } from '../hooks/useProductionPilot.js';
-import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
+import type { ProductionCourtSlot } from '../features/production/production-overview-types.js';
 import { ProductionSetupWizard } from './ProductionSetupWizard.js';
 
 const courts: readonly ProductionCourtSlot[] = [1, 2, 3].map((number) => ({

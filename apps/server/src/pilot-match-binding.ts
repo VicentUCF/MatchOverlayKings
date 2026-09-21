@@ -1,5 +1,5 @@
 import type { PreparePilotSessionInput } from '@kpl/production-contracts';
-import { PilotServiceError } from './pilot-service.js';
+import { PilotServiceError } from './pilot-service-error.js';
 
 export interface PilotMatchIdentity {
   readonly homeTeamId: string;

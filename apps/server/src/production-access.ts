@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PilotServiceError } from './pilot-service.js';
+import { PilotServiceError } from './pilot-service-error.js';
 
 export type ProductionRuntimeCapability = 'production_admin' | 'operator';
 

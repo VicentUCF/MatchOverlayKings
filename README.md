@@ -20,8 +20,9 @@ Frontend Vite/React para controlar marcadores de padel y overlays OBS de KingsPa
 - `score_states.state` conserva el `MatchState` actual en JSONB y `score_events` guarda auditoria completa.
 - El servidor Fastify local es el único runtime de señal y emisión: controla Android, FFmpeg,
   MediaMTX, overlays, miniaturas, YouTube, persistencia y recuperación.
-- `apps/production-agent` se conserva como código histórico y banco de pruebas del reconciliador;
-  no se arranca junto al runtime unificado ni expone una ruta operativa alternativa.
+- `apps/production-agent` se conserva como archivo histórico del reconciliador. Está fuera de
+  `build`, `test` y `verify`; no se arranca junto al runtime unificado ni expone una ruta operativa
+  alternativa. Su comprobación aislada se ejecuta con `npm run verify:archived-agent`.
 
 ## Desarrollo
 

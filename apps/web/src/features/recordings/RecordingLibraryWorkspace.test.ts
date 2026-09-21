@@ -23,5 +23,6 @@ describe('recording library polling policy', () => {
     expect(recordingPollDelay(ready({ ...baseJob, error: 'Cuota agotada', retryAt: '2026-09-21T10:30:00.000Z' })))
       .toBe(60_000);
     expect(recordingPollDelay(ready({ ...baseJob, state: 'private_ready' }))).toBeNull();
+    expect(recordingPollDelay(ready({ ...baseJob, state: 'reconciliation_failed' }))).toBeNull();
   });
 });

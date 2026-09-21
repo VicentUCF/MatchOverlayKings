@@ -1,9 +1,11 @@
-import { AdminPage } from './AdminPage.js';
-import { ControlPage } from './ControlPage.js';
-import { HomePage } from './HomePage.js';
-import { LivePage } from './LivePage.js';
-import { OverlayPage } from './OverlayPage.js';
-import { MobileCameraPage } from './MobileCameraPage.js';
+import { lazy, Suspense, type ReactNode } from 'react';
+
+const AdminPage = lazy(async () => ({ default: (await import('./AdminPage.js')).AdminPage }));
+const ControlPage = lazy(async () => ({ default: (await import('./ControlPage.js')).ControlPage }));
+const HomePage = lazy(async () => ({ default: (await import('./HomePage.js')).HomePage }));
+const LivePage = lazy(async () => ({ default: (await import('./LivePage.js')).LivePage }));
+const OverlayPage = lazy(async () => ({ default: (await import('./OverlayPage.js')).OverlayPage }));
+const MobileCameraPage = lazy(async () => ({ default: (await import('./MobileCameraPage.js')).MobileCameraPage }));
 
 export function App() {
   const path = window.location.pathname;
@@ -12,15 +14,15 @@ export function App() {
   const overlayMatch = path.match(/^\/overlay\/([a-z0-9-]+)\/scoreboard$/i);
 
   if (path === '/') {
-    return <HomePage />;
+    return route(<HomePage />);
   }
 
   if (path === '/admin') {
-    return <AdminPage destination="production" />;
+    return route(<AdminPage destination="production" />);
   }
 
   if (path === '/admin/grabaciones') {
-    return <AdminPage destination="recordings" />;
+    return route(<AdminPage destination="recordings" />);
   }
 
   if (path === '/admin/emisiones' || path === '/mandos') {
@@ -34,21 +36,27 @@ export function App() {
   }
 
   if (path === '/camera/pilot') {
-    return <MobileCameraPage />;
+    return route(<MobileCameraPage />);
   }
 
   if (controlMatch?.[1]) {
-    return <ControlPage eventId={controlMatch[1]} />;
+    return route(<ControlPage eventId={controlMatch[1]} />);
   }
 
   if (liveMatch?.[1]) {
-    return <LivePage eventId={liveMatch[1]} />;
+    return route(<LivePage eventId={liveMatch[1]} />);
   }
 
   if (overlayMatch?.[1]) {
-    return <OverlayPage eventId={overlayMatch[1]} />;
+    return route(<OverlayPage eventId={overlayMatch[1]} />);
   }
 
   window.location.replace('/');
   return null;
+}
+
+function route(content: ReactNode) {
+  return <Suspense fallback={<main className="production-pilot-loading" aria-busy="true">Cargando…</main>}>
+    {content}
+  </Suspense>;
 }

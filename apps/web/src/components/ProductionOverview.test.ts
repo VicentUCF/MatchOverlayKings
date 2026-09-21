@@ -9,8 +9,8 @@ import {
 } from './ProductionCourtCard.js';
 import { ProductionOverviewView } from './ProductionOverview.js';
 import type { ProductionOverviewState } from '../hooks/useProductionOverview.js';
-import { mapProductionOverviewData } from '../lib/production-overview-mapper.js';
-import { productionDataset, USER_ID } from '../lib/production-overview-test-fixtures.js';
+import { mapProductionOverviewData } from '../features/production/production-overview-mapper.js';
+import { productionDataset, USER_ID } from '../features/production/production-overview-test-fixtures.js';
 import type {
   OperatorProductionAccess,
   ProductionCourtAssignment,
@@ -18,7 +18,7 @@ import type {
   ProductionMutationResult,
   ProductionOverviewSnapshot,
   ViewerProductionAccess,
-} from '../lib/production-overview-types.js';
+} from '../features/production/production-overview-types.js';
 
 function snapshot(role: 'operator' | 'viewer' = 'operator'): ProductionOverviewSnapshot {
   const mapped = mapProductionOverviewData(USER_ID, productionDataset(role));

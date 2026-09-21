@@ -14,7 +14,7 @@ import {
 import { DEFAULT_OVERLAY_SETTINGS, type OverlayPosition, type Team } from '@kpl/shared';
 import type { ProductionPilotController, ReadyPilotState } from '../hooks/useProductionPilot.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
-import type { ProductionCourtSlot } from '../lib/production-overview-types.js';
+import type { ProductionCourtSlot } from '../features/production/production-overview-types.js';
 import { PilotMobileCameraPanel, MobileCameraPreview } from './PilotMobileCameraPanel.js';
 import { ScorerAccess } from './ProductionCourtMonitor.js';
 import { RecordingDirectoryPicker } from './RecordingDirectoryPicker.js';

@@ -14,6 +14,7 @@ export type PublicationReconcileTask = {
 
 export type PublicationTaskOutcome =
   | { readonly kind: 'complete' }
+  | { readonly kind: 'dead-letter'; readonly reason: string }
   | { readonly kind: 'retry'; readonly delayMs: number; readonly resetAttempts?: boolean };
 
 export type PublicationTaskHandler = (task: PublicationReconcileTask) => Promise<PublicationTaskOutcome>;
@@ -30,11 +31,12 @@ export interface PublicationTaskQueue {
 
 const RETRY_DELAYS_MS = [5_000, 30_000, 5 * 60_000, 30 * 60_000] as const;
 const DELAY_BUCKETS_MS = [...RETRY_DELAYS_MS, 60 * 60_000, 6 * 60 * 60_000, 24 * 60 * 60_000] as const;
-const MAX_ATTEMPTS = 48;
+export const PUBLICATION_MAX_ATTEMPTS = 48;
 
 export class InMemoryPublicationTaskQueue implements PublicationTaskQueue {
   private handler: PublicationTaskHandler | null = null;
   private readonly timers = new Set<NodeJS.Timeout>();
+  private readonly runs = new Set<Promise<void>>();
   private closed = false;
 
   public async start(handler: PublicationTaskHandler): Promise<void> {
@@ -49,13 +51,16 @@ export class InMemoryPublicationTaskQueue implements PublicationTaskQueue {
     this.closed = true;
     for (const timer of this.timers) clearTimeout(timer);
     this.timers.clear();
+    await Promise.allSettled(this.runs);
   }
 
   private schedule(task: PublicationReconcileTask, delayMs: number): void {
     if (this.closed) return;
     const timer = setTimeout(() => {
       this.timers.delete(timer);
-      void this.run(task);
+      const run = this.run(task);
+      this.runs.add(run);
+      void run.finally(() => this.runs.delete(run));
     }, delayMs);
     timer.unref();
     this.timers.add(timer);
@@ -65,11 +70,11 @@ export class InMemoryPublicationTaskQueue implements PublicationTaskQueue {
     if (this.closed || this.handler === null) return;
     try {
       const outcome = await this.handler(task);
-      if (outcome.kind === 'retry' && (outcome.resetAttempts || task.attempt < MAX_ATTEMPTS)) {
+      if (outcome.kind === 'retry' && (outcome.resetAttempts || task.attempt < PUBLICATION_MAX_ATTEMPTS)) {
         this.schedule({ ...task, attempt: outcome.resetAttempts ? 0 : task.attempt + 1 }, outcome.delayMs);
       }
     } catch {
-      if (task.attempt < MAX_ATTEMPTS) {
+      if (task.attempt < PUBLICATION_MAX_ATTEMPTS) {
         this.schedule({ ...task, attempt: task.attempt + 1 }, retryDelay(task.attempt));
       }
     }
@@ -82,43 +87,29 @@ export class RabbitMqPublicationTaskQueue implements PublicationTaskQueue {
   private consumer: Channel | null = null;
   private handler: PublicationTaskHandler | null = null;
   private closing = false;
+  private connecting: Promise<void> | null = null;
+  private reconnecting: Promise<void> | null = null;
 
   public constructor(
     private readonly url: string,
     private readonly prefix = 'kpl.publications',
     private readonly observe: (event: PublicationQueueEvent) => void = () => undefined,
+    private readonly reconnectDelayMs = 5_000,
+    private readonly connect: (url: string) => Promise<ChannelModel> = amqp.connect,
   ) {}
 
   public async start(handler: PublicationTaskHandler): Promise<void> {
-    if (this.connection !== null) return;
     this.handler = handler;
-    const connection = await amqp.connect(this.url);
+    if (this.connection !== null) return;
+    if (this.connecting !== null) return this.connecting;
+    this.connecting = this.connectOnce();
     try {
-      const publisher = await connection.createConfirmChannel();
-      const consumer = await connection.createChannel();
-      await this.assertTopology(publisher);
-      await consumer.prefetch(1);
-      this.connection = connection;
-      this.publisher = publisher;
-      this.consumer = consumer;
-      this.observe({ type: 'connected' });
-      connection.on('error', () => undefined);
-      connection.on('close', () => {
-        this.connection = null;
-        this.publisher = null;
-        this.consumer = null;
-        this.observe({ type: 'disconnected' });
-        if (!this.closing) void this.reconnect();
-      });
-      await consumer.consume(this.mainQueue, (message) => {
-        if (message !== null) void this.consume(message).catch(() => this.requeueLater(message));
-      }, { noAck: false });
+      await this.connecting;
     } catch (error) {
-      await connection.close().catch(() => undefined);
-      this.connection = null;
-      this.publisher = null;
-      this.consumer = null;
-      throw error;
+      this.observe({ type: 'reconnect-failed', reason: errorMessage(error) });
+      this.ensureReconnect();
+    } finally {
+      this.connecting = null;
     }
   }
 
@@ -142,11 +133,57 @@ export class RabbitMqPublicationTaskQueue implements PublicationTaskQueue {
 
   private async reconnect(): Promise<void> {
     while (!this.closing && this.connection === null) {
-      await delay(5_000);
+      await delay(this.reconnectDelayMs, undefined, { ref: false });
       if (this.closing || this.handler === null) return;
-      try { await this.start(this.handler); }
-      catch { this.observe({ type: 'reconnect-failed' }); }
+      await this.start(this.handler);
     }
+  }
+
+  private async connectOnce(): Promise<void> {
+    const connection = await this.connect(this.url);
+    try {
+      const publisher = await connection.createConfirmChannel();
+      const consumer = await connection.createChannel();
+      await this.assertTopology(publisher);
+      await consumer.prefetch(1);
+      this.connection = connection;
+      this.publisher = publisher;
+      this.consumer = consumer;
+      connection.on('error', () => undefined);
+      connection.on('close', () => this.transportClosed(connection, 'connection-closed'));
+      publisher.on('error', () => undefined);
+      publisher.on('close', () => this.transportClosed(connection, 'publisher-channel-closed'));
+      consumer.on('error', () => undefined);
+      consumer.on('close', () => this.transportClosed(connection, 'consumer-channel-closed'));
+      await consumer.consume(this.mainQueue, (message) => {
+        if (message !== null) void this.consume(message).catch(() => this.requeueLater(message));
+      }, { noAck: false });
+      if (this.connection !== connection) throw new Error('RabbitMQ channels closed during startup');
+      this.observe({ type: 'connected' });
+    } catch (error) {
+      if (this.connection === connection) {
+        this.connection = null;
+        this.publisher = null;
+        this.consumer = null;
+      }
+      await connection.close().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private transportClosed(connection: ChannelModel, reason: string): void {
+    if (this.connection !== connection) return;
+    this.connection = null;
+    this.publisher = null;
+    this.consumer = null;
+    this.observe({ type: 'disconnected', reason });
+    void connection.close().catch(() => undefined);
+    this.ensureReconnect();
+  }
+
+  private ensureReconnect(): void {
+    if (this.closing || this.handler === null || this.reconnecting !== null) return;
+    this.reconnecting = this.reconnect().finally(() => { this.reconnecting = null; });
   }
 
   private async assertTopology(channel: Channel): Promise<void> {
@@ -185,7 +222,12 @@ export class RabbitMqPublicationTaskQueue implements PublicationTaskQueue {
         consumer.ack(message);
         return;
       }
-      if (!outcome.resetAttempts && task.attempt >= MAX_ATTEMPTS) {
+      if (outcome.kind === 'dead-letter') {
+        await this.deadLetter(message.content, outcome.reason);
+        consumer.ack(message);
+        return;
+      }
+      if (!outcome.resetAttempts && task.attempt >= PUBLICATION_MAX_ATTEMPTS) {
         await this.deadLetter(message.content, 'attempts-exhausted');
         consumer.ack(message);
         return;
@@ -273,4 +315,8 @@ function parseTask(content: Buffer): PublicationReconcileTask | null {
   } catch {
     return null;
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'unknown-error';
 }

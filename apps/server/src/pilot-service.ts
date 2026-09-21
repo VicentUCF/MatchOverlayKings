@@ -47,6 +47,7 @@ import type { PilotYouTubeGateway } from './pilot-youtube.js';
 import type { PilotMobileCameraService } from './pilot-mobile-camera.js';
 import type { PilotMobileRuntimeEvent } from './pilot-mobile-events.js';
 import type { PilotOverlayOptions, PilotOverlayRenderer } from './pilot-overlay.js';
+import { PilotServiceError } from './pilot-service-error.js';
 import {
   CPU_ENCODER, detectVideoEncoders, encoderKey,
   ffmpegEnvironment, isHardwareEncoderFailure, selectVideoEncoder,
@@ -123,16 +124,7 @@ export type PilotPreflightDependencies = {
   readonly upload?: typeof measurePilotUpload;
 };
 
-export class PilotServiceError extends Error {
-  public constructor(
-    public readonly statusCode: number,
-    public readonly code: 'INVALID_INPUT' | 'NOT_FOUND' | 'CONFLICT' | 'NOT_READY' | 'RUNTIME_ERROR' | 'FORBIDDEN',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'PilotServiceError';
-  }
-}
+export { PilotServiceError } from './pilot-service-error.js';
 
 export class PilotService {
   private readonly sessions = new Map<string, InternalPilotSession>();

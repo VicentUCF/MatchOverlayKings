@@ -11,7 +11,7 @@ import type {
   PreparePilotSessionInput,
   UpdatePilotMobileCameraDesiredInput,
 } from '@kpl/production-contracts';
-import { createProductionPilotAdapter, type ProductionPilotAdapter } from '../lib/production-pilot-adapter.js';
+import { createProductionPilotAdapter, type ProductionPilotAdapter } from '../features/production/production-pilot-adapter.js';
 
 export type ReadyPilotState = {
   readonly kind: 'ready';

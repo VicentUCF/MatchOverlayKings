@@ -4,9 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { ClubIdSchema, PrincipalIdSchema } from '@kpl/production-contracts';
 import { ProductionOverviewView } from './ProductionOverview.js';
 import { ProductionSetupWorkspaceView } from './ProductionSetupWorkspace.js';
-import { createProductionSetupDraft, type ProductionSetupInventory } from '../lib/production-setup-orchestrator.js';
+import { createProductionSetupDraft, type ProductionSetupInventory } from '../features/production/production-setup-orchestrator.js';
 import type { ProductionOverviewState } from '../hooks/useProductionOverview.js';
-import type { ProductionOverviewAccess, ProductionOverviewSnapshot } from '../lib/production-overview-types.js';
+import type { ProductionOverviewAccess, ProductionOverviewSnapshot } from '../features/production/production-overview-types.js';
 
 const COURT_SLUGS = ['pista-1', 'pista-2', 'pista-3', 'pista-4', 'pista-central'] as const;
 

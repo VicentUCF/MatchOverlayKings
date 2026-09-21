@@ -9,7 +9,7 @@ import {
   SupabaseSafeOutputRowSchema,
   type CommandId,
 } from '@kpl/production-contracts';
-import { createCommandId } from '../command-id.js';
+import { createCommandId } from '../../command-id.js';
 import {
   ScheduleProductionEventInputSchema,
   SetProductionEventStatusInputSchema,
@@ -21,7 +21,7 @@ import {
   type ProductionProvisioningAdapter,
   type ProductionProvisioningResult,
 } from './production-provisioning-contracts.js';
-import { supabase } from './supabase.js';
+import { supabase } from '../../lib/supabase.js';
 
 export type ProductionProvisioningBackend = {
   readonly rpc: (name: string, args: Record<string, unknown>) => Promise<unknown>;
