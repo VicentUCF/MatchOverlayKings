@@ -1,4 +1,4 @@
-export type ProductionEventScope = 'runtime' | 'configurations' | 'recordings';
+export type ProductionEventScope = 'runtime' | 'configurations' | 'recordings' | 'postproduction';
 
 export type ProductionInvalidation = {
   readonly scope: ProductionEventScope;
@@ -12,6 +12,7 @@ const COALESCE_MS: Readonly<Record<ProductionEventScope, number>> = {
   runtime: 2_000,
   configurations: 100,
   recordings: 1_000,
+  postproduction: 250,
 };
 
 export class ProductionEventBus {

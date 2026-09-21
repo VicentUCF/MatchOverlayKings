@@ -19,6 +19,7 @@ export interface PilotOverlayOptions {
   readonly homeTeamId?: string;
   readonly awayTeamId?: string;
   readonly overlayToken?: string;
+  readonly pageUrl?: string;
   readonly onState?: (state: PilotOverlayHealth) => void;
 }
 
@@ -114,7 +115,7 @@ export class BrowserPilotOverlayRenderer implements PilotOverlayRenderer {
     let onFrame: ((event: ScreencastFrameEvent) => void) | null = null;
     try {
       const page = await bounded(context.newPage(), signal, remaining());
-      const response = await page.goto(overlayUrl(this.options.baseUrl, options.courtSlug, options),
+      const response = await page.goto(options.pageUrl ?? overlayUrl(this.options.baseUrl, options.courtSlug, options),
         { waitUntil: 'domcontentloaded', timeout: remaining() });
       if (!response?.ok()) throw new Error('Overlay page unavailable');
       await page.waitForFunction(READY, undefined, { timeout: remaining() });

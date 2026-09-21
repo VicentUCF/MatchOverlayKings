@@ -27,6 +27,8 @@ import {
   type PublicationTaskQueue,
 } from '../infrastructure/queues/publication-task-queue.js';
 import { ProductionEventBus, productionSseEvent, type ProductionEventScope } from '../features/production/production-events.js';
+import { PostproductionService } from '../features/postproduction/postproduction-service.js';
+import { registerPostproductionRoutes } from '../features/postproduction/register-postproduction-routes.js';
 
 export async function buildApp(
   config: ServerConfig,
@@ -69,16 +71,17 @@ export async function buildApp(
     () => productionEvents.publish('runtime'),
   );
   const browserPath = chromiumExecutablePath();
+  const overlayRenderer = dependencies.pilotOverlayRenderer ?? new BrowserPilotOverlayRenderer({
+    baseUrl: `http://127.0.0.1:${config.port}`,
+    ...(browserPath ? { chromiumExecutablePath: browserPath } : {}),
+  });
   const youtube = new PilotYouTubeGateway(config.pilot.youtube);
   const pilot = new PilotService(
     config.pilot.ffmpegPath,
     youtube,
     resolve(config.dataDir, 'pilot-configurations.json'),
     mobileCamera,
-    dependencies.pilotOverlayRenderer ?? new BrowserPilotOverlayRenderer({
-      baseUrl: `http://127.0.0.1:${config.port}`,
-      ...(browserPath ? { chromiumExecutablePath: browserPath } : {}),
-    }),
+    overlayRenderer,
     dependencies.pilotMatchBinding ?? new SupabasePilotMatchBinding(config.pilot.supabase),
     dependencies.pilotStreamLink ?? new SupabasePilotStreamLink(config.pilot.supabase),
     undefined,
@@ -102,13 +105,26 @@ export async function buildApp(
     publicationTasks,
     () => productionEvents.publish('recordings'),
   );
+  const postproduction = new PostproductionService(
+    config.dataDir,
+    config.postproductionSourceRoot ?? resolve(config.dataDir, 'imports'),
+    config.pilot.ffmpegPath,
+    join(dirname(config.pilot.ffmpegPath), 'ffprobe'),
+    `http://127.0.0.1:${config.port}`,
+    join(config.webDistDir, 'sounds', 'card-reveal.mp3'),
+    overlayRenderer,
+    recordings,
+    () => pilot.snapshot().some((session) => ['starting', 'live', 'reconnecting', 'stopping'].includes(session.status)),
+    () => productionEvents.publish('postproduction'),
+  );
   try {
     await recordings.initialize();
+    await postproduction.initialize();
     for (const session of pilot.snapshot()) await recordings.reconcileSession(session, pilot.configurations());
     await mobileCamera.initialize();
     await pilot.flushOperationalHistory();
   } catch (error) {
-    await Promise.allSettled([recordings.shutdown(), pilot.shutdown(), mobileCamera.shutdown()]);
+    await Promise.allSettled([postproduction.shutdown(), recordings.shutdown(), pilot.shutdown(), mobileCamera.shutdown()]);
     productionEvents.close();
     throw error;
   }
@@ -230,7 +246,7 @@ export async function buildApp(
     reply.hijack();
     reply.raw.flushHeaders();
     reply.raw.write('retry: 3000\n\n');
-    const scopes: readonly ProductionEventScope[] = ['runtime', 'configurations', 'recordings'];
+    const scopes: readonly ProductionEventScope[] = ['runtime', 'configurations', 'recordings', 'postproduction'];
     for (const scope of scopes) reply.raw.write(productionSseEvent(productionEvents.snapshot(scope)));
     const unsubscribe = productionEvents.subscribe(
       (event) => { reply.raw.write(productionSseEvent(event)); },
@@ -260,6 +276,12 @@ export async function buildApp(
   registerRecordingRoutes(app, {
     dataDirectory: config.dataDir,
     recordings,
+    productionAccess,
+    requireLocal: requireLocalPilot,
+  });
+  registerPostproductionRoutes(app, {
+    sourceRoot: config.postproductionSourceRoot,
+    postproduction,
     productionAccess,
     requireLocal: requireLocalPilot,
   });
@@ -340,6 +362,7 @@ export async function buildApp(
 
     app.get('/admin', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/admin/grabaciones', async (_request, reply) => reply.sendFile('index.html'));
+    app.get('/postproduction/:projectId/overlay', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/admin/emisiones', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/admin/sistema', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/admin/sistema/configuracion', async (_request, reply) => reply.sendFile('index.html'));
@@ -353,13 +376,14 @@ export async function buildApp(
   }
 
   app.addHook('onClose', async () => {
-    try { await recordings.shutdown(); }
+    try { await postproduction.shutdown(); }
     finally {
-      try { await pilot.shutdown(); }
+      try { await recordings.shutdown(); }
       finally {
-        try { await mobileCamera.shutdown(); }
+        try { await pilot.shutdown(); }
         finally {
-          await io.close();
+          try { await mobileCamera.shutdown(); }
+          finally { await io.close(); }
         }
       }
     }

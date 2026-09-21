@@ -16,6 +16,12 @@ import {
   PreparePilotSessionInputSchema,
   PublicationJobSchema,
   PublicationJobsSchema,
+  PostproductionProjectSchema,
+  PostproductionProjectsSchema,
+  PostproductionSourceListingSchema,
+  CreatePostproductionProjectInputSchema,
+  RelinkPostproductionSourceInputSchema,
+  SavePostproductionCheckpointInputSchema,
   RecordingAssetsSchema,
   type PilotConfiguration,
   type PilotCourtSlug,
@@ -24,6 +30,9 @@ import {
   type PilotPreflightCheckId,
   type PreparePilotSessionInput,
   type UpdatePilotMobileCameraDesiredInput,
+  type CreatePostproductionProjectInput,
+  type RelinkPostproductionSourceInput,
+  type SavePostproductionCheckpointInput,
 } from '@kpl/production-contracts';
 
 const ErrorEnvelopeSchema = z.strictObject({
@@ -47,6 +56,9 @@ const TeamSchema = z.strictObject({
 const TeamsEnvelopeSchema = z.strictObject({ teams: z.array(TeamSchema).readonly() });
 const RecordingsEnvelopeSchema = z.strictObject({ assets: RecordingAssetsSchema, jobs: PublicationJobsSchema });
 const PublicationEnvelopeSchema = z.strictObject({ job: PublicationJobSchema });
+const PostproductionProjectEnvelopeSchema = z.strictObject({ project: PostproductionProjectSchema });
+const PostproductionProjectsEnvelopeSchema = z.strictObject({ projects: PostproductionProjectsSchema });
+const MediaTokenEnvelopeSchema = z.strictObject({ url: z.string().startsWith('/api/pilot/postproduction/') });
 const RecordingDirectoryListingSchema = z.strictObject({
   current: z.string().min(1),
   parent: z.string().min(1).nullable(),
@@ -89,7 +101,8 @@ export function createProductionPilotAdapter(
       const endpoint = `${baseUrl}${path}`;
       if (init?.method === 'POST' || init?.method === 'PUT' || init?.method === 'DELETE'
         || path === '/api/pilot/operations' || path === '/api/pilot/incidents'
-        || path === '/api/pilot/recordings' || path.startsWith('/api/pilot/recording-directories')) {
+        || path === '/api/pilot/recordings' || path.startsWith('/api/pilot/recording-directories')
+        || path.startsWith('/api/pilot/postproduction')) {
         const { data } = await supabase.auth.getSession();
         if (journaled) {
           storageKey = `kpl:operation:${baseUrl}:${data.session?.user.id ?? 'local'}:${path}:${String(init?.body ?? '')}`;
@@ -149,6 +162,40 @@ export function createProductionPilotAdapter(
     operations: () => request('/api/pilot/operations', z.strictObject({ operations: z.array(PilotOperationSchema) })),
     incidents: () => request('/api/pilot/incidents', z.strictObject({ incidents: z.array(PilotIncidentSchema) })),
     recordings: () => request('/api/pilot/recordings', RecordingsEnvelopeSchema),
+    postproductionSources: (path?: string) => request(
+      `/api/pilot/postproduction/sources${path ? `?path=${encodeURIComponent(path)}` : ''}`,
+      PostproductionSourceListingSchema,
+    ),
+    postproductionProjects: () => request('/api/pilot/postproduction/projects', PostproductionProjectsEnvelopeSchema),
+    createPostproductionProject: (input: CreatePostproductionProjectInput) => {
+      const parsed = CreatePostproductionProjectInputSchema.safeParse(input);
+      if (!parsed.success) return Promise.resolve({ kind: 'error' as const, message: 'Revisa los datos de la renovación.' });
+      return request('/api/pilot/postproduction/projects', PostproductionProjectEnvelopeSchema, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(parsed.data),
+      });
+    },
+    savePostproductionCheckpoint: (id: string, input: SavePostproductionCheckpointInput) => {
+      const parsed = SavePostproductionCheckpointInputSchema.safeParse(input);
+      if (!parsed.success) return Promise.resolve({ kind: 'error' as const, message: 'No se puede guardar esta cronología.' });
+      return request(`/api/pilot/postproduction/projects/${encodeURIComponent(id)}/checkpoint`, PostproductionProjectEnvelopeSchema, {
+        method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(parsed.data),
+      });
+    },
+    relinkPostproductionSource: (id: string, input: RelinkPostproductionSourceInput) => {
+      const parsed = RelinkPostproductionSourceInputSchema.safeParse(input);
+      if (!parsed.success) return Promise.resolve({ kind: 'error' as const, message: 'Selecciona un MP4 válido.' });
+      return request(`/api/pilot/postproduction/projects/${encodeURIComponent(id)}/relink`, PostproductionProjectEnvelopeSchema, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(parsed.data),
+      });
+    },
+    renderPostproductionProject: (id: string) => request(
+      `/api/pilot/postproduction/projects/${encodeURIComponent(id)}/render`, PostproductionProjectEnvelopeSchema, { method: 'POST' }),
+    cancelPostproductionRender: (id: string) => request(
+      `/api/pilot/postproduction/projects/${encodeURIComponent(id)}/render/cancel`, PostproductionProjectEnvelopeSchema, { method: 'POST' }),
+    postproductionMediaUrl: async (id: string): Promise<PilotApiResult<string>> => {
+      const result = await request(`/api/pilot/postproduction/projects/${encodeURIComponent(id)}/media-token`, MediaTokenEnvelopeSchema, { method: 'POST' });
+      return result.kind === 'success' ? { kind: 'success', value: `${baseUrl}${result.value.url}` } : result;
+    },
     recordingDirectories: (path?: string) => request(
       `/api/pilot/recording-directories${path ? `?path=${encodeURIComponent(path)}` : ''}`,
       RecordingDirectoryListingSchema,

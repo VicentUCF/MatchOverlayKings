@@ -104,11 +104,35 @@ export class RecordingLibrary {
         sizeBytes: previous?.sizeBytes ?? null, durationSeconds: previous?.durationSeconds ?? null,
         streams: previous?.streams ?? [], state: active ? 'recording' : previous?.state ?? 'validating',
         error: active ? null : previous?.error ?? null,
+        origin: previous?.origin ?? 'recording', sourceProjectId: previous?.sourceProjectId ?? null,
       });
       this.assets.set(id, candidate);
       if (!active && candidate.state !== 'ready') await this.validate(id);
     }
     await this.persist();
+  }
+
+  public async registerDerivedAsset(input: {
+    readonly projectId: string;
+    readonly courtSlug: RecordingAsset['courtSlug'];
+    readonly title: string;
+    readonly seasonLabel: string;
+    readonly matchdayNumber: number;
+    readonly path: string;
+  }): Promise<RecordingAsset> {
+    this.assertOwnedPath(input.path, resolve(dirname(this.path), 'recordings'));
+    const id = createHash('sha256').update(`${input.projectId}\0${input.path}`).digest('hex');
+    const now = new Date().toISOString();
+    const asset = RecordingAssetSchema.parse({
+      id, sessionId: input.projectId, courtSlug: input.courtSlug, title: input.title,
+      seasonLabel: input.seasonLabel, matchdayNumber: input.matchdayNumber, path: input.path,
+      createdAt: now, finalizedAt: null, sizeBytes: null, durationSeconds: null, streams: [],
+      state: 'validating', error: null, origin: 'renovated', sourceProjectId: input.projectId,
+    });
+    this.assets.set(id, asset);
+    await this.validate(id);
+    await this.persist();
+    return this.assets.get(id)!;
   }
 
   public async createUpload(assetId: string, rawInput: unknown): Promise<PublicationJob> {
@@ -227,8 +251,8 @@ export class RecordingLibrary {
         });
         if (stream.codec_type === 'audio' && stream.codec_name) streams.push({ kind: 'audio', codec: stream.codec_name });
       }
-      if (!(duration > 0) || !streams.some(({ kind }) => kind === 'video') || !streams.some(({ kind }) => kind === 'audio')) {
-        throw new Error('El MP4 no contiene vídeo y audio reproducibles.');
+      if (!(duration > 0) || !streams.some(({ kind }) => kind === 'video')) {
+        throw new Error('El MP4 no contiene vídeo reproducible.');
       }
       this.assets.set(id, RecordingAssetSchema.parse({ ...asset, state: 'ready', finalizedAt: new Date().toISOString(),
         sizeBytes: file.size, durationSeconds: duration, streams, error: null }));

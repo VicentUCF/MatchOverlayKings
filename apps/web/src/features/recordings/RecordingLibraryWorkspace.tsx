@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { CalendarClock, CircleAlert, ExternalLink, Film, HardDrive, Pause, Play, RefreshCw, Upload } from 'lucide-react';
 import type { PublicationJob, RecordingAsset } from '@kpl/production-contracts';
 import { createProductionPilotAdapter } from '../production/production-pilot-adapter.js';
+import { PostproductionWorkspace } from '../postproduction/PostproductionWorkspace.js';
 
 const adapter = createProductionPilotAdapter();
 
@@ -104,7 +105,7 @@ export function RecordingLibraryWorkspace() {
   const courts = [...new Set(state.assets.map(({ courtSlug }) => courtSlug))].sort();
   const matchdays = [...new Set(state.assets.map(({ matchdayNumber }) => matchdayNumber))].sort((a, b) => a - b);
 
-  return <section className="recording-library" aria-labelledby="recording-library-title">
+  return <><PostproductionWorkspace /><section className="recording-library" aria-labelledby="recording-library-title">
     <header className="production-pilot-intro">
       <div><p className="production-kicker">Archivo y publicación</p><h1 id="recording-library-title">Grabaciones</h1>
         <p>Valida los MP4 del programa final, súbelos como privados y programa cuándo se harán públicos.</p></div>
@@ -134,7 +135,7 @@ export function RecordingLibraryWorkspace() {
         onRetry={(job) => mutate(job.id, () => adapter.retryPublication(job.id))}
         onSchedule={(job, publishAt) => mutate(job.id, () => adapter.schedulePublication(job.id, publishAt))} />)}
     </div>
-  </section>;
+  </section></>;
 }
 
 export function recordingPollDelay(state: LibraryState): number | null {
@@ -162,7 +163,7 @@ function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onRet
   const submitSchedule = (event: FormEvent) => { event.preventDefault(); if (job) void onSchedule(job, new Date(publishAt).toISOString()); };
   return <article className="recording-card" aria-labelledby={`recording-${asset.id}`}>
     <header><div><span className="production-court-card__slug">{asset.courtSlug}</span><h2 id={`recording-${asset.id}`}>{asset.title}</h2></div>
-      <span className={`production-status ${asset.state === 'ready' ? 'success' : asset.state === 'invalid' ? 'danger' : 'info'}`}>{assetLabel(asset)}</span></header>
+      <span className={`production-status ${asset.state === 'ready' ? 'success' : asset.state === 'invalid' ? 'danger' : 'info'}`}>{assetLabel(asset)}{asset.origin === 'renovated' ? ' · Renovado' : ''}</span></header>
     <dl className="recording-card__facts">
       <div><dt>Jornada</dt><dd>{asset.matchdayNumber} · {asset.seasonLabel}</dd></div>
       <div><dt>Duración</dt><dd>{asset.durationSeconds === null ? '—' : duration(asset.durationSeconds)}</dd></div>

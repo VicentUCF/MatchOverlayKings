@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createTimeline, stagger } from 'animejs';
 import { DEFAULT_SPONSOR_ADS } from '@kpl/shared';
-import type { MatchSetScore, MatchState, OverlayDataSceneState, SponsorFullscreenState } from '@kpl/shared';
+import type { MatchSetScore, MatchState, OverlayDataSceneState, SponsorFullscreenState, Team } from '@kpl/shared';
 import { CardAnnouncementScene } from '../features/match-display/CardAnnouncementScene.js';
 import { OverlayDataScene } from '../features/match-display/OverlayDataScene.js';
 import { PrematchOverlayScene } from '../features/match-display/PrematchOverlayScene.js';
@@ -11,6 +11,7 @@ import { SponsorAdScene, hasSponsorTicker } from '../features/match-display/Spon
 import { useCardAnnouncementQueue } from '../hooks/useCardAnnouncementQueue.js';
 import { useCardAnnouncementSound } from '../hooks/useCardAnnouncementSound.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
+import type { LeagueSnapshot } from '../lib/league-data.js';
 
 interface SideChangeSignal {
   key: string;
@@ -44,7 +45,7 @@ export function OverlayPage({ eventId }: { eventId: string }) {
   </div>;
 }
 
-function OverlayScene({ match }: { match: ReturnType<typeof useMatchSocket> }) {
+export function OverlayScene({ match }: { match: { readonly state: MatchState | null; readonly teams: Team[]; readonly leagueSnapshot?: LeagueSnapshot | null } }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const sideChangeBaselineVersionRef = useRef<number | null>(null);
   const lastSideChangeKeyRef = useRef<string | null>(null);
@@ -336,6 +337,7 @@ function OverlayScene({ match }: { match: ReturnType<typeof useMatchSocket> }) {
           state={match.state}
           teams={match.teams}
           onDone={clearDataScene}
+          {...(match.leagueSnapshot !== undefined ? { snapshotOverride: match.leagueSnapshot } : {})}
         />
       ) : null}
       {prematchScene ? (

@@ -6,12 +6,14 @@ const HomePage = lazy(async () => ({ default: (await import('./HomePage.js')).Ho
 const LivePage = lazy(async () => ({ default: (await import('./LivePage.js')).LivePage }));
 const OverlayPage = lazy(async () => ({ default: (await import('./OverlayPage.js')).OverlayPage }));
 const MobileCameraPage = lazy(async () => ({ default: (await import('./MobileCameraPage.js')).MobileCameraPage }));
+const PostproductionOverlayPage = lazy(async () => ({ default: (await import('./PostproductionOverlayPage.js')).PostproductionOverlayPage }));
 
 export function App() {
   const path = window.location.pathname;
   const controlMatch = path.match(/^\/control\/([a-z0-9-]+)$/i);
   const liveMatch = path.match(/^\/live\/([a-z0-9-]+)$/i);
   const overlayMatch = path.match(/^\/overlay\/([a-z0-9-]+)\/scoreboard$/i);
+  const postproductionOverlayMatch = path.match(/^\/postproduction\/([a-f0-9-]+)\/overlay$/i);
 
   if (path === '/') {
     return route(<HomePage />);
@@ -49,6 +51,10 @@ export function App() {
 
   if (overlayMatch?.[1]) {
     return route(<OverlayPage eventId={overlayMatch[1]} />);
+  }
+
+  if (postproductionOverlayMatch?.[1]) {
+    return route(<PostproductionOverlayPage projectId={postproductionOverlayMatch[1]} />);
   }
 
   window.location.replace('/');

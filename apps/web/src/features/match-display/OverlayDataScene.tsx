@@ -14,11 +14,13 @@ export function OverlayDataScene({
   state,
   teams,
   onDone,
+  snapshotOverride,
 }: {
   scene: OverlayDataSceneState;
   state: MatchState;
   teams: Team[];
   onDone: () => void;
+  snapshotOverride?: LeagueSnapshot | null;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [snapshot, setSnapshot] = useState<LeagueSnapshot | null>(null);
@@ -30,6 +32,12 @@ export function OverlayDataScene({
 
   useEffect(() => {
     let cancelled = false;
+
+    if (snapshotOverride !== undefined) {
+      setSnapshot(snapshotOverride);
+      setError(snapshotOverride ? null : 'No se guardaron datos de liga para esta renovación.');
+      return () => { cancelled = true; };
+    }
 
     setSnapshot(null);
     setError(null);
@@ -49,7 +57,7 @@ export function OverlayDataScene({
     return () => {
       cancelled = true;
     };
-  }, [scene.id, teams]);
+  }, [scene.id, snapshotOverride, teams]);
 
   useEffect(() => {
     if (!snapshot && !error) {
