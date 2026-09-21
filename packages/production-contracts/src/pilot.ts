@@ -177,9 +177,29 @@ export const PreparePilotSessionInputSchema = z.strictObject({
   matchdayNumber: z.number().int().positive().max(999),
   seasonLabel: z.string().trim().min(1).max(32),
   description: z.string().trim().min(1).max(5_000).optional(),
+  recordingDirectory: z.string().trim().min(1).max(4_096).optional(),
   scheduledAt: z.iso.datetime({ offset: true }),
   privacyStatus: PilotPrivacySchema,
 });
+
+const PilotCommonPlanSchema = PreparePilotSessionInputSchema.omit({
+  mode: true,
+  scheduledAt: true,
+  privacyStatus: true,
+  description: true,
+  recordingDirectory: true,
+});
+export const RecordingPlanSchema = PilotCommonPlanSchema.extend({
+  kind: z.literal('recording'),
+  recordingDirectory: z.string().trim().min(1).max(4_096),
+});
+export const LivePlanSchema = PilotCommonPlanSchema.extend({
+  kind: z.literal('live'),
+  scheduledAt: PreparePilotSessionInputSchema.shape.scheduledAt,
+  privacyStatus: PilotPrivacySchema,
+  description: z.string().trim().min(1).max(5_000),
+});
+export const ProductionPlanSchema = z.discriminatedUnion('kind', [RecordingPlanSchema, LivePlanSchema]);
 
 export const PilotConfigurationSchema = PreparePilotSessionInputSchema.extend({
   updatedAt: z.iso.datetime({ offset: true }),
@@ -238,6 +258,9 @@ export type PilotPrivacy = z.infer<typeof PilotPrivacySchema>;
 export type PilotSource = z.infer<typeof PilotSourceSchema>;
 export type PilotReadiness = z.infer<typeof PilotReadinessSchema>;
 export type PreparePilotSessionInput = z.infer<typeof PreparePilotSessionInputSchema>;
+export type RecordingPlan = z.infer<typeof RecordingPlanSchema>;
+export type LivePlan = z.infer<typeof LivePlanSchema>;
+export type ProductionPlan = z.infer<typeof ProductionPlanSchema>;
 export type PilotConfiguration = z.infer<typeof PilotConfigurationSchema>;
 export type PilotEncoderHealth = z.infer<typeof PilotEncoderHealthSchema>;
 export type PilotVideoEncoder = z.infer<typeof PilotVideoEncoderSchema>;

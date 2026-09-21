@@ -165,7 +165,7 @@
 }
 
 .production-pilot-settings-dialog {
-  width: min(44rem, calc(100% - 2 * var(--kpl-space-4)));
+  width: min(52rem, calc(100% - 2 * var(--kpl-space-4)));
   max-height: calc(100% - 2 * var(--kpl-space-5));
   margin: auto;
   border: 0;
@@ -226,9 +226,10 @@
   font-weight: 700;
 }
 
-.production-pilot-settings-dialog__panel textarea {
+.production-pilot-settings-dialog__panel textarea,
+.production-pilot-settings-dialog__panel input {
+  width: 100%;
   min-height: 14rem;
-  resize: vertical;
   border: var(--kpl-border-width) solid var(--kpl-color-border-subtle);
   border-radius: var(--kpl-radius-xs);
   padding: var(--kpl-space-3);
@@ -238,7 +239,17 @@
   line-height: var(--kpl-line-height-body);
 }
 
-.production-pilot-settings-dialog__panel textarea:focus-visible {
+.production-pilot-settings-dialog__panel textarea {
+  resize: vertical;
+}
+
+.production-pilot-settings-dialog__panel input {
+  min-height: var(--kpl-control-size-md);
+  padding-block: var(--kpl-space-2);
+}
+
+.production-pilot-settings-dialog__panel textarea:focus-visible,
+.production-pilot-settings-dialog__panel input:focus-visible {
   border-color: var(--kpl-color-brand-strong);
   outline: var(--kpl-border-width) solid var(--kpl-color-focus);
   outline-offset: var(--kpl-border-width);

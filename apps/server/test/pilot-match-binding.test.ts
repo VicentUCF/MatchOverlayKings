@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,7 +11,7 @@ const input: PreparePilotSessionInput = {
   courtSlug: 'pista-1', mode: 'simulation', sourceId: 'synthetic', homeTeam: 'Kings of Favar', awayTeam: 'Red Lions',
   matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: '2099-01-01T10:00:00.000Z', privacyStatus: 'private',
 };
-const identity = { homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' };
+const identity = { homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions', overlayToken: 'a'.repeat(64) };
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { while (cleanups.length) await cleanups.pop()?.(); });
 
@@ -25,17 +25,37 @@ describe('pilot match binding', () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it('migrates legacy mode-based configuration to versioned discriminated plans', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'kpl-plan-migration-'));
+    const path = join(directory, 'configurations.json');
+    await writeFile(path, JSON.stringify([{ ...input, updatedAt: '2026-09-21T10:00:00.000Z' }]));
+    const service = new PilotService('/bin/false', new PilotYouTubeGateway({
+      clientId: null, clientSecret: null, redirectUri: null, tokenPath: null,
+    }), path, undefined, undefined, { configure: async () => identity, assertConfigured: async () => identity });
+    cleanups.push(async () => { await service.shutdown(); await rm(directory, { recursive: true, force: true }); });
+    await service.initialize();
+    expect(service.configurations()[0]).toMatchObject({ mode: 'recording', courtSlug: 'pista-1' });
+    const snapshot = JSON.parse(await readFile(path, 'utf8')) as { version: number; entries: Array<{ plan: { kind: string } }> };
+    expect(snapshot.version).toBe(2);
+    expect(snapshot.entries[0]?.plan.kind).toBe('recording');
+  });
+
   it('sends authenticated configuration and read validation to the same authority', async () => {
-    const fetcher = vi.fn(async () => Response.json(identity));
+    const fetcher = vi.fn(async (url: string | URL | Request) => Response.json(String(url).endsWith('configure_pilot_access')
+      ? { token: identity.overlayToken, expiresAt: '2099-01-02T00:00:00.000Z' }
+      : identity));
     const binding = new SupabasePilotMatchBinding({ url: 'https://db.example/', publishableKey: 'public' }, fetcher);
     await expect(binding.configure(input, 'Bearer admin')).resolves.toEqual(identity);
     await expect(binding.assertConfigured(input, 'Bearer admin')).resolves.toEqual(identity);
-    expect(fetcher.mock.calls.map((call) => call)).toHaveLength(2);
+    expect(fetcher.mock.calls.map((call) => call)).toHaveLength(4);
     expect(fetcher).toHaveBeenNthCalledWith(1, 'https://db.example/rest/v1/rpc/configure_pilot_match', expect.objectContaining({
       headers: expect.objectContaining({ Authorization: 'Bearer admin', apikey: 'public' }),
       body: JSON.stringify({ p_configuration: input, p_apply: true }),
     }));
-    expect(fetcher).toHaveBeenNthCalledWith(2, expect.any(String), expect.objectContaining({
+    expect(fetcher).toHaveBeenNthCalledWith(2, 'https://db.example/rest/v1/rpc/configure_pilot_access', expect.objectContaining({
+      body: JSON.stringify({ p_court_slug: 'pista-1', p_kind: 'recording', p_season_label: 'T2', p_matchday_number: 1 }),
+    }));
+    expect(fetcher).toHaveBeenNthCalledWith(3, expect.any(String), expect.objectContaining({
       body: JSON.stringify({ p_configuration: input, p_apply: false }),
     }));
   });

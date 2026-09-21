@@ -31,8 +31,8 @@ interface SideChangeSceneState {
 }
 
 export function OverlayPage({ eventId }: { eventId: string }) {
-  const match = useMatchSocket(eventId, 'overlay', '');
   const expected = new URLSearchParams(window.location.search);
+  const match = useMatchSocket(eventId, 'overlay', expected.get('accessToken') ?? '');
   const home = expected.get('homeTeamId');
   const away = expected.get('awayTeamId');
   if ((home || away) && (!match.state || match.state.homeTeamId !== home || match.state.awayTeamId !== away)) {

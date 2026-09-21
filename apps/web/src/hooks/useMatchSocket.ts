@@ -60,15 +60,15 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const stateRef = useRef<MatchState | null>(null);
-  const controlToken = role === 'control' ? token : '';
+  const controlToken = role === 'control' || role === 'overlay' ? token : '';
   const loadState = useCallback(async () => {
-    if (!controlToken) return fetchMatchState(eventId);
+    if (!controlToken) return fetchMatchState(eventId, role === 'viewer');
     const { data, error } = await supabase.rpc('visual_control_command', {
       p_court_slug: eventId, p_token: controlToken, p_action: 'state',
     });
     if (error) throw new Error(error.message);
     return data as MatchState | null;
-  }, [controlToken, eventId]);
+  }, [controlToken, eventId, role]);
 
   const acceptState = useCallback((nextState: MatchState | null) => {
     const current = stateRef.current;
@@ -132,7 +132,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
         if (role !== 'control') {
           void fetchEventSummaries({ liveOnly: true }).then(setEvents).catch(() => undefined);
         }
-      });
+      }, role === 'viewer');
     } catch (subscribeError) {
       setError(errorMessage(subscribeError));
       setConnectionState('error');
@@ -169,7 +169,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
     };
     const intervalId = window.setInterval(() => {
       void refreshPublicState();
-    }, 5_000);
+    }, controlToken ? 500 : 5_000);
 
     return () => {
       cancelled = true;

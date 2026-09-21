@@ -5,7 +5,7 @@ import { PilotPreflightPanel } from './PilotPreflightPanel.js';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
 import {
   CircleCheck, CircleX, ExternalLink, Info, MonitorPlay, Radio, RefreshCw,
-  Settings, Settings2, SlidersHorizontal, X,
+  Settings, Settings2, X,
 } from 'lucide-react';
 import {
   PILOT_MOBILE_SOURCE_ID,
@@ -39,6 +39,7 @@ type ProductionPilotWorkspaceProps = {
   readonly navigationRole?: ProductionNavigationRole;
   readonly onSignOut?: (() => Promise<void>) | undefined;
   readonly onOpenControls?: (() => void) | undefined;
+  readonly preferredMode?: 'recording' | 'youtube';
 };
 
 type ProductionPilotWorkspaceViewProps = ProductionPilotWorkspaceProps & {
@@ -53,7 +54,8 @@ export function ProductionPilotWorkspace(props: ProductionPilotWorkspaceProps) {
 
 export function ProductionPilotWorkspaceView({
   pilot, initialView = 'configuration', controlsOnly = false, navigationRole = 'admin', onSignOut,
-  onOpenControls = () => window.location.assign('/mandos'), embedded = false, courts, inventoryStale = false, monitoringActive = true,
+  onOpenControls = () => window.location.assign('/admin'), preferredMode, embedded = false, courts,
+  inventoryStale = false, monitoringActive = true,
 }: ProductionPilotWorkspaceViewProps) {
   const view: PilotWorkspaceView = controlsOnly ? 'controls' : initialView;
   const [elapsedByCourt, setElapsedByCourt] = useState<Partial<Record<PilotCourtSlug, number>>>({});
@@ -63,18 +65,23 @@ export function ProductionPilotWorkspaceView({
       ? pilot.state.configurations.find((configuration) => configuration.description)?.description
         ?? DEFAULT_BROADCAST_DESCRIPTION
       : DEFAULT_BROADCAST_DESCRIPTION);
+  const [recordingDirectory, setRecordingDirectory] = useState(() =>
+    pilot.state.kind === 'ready'
+      ? pilot.state.configurations.find((configuration) => configuration.recordingDirectory)?.recordingDirectory ?? ''
+      : '');
   const descriptionInitialized = useRef(pilot.state.kind === 'ready');
   useEffect(() => {
     if (pilot.state.kind !== 'ready' || descriptionInitialized.current) return;
     setDescription(pilot.state.configurations.find((configuration) => configuration.description)?.description
       ?? DEFAULT_BROADCAST_DESCRIPTION);
+    setRecordingDirectory(pilot.state.configurations.find((configuration) => configuration.recordingDirectory)?.recordingDirectory ?? '');
     descriptionInitialized.current = true;
   }, [pilot.state]);
   const recordElapsed = useCallback((court: PilotCourtSlug, seconds: number | null) => {
     setElapsedByCourt((current) => ({ ...current, [court]: seconds ?? undefined }));
   }, []);
   const shell = (children: ReactNode) => (
-    <PilotShell view={view} navigationRole={navigationRole} onSignOut={onSignOut} embedded={embedded}
+    <PilotShell navigationRole={navigationRole} onSignOut={onSignOut} embedded={embedded}
       inventoryStale={inventoryStale}>{children}</PilotShell>
   );
 
@@ -100,11 +107,11 @@ export function ProductionPilotWorkspaceView({
   return shell(<>
     <section className="production-pilot-intro" aria-labelledby={`pilot-${view}-title`}>
       <div>
-        <p className="production-kicker">{view === 'configuration' ? 'Administración · preparación' : 'Operación · directo'}</p>
-        <h1 id={`pilot-${view}-title`}>{view === 'configuration' ? 'Configurar emisiones' : 'Mandos de emisión'}</h1>
+        <p className="production-kicker">{view === 'configuration' ? 'Administración · preparación' : 'Operación de pista'}</p>
+        <h1 id={`pilot-${view}-title`}>{view === 'configuration' ? 'Configurar producción' : 'Control de producción'}</h1>
         <p>{view === 'configuration'
-          ? 'Configura las pistas habilitadas. Los cambios se guardan en este PC y aparecerán en Mandos.'
-          : 'Controla las emisiones sin cambiar fuentes, títulos ni visibilidad.'}</p>
+          ? 'Configura las pistas habilitadas. Los cambios se guardan de forma local en este PC.'
+          : 'Supervisa y controla la salida de cada pista.'}</p>
       </div>
       <div className="production-pilot-intro__actions">
         <ReadinessSummary readiness={ready.readiness} activeCount={activeCount} configuredCount={configuredCount}
@@ -119,14 +126,16 @@ export function ProductionPilotWorkspaceView({
     {ready.error ? <div className="production-page-feedback danger" role="alert">{ready.error}</div> : null}
     {view === 'configuration' ? <>
       <GeneralBroadcastSettingsDialog dialogRef={generalSettingsDialog}
-        description={description} onDescriptionChange={setDescription} />
-      <section className="production-pilot-courts" aria-label="Configuración de emisiones por pista">
+        description={description} onDescriptionChange={setDescription}
+        recordingDirectory={recordingDirectory} onRecordingDirectoryChange={setRecordingDirectory} />
+      <section className="production-pilot-courts" aria-label="Configuración de producción por pista">
         {courts.map((court) => <PilotConfigurationPanel key={court.slug} court={court}
-          teams={ready.teams} description={description}
+          teams={ready.teams} description={description} recordingDirectory={recordingDirectory}
           readiness={ready.readiness} configuration={configurationFor(ready.configurations, court.slug)}
           session={latestSession(ready.sessions, court.slug)} pending={ready.pendingCourts.includes(court.slug)}
           error={ready.courtErrors[court.slug] ?? null} unavailableSources={unavailableSources}
           mobileCamera={ready.mobileCameras.find(({ courtSlug }) => courtSlug === court.slug) ?? null}
+          {...(preferredMode ? { preferredMode } : {})}
           mobileConnectUrl={ready.mobileConnectUrls[ready.mobileCameras.find(({ courtSlug }) => courtSlug === court.slug)?.id ?? ''] ?? null}
           onCreateMobile={() => pilot.createMobileCamera(court.slug)}
           onUpdateMobile={pilot.updateMobileCamera} onRevokeMobile={pilot.revokeMobileCamera}
@@ -134,7 +143,7 @@ export function ProductionPilotWorkspaceView({
       </section>
       <HandoffPanel configuredCount={configuredCount} totalCourts={enabledCourts.length} onOpenControls={onOpenControls} />
     </> : <>
-      <section className="production-pilot-courts production-pilot-courts--controls" aria-label="Mandos por pista">
+      <section className="production-pilot-courts production-pilot-courts--controls" aria-label="Control técnico por pista">
         {courts.map((court) => <PilotControlPanel key={court.slug} court={court}
           showMobileMonitor={monitoringActive}
           configuration={configurationFor(ready.configurations, court.slug)}
@@ -154,11 +163,13 @@ export function ProductionPilotWorkspaceView({
 }
 
 function GeneralBroadcastSettingsDialog({
-  dialogRef, description, onDescriptionChange,
+  dialogRef, description, onDescriptionChange, recordingDirectory, onRecordingDirectoryChange,
 }: {
   readonly dialogRef: RefObject<HTMLDialogElement | null>;
   readonly description: string;
   readonly onDescriptionChange: (value: string) => void;
+  readonly recordingDirectory: string;
+  readonly onRecordingDirectoryChange: (value: string) => void;
 }) {
   return <dialog className="production-pilot-settings-dialog" ref={dialogRef}
     aria-labelledby="pilot-general-title"
@@ -168,11 +179,17 @@ function GeneralBroadcastSettingsDialog({
         <div><p className="production-kicker">Ajustes generales</p><h2 id="pilot-general-title">Datos compartidos</h2></div>
         <form method="dialog"><button type="submit" aria-label="Cerrar ajustes generales"><X aria-hidden="true" /></button></form>
       </header>
-      <p>Esta descripción se aplicará por igual a cada pista cuando guardes su configuración.</p>
+      <p>Estos ajustes se aplicarán a cada pista cuando guardes su configuración.</p>
       <label htmlFor="pilot-general-description">Descripción de los directos
         <textarea id="pilot-general-description" required maxLength={5_000} value={description}
           onChange={(event) => onDescriptionChange(event.currentTarget.value)} />
         <small>{description.length}/5000 caracteres</small>
+      </label>
+      <label htmlFor="pilot-recording-directory">Carpeta de salida de las grabaciones
+        <input id="pilot-recording-directory" type="text" maxLength={4_096} value={recordingDirectory}
+          placeholder="Predeterminada: data/recordings" autoComplete="off" spellCheck={false}
+          onChange={(event) => onRecordingDirectoryChange(event.currentTarget.value)} />
+        <small>Introduce una ruta absoluta visible para el runtime, por ejemplo <code>/mnt/grabaciones</code>. Se crearán subcarpetas por pista y sesión.</small>
       </label>
       <form method="dialog"><button className="production-setup-submit" type="submit">Listo</button></form>
     </div>
@@ -180,12 +197,13 @@ function GeneralBroadcastSettingsDialog({
 }
 
 function PilotConfigurationPanel({
-  court, teams, description, readiness, configuration, session, pending, error, unavailableSources, mobileCamera,
-  mobileConnectUrl, onCreateMobile, onUpdateMobile, onRevokeMobile, onSave,
+  court, teams, description, recordingDirectory, readiness, configuration, session, pending, error, unavailableSources, mobileCamera,
+  mobileConnectUrl, preferredMode, onCreateMobile, onUpdateMobile, onRevokeMobile, onSave,
 }: {
   readonly court: ProductionCourtSlot;
   readonly teams: readonly Team[];
   readonly description: string;
+  readonly recordingDirectory: string;
   readonly readiness: PilotReadiness;
   readonly configuration: PilotConfiguration | null;
   readonly session: PilotSession | null;
@@ -194,12 +212,13 @@ function PilotConfigurationPanel({
   readonly unavailableSources: ReadonlySet<string>;
   readonly mobileCamera: PilotMobileCameraSession | null;
   readonly mobileConnectUrl: string | null;
+  readonly preferredMode?: 'recording' | 'youtube';
   readonly onCreateMobile: () => Promise<unknown>;
   readonly onUpdateMobile: (id: string, input: UpdatePilotMobileCameraDesiredInput) => Promise<boolean>;
   readonly onRevokeMobile: (id: string) => Promise<boolean>;
   readonly onSave: (input: PreparePilotSessionInput) => Promise<boolean>;
 }) {
-  const [mode, setMode] = useState<PilotMode>(selectablePilotMode(configuration?.mode));
+  const [mode, setMode] = useState<PilotMode>(preferredMode ?? selectablePilotMode(configuration?.mode));
   const [homeTeam, setHomeTeam] = useState(configuration?.homeTeam
     ?? teamName(teams, court.assignment?.score?.homeTeamId, 0));
   const [awayTeam, setAwayTeam] = useState(configuration?.awayTeam
@@ -227,6 +246,10 @@ function PilotConfigurationPanel({
     setSourceId(savedConfiguration.sourceId);
   }, [configurationRevision]);
 
+  useEffect(() => {
+    if (preferredMode) setMode(preferredMode);
+  }, [preferredMode]);
+
   const youtubeUnavailable = mode === 'youtube' && !readiness.youtube.authorized;
   const active = session !== null && session.status !== 'stopped';
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -234,6 +257,7 @@ function PilotConfigurationPanel({
     if (youtubeUnavailable || pending) return;
     const didSave = await onSave({
       courtSlug: court.slug, mode, sourceId, homeTeam, awayTeam, matchdayNumber, seasonLabel, description,
+      ...(recordingDirectory.trim() ? { recordingDirectory: recordingDirectory.trim() } : {}),
       scheduledAt: new Date(scheduledAt).toISOString(), privacyStatus,
     });
     setSaved(didSave);
@@ -249,12 +273,12 @@ function PilotConfigurationPanel({
     </header>
     <form className="production-pilot-form" onSubmit={(event) => void submit(event)} onChange={() => setSaved(false)}>
       <fieldset disabled={pending || active || !court.productionEnabled}>
-        <legend>Datos de la emisión</legend>
+        <legend>Datos de la producción</legend>
         <div className="production-pilot-mode">
           <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'recording'} onChange={() => setMode('recording')} />
             <span><MonitorPlay aria-hidden="true" /><strong>Grabación local</strong><small>MP4 con audio y marcador para emitir después.</small></span></label>
           <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'youtube'} onChange={() => setMode('youtube')} />
-            <span><Radio aria-hidden="true" /><strong>YouTube</strong><small>Emisión real.</small></span></label>
+            <span><Radio aria-hidden="true" /><strong>Directo en YouTube</strong><small>Emisión real excepcional.</small></span></label>
         </div>
         {youtubeUnavailable ? <p className="production-command-feedback danger">Conecta YouTube antes de guardar este modo.</p> : null}
         <div className="production-pilot-fields">
@@ -382,7 +406,7 @@ export function PilotControlPanel({
       {!court.productionEnabled ? <div className="production-pilot-empty-state"><Settings2 aria-hidden="true" />
         <h3>Producción desactivada</h3><p>Esta pista está deshabilitada en la configuración autoritativa.</p></div>
         : configuration === null ? <div className="production-pilot-empty-state"><Settings2 aria-hidden="true" />
-        <h3>Pista sin configurar</h3><p>Pide al administrador que complete esta pista. Desde Mandos no se pueden cambiar sus datos.</p></div> : <>
+        <h3>Pista sin configurar</h3><p>Completa la configuración técnica de esta pista antes de preparar la salida.</p></div> : <>
         <div className="production-pilot-control__summary"><span>{configuration.mode === 'youtube' ? 'YouTube' : configuration.mode === 'recording' ? 'Grabación local' : 'Simulación'}</span>
           <h3>{configuration.homeTeam} vs {configuration.awayTeam}</h3>
           <p>Jornada {configuration.matchdayNumber} · {configuration.sourceId === 'synthetic' ? 'Señal de prueba' : configuration.sourceId}</p>
@@ -524,12 +548,12 @@ function HandoffPanel({ configuredCount, totalCourts, onOpenControls }: {
 }) {
   const missing = Math.max(0, totalCourts - configuredCount);
   return <section className="production-pilot-handoff" aria-labelledby="pilot-handoff-title"><div>
-    <p className="production-kicker">Entrega al operador</p>
+    <p className="production-kicker">Configuración</p>
     <h2 id="pilot-handoff-title">{totalCourts === 0 ? 'No hay pistas habilitadas'
       : missing === 0 ? 'Todas las pistas están listas' : `Faltan ${missing} pistas por configurar`}</h2>
-    <p>Mandos es una vista sin campos de configuración. También puedes abrirla directamente en <strong>/mandos</strong>.</p>
+    <p>Guarda cada pista necesaria y vuelve a Producción para preparar, iniciar y supervisar la salida.</p>
   </div><button className="production-setup-submit" type="button" disabled={configuredCount === 0} onClick={onOpenControls}>
-    <SlidersHorizontal aria-hidden="true" />Abrir mandos</button></section>;
+    <CircleCheck aria-hidden="true" />Volver a Producción</button></section>;
 }
 
 function ValidationDecision({ readiness, sessions, courts, elapsedByCourt }: {
@@ -567,9 +591,8 @@ function ValidationDecision({ readiness, sessions, courts, elapsedByCourt }: {
   </section>;
 }
 
-function PilotShell({ children, view, navigationRole, onSignOut, embedded, inventoryStale }: {
+function PilotShell({ children, navigationRole, onSignOut, embedded, inventoryStale }: {
   readonly children: ReactNode;
-  readonly view: PilotWorkspaceView;
   readonly navigationRole: ProductionNavigationRole;
   readonly onSignOut?: (() => Promise<void>) | undefined;
   readonly embedded: boolean;
@@ -577,7 +600,7 @@ function PilotShell({ children, view, navigationRole, onSignOut, embedded, inven
 }) {
   if (embedded) return <>{children}</>;
   return <main className="home-page production-overview-page production-pilot-page">
-    <ProductionNavigation active={view === 'configuration' ? 'emissions' : 'controls'} role={navigationRole}
+    <ProductionNavigation active="production" role={navigationRole}
       onSignOut={onSignOut ? () => void onSignOut() : undefined} />
     {inventoryStale ? <div className="production-page-feedback danger" role="status">
       No se pudo actualizar el inventario de Supabase. Se conserva la última configuración válida;

@@ -36,10 +36,11 @@ interface ScoreStateRow {
   updated_at: string;
   state: MatchState;
   youtube_watch_url: string | null;
+  exposure: 'internal' | 'public';
 }
 
 const SCORE_STATE_COLUMNS =
-  'court_slug,title,court_name,home_team_id,away_team_id,status,version,updated_at,state,youtube_watch_url';
+  'court_slug,title,court_name,home_team_id,away_team_id,status,version,updated_at,state,youtube_watch_url,exposure';
 
 export async function fetchTeams(): Promise<Team[]> {
   assertSupabaseConfig();
@@ -72,7 +73,7 @@ export async function fetchEventSummaries(options: { liveOnly: boolean }): Promi
     .order('court_slug');
 
   if (options.liveOnly) {
-    query = query.eq('status', 'live');
+    query = query.eq('status', 'live').eq('exposure', 'public');
   }
 
   const { data, error } = await query;
@@ -84,14 +85,15 @@ export async function fetchEventSummaries(options: { liveOnly: boolean }): Promi
   return ((data ?? []) as ScoreStateRow[]).map(scoreStateRowToEventSummary);
 }
 
-export async function fetchMatchState(courtSlug: string): Promise<MatchState | null> {
+export async function fetchMatchState(courtSlug: string, publicOnly = false): Promise<MatchState | null> {
   assertSupabaseConfig();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('score_states')
     .select(SCORE_STATE_COLUMNS)
-    .eq('court_slug', courtSlug)
-    .maybeSingle();
+    .eq('court_slug', courtSlug);
+  if (publicOnly) query = query.eq('exposure', 'public');
+  const { data, error } = await query.maybeSingle();
 
   if (error) {
     throw new Error(error.message);
@@ -100,7 +102,7 @@ export async function fetchMatchState(courtSlug: string): Promise<MatchState | n
   return data ? ((data as ScoreStateRow).state as MatchState) : null;
 }
 
-export function subscribeToMatchState(courtSlug: string, onState: (state: MatchState) => void): () => void {
+export function subscribeToMatchState(courtSlug: string, onState: (state: MatchState) => void, publicOnly = false): () => void {
   assertSupabaseConfig();
 
   const channel = supabase
@@ -116,7 +118,7 @@ export function subscribeToMatchState(courtSlug: string, onState: (state: MatchS
       (payload) => {
         const next = payload.new as ScoreStateRow | undefined;
 
-        if (next?.state) {
+        if (next?.state && (!publicOnly || next.exposure === 'public')) {
           onState(next.state as MatchState);
         }
       },

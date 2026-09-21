@@ -9,10 +9,13 @@ Frontend Vite/React para controlar marcadores de padel y overlays OBS de KingsPa
 - `/` es publico y solo lista partidos en directo, con el marcador de cada pista, el enlace
   al directo de YouTube como accion principal y el marcador ampliado como secundaria.
 - `/live/:courtSlug` es publico y solo muestra una pista si esta `live`.
-- `/admin`, `/admin/emisiones` y `/mandos` forman un único centro de producción. Administradores
-  y operadores usan el mismo runtime local con controles limitados por rol.
-- `/control/:courtSlug` tiene dos fases: configuracion del partido y marcador.
-- `/overlay/:courtSlug/scoreboard` es la ruta fija para OBS.
+- `/admin` reúne configuración, supervisión y control técnico en **Producción**;
+  `/admin/grabaciones` contiene el archivo y la publicación programada. Las antiguas
+  `/admin/emisiones` y `/mandos` redirigen a Producción.
+- `/control/:courtSlug#token=…` es el control temporal del operador para marcador y layout;
+  no puede preparar, iniciar, detener ni publicar una salida.
+- `/overlay/:courtSlug/scoreboard` es la ruta del compositor. Las grabaciones internas usan
+  un permiso privado `overlay_read`, sin abrir el marcador a usuarios anónimos.
 - El frontend no calcula acciones criticas: llama RPCs de Supabase (`add_point`, `undo_last`, `manual_patch`, `reset_match`, `new_match`, `set_match_status`).
 - `score_states.state` conserva el `MatchState` actual en JSONB y `score_events` guarda auditoria completa.
 - El servidor Fastify local es el único runtime de señal y emisión: controla Android, FFmpeg,
@@ -62,7 +65,8 @@ La migracion inicial crea:
 - `clubs`, `club_users`, `teams`, `courts`
 - `score_states`
 - `score_events`
-- RLS para lectura publica solo de `score_states.status = 'live'`
+- RLS para lectura pública solo de marcadores `live` cuya exposición sea `public`; una
+  grabación puede estar en juego con exposición `internal` sin aparecer en portada ni `/live`.
 - `score_states.youtube_watch_url`: el enlace publico del directo, que el runtime de emision
   publica con `publish_court_stream` al arrancar la senal y limpia al pararla
 - RPCs de marcador con bloqueo `FOR UPDATE`, `expected_version`, `command_id` idempotente y auditoria
@@ -100,10 +104,15 @@ la web contacta al runtime en `http://127.0.0.1:4310` y el navegador solicita pe
 a la red local. El panel local continúa disponible como alternativa. Vercel también sirve la
 página HTTPS que necesita el móvil para conceder acceso a la cámara.
 
-Cada directo abre internamente `/overlay/:courtSlug/scoreboard` en Chromium y mezcla esa página
-transparente sobre el vídeo de la cámara móvil antes de enviarlo a YouTube. Es la misma interfaz
+Cada grabación o directo abre internamente `/overlay/:courtSlug/scoreboard` en Chromium y mezcla esa página
+transparente sobre el vídeo de la cámara móvil antes de codificar la salida. Es la misma interfaz
 que se usa como Browser Source en OBS, incluidas sus cartas, escenas y animaciones, pero no hace
 falta instalar ni abrir OBS. El contenedor ya incluye el navegador requerido.
+
+Las grabaciones producen MP4 locales independientes y se validan con `ffprobe` al detenerse.
+Desde **Grabaciones** el administrador inicia una subida reanudable y privada a YouTube; cuando
+YouTube termina de procesarla puede programar `publishAt`. La publicación posterior depende de
+YouTube y no exige que el PC de producción permanezca encendido.
 
 La instalación soportada usa Docker Compose:
 
@@ -429,7 +438,9 @@ En la configuración de la pista, selecciona **Grabación local**, guarda y puls
 Pulsa **Detener** antes de utilizar el archivo como fuente multimedia para emitirlo después.
 
 Los archivos están en `data/recordings/<pista>/<sesión>/` con la configuración por
-defecto; el panel muestra sus rutas en el PC del runtime. Si usas Docker, `/app/data/recordings`
+defecto. En **Ajustes generales** de Emisiones puedes indicar una ruta absoluta alternativa;
+el runtime creará dentro de ella las subcarpetas de pista y sesión. El panel muestra las rutas
+en el PC del runtime. Si usas Docker, `/app/data/recordings`
 corresponde a `./data/recordings` en el host. La carpeta se sitúa junto al archivo de configuración
 del runtime. Las grabaciones se conservan al detener o reiniciar el servicio.
 Cada reinicio del encoder crea un archivo nuevo, sin sobrescribir las partes anteriores.

@@ -44,3 +44,45 @@ describe('YouTube API error presentation', () => {
       .toBe('YouTube no pudo completar la operación.');
   });
 });
+
+describe('resumable private video uploads', () => {
+  it('creates a private resumable session and restores the acknowledged byte offset', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'kpl-youtube-upload-'));
+    try {
+      const tokenPath = join(directory, 'tokens');
+      await writeFile(tokenPath, JSON.stringify({ access_token: 'token' }), { mode: 0o600 });
+      const gateway = new PilotYouTubeGateway({ clientId: 'test', clientSecret: 'test', redirectUri: 'http://localhost/callback', tokenPath });
+      await gateway.initialize();
+      const fetcher = vi.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response('', { status: 200, headers: { location: 'https://www.googleapis.com/upload/youtube/v3/videos?upload_id=one' } }))
+        .mockResolvedValueOnce(new Response('', { status: 308, headers: { range: 'bytes=0-7' } }));
+      const uploadUrl = await gateway.createResumableVideoUpload({ title: 'Partido', description: 'KPL', sizeBytes: 16 });
+      expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toMatchObject({ status: { privacyStatus: 'private' } });
+      await expect(gateway.queryResumableVideoUpload(uploadUrl, 16)).resolves.toEqual({ uploadedBytes: 8, videoId: null });
+      await expect(gateway.queryResumableVideoUpload('https://example.com/upload/youtube/v3/videos', 16))
+        .rejects.toBeInstanceOf(PilotYouTubeError);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
+  it('programs publishAt while keeping the processed video private', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'kpl-youtube-schedule-'));
+    try {
+      const tokenPath = join(directory, 'tokens');
+      await writeFile(tokenPath, JSON.stringify({ access_token: 'token' }), { mode: 0o600 });
+      const gateway = new PilotYouTubeGateway({ clientId: 'test', clientSecret: 'test', redirectUri: 'http://localhost/callback', tokenPath });
+      await gateway.initialize();
+      const update = vi.fn().mockResolvedValue({});
+      const list = vi.fn().mockResolvedValue({ data: { items: [{
+        status: { uploadStatus: 'processed', privacyStatus: 'private', publishAt: '2099-01-01T18:00:00Z' },
+      }] } });
+      vi.spyOn(google, 'youtube').mockReturnValue({ videos: { update, list } } as unknown as ReturnType<typeof google.youtube>);
+      await expect(gateway.scheduleUploadedVideo('video-1', '2099-01-01T18:00:00Z')).resolves.toMatchObject({
+        id: 'video-1', privacyStatus: 'private', publishAt: '2099-01-01T18:00:00Z',
+      });
+      expect(update).toHaveBeenCalledWith({ part: ['status'], requestBody: {
+        id: 'video-1', status: { privacyStatus: 'private', publishAt: '2099-01-01T18:00:00Z' },
+      } });
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+});

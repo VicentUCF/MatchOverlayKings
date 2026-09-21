@@ -123,7 +123,11 @@ export function CourtOverlayMonitor({ courtSlug }: { readonly courtSlug: string 
   </details>;
 }
 
-export function ScorerAccess({ courtSlug }: { readonly courtSlug: string }) {
+export function ScorerAccess({ courtSlug, seasonLabel, matchdayNumber }: {
+  readonly courtSlug: string;
+  readonly seasonLabel: string;
+  readonly matchdayNumber: number;
+}) {
   const [copied, setCopied] = useState<'idle' | 'success' | 'error'>('idle');
   const [url, setUrl] = useState('');
   const [pending, setPending] = useState(false);
@@ -134,12 +138,15 @@ export function ScorerAccess({ courtSlug }: { readonly courtSlug: string }) {
     setError(null);
     setCopied('idle');
     try {
-      const { data, error: rpcError } = await supabase.rpc('create_visual_control_link', { p_court_slug: courtSlug });
+      const { data, error: rpcError } = await supabase.rpc('create_visual_control_link', {
+        p_court_slug: courtSlug, p_season_label: seasonLabel, p_matchday_number: matchdayNumber,
+      });
       if (rpcError) throw new Error(rpcError.message);
-      if (typeof data !== 'string' || !/^[a-f0-9]{64}$/.test(data)) throw new Error('No se pudo generar el enlace.');
+      const payload = data as { token?: unknown; expiresAt?: unknown } | null;
+      if (typeof payload?.token !== 'string' || !/^[a-f0-9]{64}$/.test(payload.token)) throw new Error('No se pudo generar el enlace.');
       const origin = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname)
         ? 'https://live.kingspadelleague.es' : window.location.origin;
-      setUrl(`${origin}/control/${courtSlug}#token=${data}`);
+      setUrl(`${origin}/control/${courtSlug}#token=${payload.token}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo generar el enlace.');
     } finally { setPending(false); }
@@ -148,15 +155,23 @@ export function ScorerAccess({ courtSlug }: { readonly courtSlug: string }) {
     try { await navigator.clipboard.writeText(url); setCopied('success'); }
     catch { setCopied('error'); }
   };
+  const revoke = async () => {
+    setPending(true); setError(null);
+    const { error: rpcError } = await supabase.rpc('revoke_visual_control_link', { p_court_slug: courtSlug });
+    setPending(false);
+    if (rpcError) { setError(rpcError.message); return; }
+    setUrl(''); setCopied('idle');
+  };
   return <details className="production-scorer-access">
     <summary>Enlace y acceso del anotador</summary>
-    <p>El enlace permite controlar esta pista directamente, sin iniciar sesión. Compártelo solo con el anotador. Generar otro invalida el anterior.</p>
+    <p>Válido para {seasonLabel}, jornada {matchdayNumber}, durante 18 horas. El anotador puede usarlo sin iniciar sesión y generar otro invalida el anterior.</p>
     <button type="button" className="refresh-button" disabled={pending} onClick={() => void generate()}>
       {pending ? 'Generando…' : url ? 'Generar nuevo enlace' : 'Generar enlace de acceso directo'}
     </button>
     {url ? <><label>Enlace para esta pista<input readOnly value={url} onFocus={(event) => event.currentTarget.select()} /></label>
       <div className="production-dashboard-actions"><button type="button" className="refresh-button" disabled={pending} onClick={() => void copy()}><Copy aria-hidden="true" />Copiar enlace para anotador</button>
-        <a className="refresh-button" href={url} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />Abrir control del anotador</a></div></> : null}
+        <a className="refresh-button" href={url} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />Abrir control del anotador</a>
+        <button type="button" className="refresh-button" disabled={pending} onClick={() => void revoke()}>Revocar enlace</button></div></> : null}
     {error ? <p role="alert">{error}</p> : null}
     <p role="status">{copied === 'success' ? 'Enlace copiado. Entrégalo al anotador de esta pista.'
       : copied === 'error' ? 'No se pudo copiar. Selecciona el enlace y cópialo manualmente.' : 'El estado del marcador confirma los datos, no la presencia de una persona.'}</p>

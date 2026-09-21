@@ -18,6 +18,7 @@ export interface PilotOverlayOptions {
   readonly framesPerSecond: 30 | 60;
   readonly homeTeamId?: string;
   readonly awayTeamId?: string;
+  readonly overlayToken?: string;
   readonly onState?: (state: PilotOverlayHealth) => void;
 }
 
@@ -177,10 +178,14 @@ export class BrowserPilotOverlayRenderer implements PilotOverlayRenderer {
 
 interface ScreencastFrameEvent { readonly data: string; readonly sessionId: number }
 
-export function overlayUrl(baseUrl: string, courtSlug: PilotCourtSlug, identity?: { homeTeamId?: string; awayTeamId?: string }): string {
+export function overlayUrl(baseUrl: string, courtSlug: PilotCourtSlug,
+  identity?: { homeTeamId?: string; awayTeamId?: string; overlayToken?: string }): string {
   const url = `${baseUrl.replace(/\/+$/, '')}/overlay/${encodeURIComponent(courtSlug)}/scoreboard`;
-  if (!identity?.homeTeamId || !identity.awayTeamId) return url;
-  return `${url}?${new URLSearchParams({ homeTeamId: identity.homeTeamId, awayTeamId: identity.awayTeamId })}`;
+  const params = new URLSearchParams();
+  if (identity?.homeTeamId) params.set('homeTeamId', identity.homeTeamId);
+  if (identity?.awayTeamId) params.set('awayTeamId', identity.awayTeamId);
+  if (identity?.overlayToken) params.set('accessToken', identity.overlayToken);
+  return params.size === 0 ? url : `${url}?${params}`;
 }
 
 function bounded<T>(task: Promise<T>, signal: AbortSignal | undefined, milliseconds: number): Promise<T> {

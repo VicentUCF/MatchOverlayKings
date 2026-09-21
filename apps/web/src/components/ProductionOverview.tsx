@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { MonitorPlay, Plus, Radio, X } from 'lucide-react';
 import { useProductionOverview, type ProductionOverviewState } from '../hooks/useProductionOverview.js';
 import { useProductionPilot, type ProductionPilotController } from '../hooks/useProductionPilot.js';
 import type { ProductionCourtSlots, ProductionOverviewAccess } from '../lib/production-overview-types.js';
@@ -6,8 +7,9 @@ import { ProductionCourtCard } from './ProductionCourtCard.js';
 import { ProductionDashboardView } from './ProductionDashboard.js';
 import { ProductionPilotWorkspaceView } from './ProductionPilotWorkspace.js';
 import { ProductionNavigation } from './ProductionNavigation.js';
+import { RecordingLibraryWorkspace } from './RecordingLibraryWorkspace.js';
 
-export type ProductionDestination = 'dashboard' | 'emissions' | 'controls';
+export type ProductionDestination = 'production' | 'recordings';
 type AdminArea = ProductionDestination;
 
 type ProductionOverviewProps = {
@@ -25,15 +27,15 @@ type ProductionOverviewViewProps = {
   readonly onBack?: (() => void) | undefined;
 };
 
-export function ProductionOverview({ signOut, destination = 'dashboard' }: ProductionOverviewProps) {
+export function ProductionOverview({ signOut, destination = 'production' }: ProductionOverviewProps) {
   const overview = useProductionOverview();
   const pilot = useProductionPilot();
   const capability = stateCapability(overview.state);
   const courts = stateCourts(overview.state);
   const inventoryStale = overview.state.kind === 'stale';
   if (capability === 'operator') {
-    return <ProductionPilotWorkspaceView pilot={pilot} initialView="controls" controlsOnly
-      navigationRole="operator" onSignOut={signOut} courts={courts} inventoryStale={inventoryStale} />;
+    return <main className="home-page production-overview-page"><ProductionNavigation active="production" role="operator" onSignOut={() => void signOut()} />
+      <div className="production-page-feedback danger" role="alert">Usa el enlace temporal de la pista que te ha entregado el administrador para abrir marcador y layout.</div></main>;
   }
   if (capability === 'admin') {
     return <ProductionTabbedWorkspace initialArea={destination} pilot={pilot} signOut={signOut} courts={courts}
@@ -74,6 +76,8 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
   const [activeArea, setActiveArea] = useState<AdminArea>(initialArea);
   const [selectedCourt, setSelectedCourt] = useState<string | null>(() =>
     typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('pista'));
+  const [newProduction, setNewProduction] = useState<'recording' | 'youtube' | null>(null);
+  const [newProductionOpen, setNewProductionOpen] = useState(false);
 
   useEffect(() => {
     const syncFromHistory = () => {
@@ -85,36 +89,49 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
   }, []);
 
   const openArea = (area: AdminArea) => {
-    if (area === activeArea && !(area === 'dashboard' && selectedCourt)) return;
+    if (area === activeArea && !(area === 'production' && selectedCourt)) return;
     window.history.pushState({}, '', pathForArea(area));
     setActiveArea(area);
-    if (area === 'dashboard') setSelectedCourt(null);
+    if (area === 'production') setSelectedCourt(null);
   };
   const selectCourt = (slug: string | null) => {
     window.history.pushState({}, '', slug ? `/admin?pista=${encodeURIComponent(slug)}` : '/admin');
     setSelectedCourt(slug);
   };
+  const beginNewProduction = () => { setNewProduction(null); setNewProductionOpen(true); };
+  const closeNewProduction = () => { setNewProduction(null); setNewProductionOpen(false); };
 
   return <main className="home-page production-overview-page production-tabbed-workspace">
     <ProductionNavigation active={activeArea} role="admin" onAreaChange={openArea}
       onRefresh={() => void pilot.refresh()} refreshing={pilot.state.kind === 'ready' && pilot.state.refreshing}
       onSignOut={() => void signOut()} />
     {inventoryStale ? <InventoryStaleWarning /> : null}
-    <section id="production-panel-dashboard" className="production-workspace-panel" role="tabpanel"
-      aria-labelledby="production-tab-dashboard" hidden={activeArea !== 'dashboard'} tabIndex={0}>
+    <section id="production-panel-production" className="production-workspace-panel" role="tabpanel"
+      aria-labelledby="production-tab-production" hidden={activeArea !== 'production'} tabIndex={0}>
+      <div className="production-workspace-toolbar">
+        <div><p className="production-kicker">Administración y realización</p><h1>Producción</h1>
+          <p>Configura una salida y contrólala desde el detalle de su pista.</p></div>
+        <button className="production-setup-submit" type="button" onClick={beginNewProduction}><Plus aria-hidden="true" />Nueva producción</button>
+      </div>
+      {newProductionOpen ? <section className="production-new-flow" aria-labelledby="new-production-title">
+        <header><div><p className="production-kicker">Nueva producción</p><h2 id="new-production-title">Elige primero el destino</h2></div>
+          <button type="button" className="refresh-button" onClick={closeNewProduction} aria-label="Cerrar configuración"><X aria-hidden="true" /></button></header>
+        <div className="production-new-flow__choices" role="radiogroup" aria-label="Tipo de producción">
+          <button type="button" role="radio" aria-checked={newProduction === 'recording'} onClick={() => setNewProduction('recording')}>
+            <MonitorPlay aria-hidden="true" /><strong>Grabar partido</strong><span>MP4 privado con cámara, audio, marcador y layout.</span></button>
+          <button type="button" role="radio" aria-checked={newProduction === 'youtube'} onClick={() => setNewProduction('youtube')}>
+            <Radio aria-hidden="true" /><strong>Emitir en directo</strong><span>Salida excepcional a YouTube Live.</span></button>
+        </div>
+        {newProduction ? <ProductionPilotWorkspaceView pilot={pilot} initialView="configuration" embedded courts={courts}
+          preferredMode={newProduction} onOpenControls={closeNewProduction} /> : null}
+      </section> : null}
       <ProductionDashboardView state={pilot.state} pilot={pilot} refresh={pilot.refresh} localAdminUrl={pilot.localAdminUrl} embedded
-        selectedCourt={selectedCourt} onSelectCourt={selectCourt} monitoringActive={activeArea === 'dashboard'}
-        courts={courts} onOpenConfiguration={() => openArea('emissions')} onOpenControls={() => openArea('controls')} />
+        selectedCourt={selectedCourt} onSelectCourt={selectCourt} monitoringActive={activeArea === 'production'}
+        courts={courts} onOpenConfiguration={beginNewProduction} onOpenControls={() => undefined} />
     </section>
-    <section id="production-panel-emissions" className="production-workspace-panel" role="tabpanel"
-      aria-labelledby="production-tab-emissions" hidden={activeArea !== 'emissions'} tabIndex={0}>
-      <ProductionPilotWorkspaceView pilot={pilot} initialView="configuration" embedded
-        courts={courts} onOpenControls={() => openArea('controls')} />
-    </section>
-    <section id="production-panel-controls" className="production-workspace-panel" role="tabpanel"
-      aria-labelledby="production-tab-controls" hidden={activeArea !== 'controls'} tabIndex={0}>
-      <ProductionPilotWorkspaceView pilot={pilot} initialView="controls" controlsOnly embedded courts={courts}
-        monitoringActive={activeArea === 'controls'} />
+    <section id="production-panel-recordings" className="production-workspace-panel" role="tabpanel"
+      aria-labelledby="production-tab-recordings" hidden={activeArea !== 'recordings'} tabIndex={0}>
+      {activeArea === 'recordings' ? <RecordingLibraryWorkspace /> : null}
     </section>
   </main>;
 }
@@ -127,15 +144,13 @@ function InventoryStaleWarning() {
 }
 
 function pathForArea(area: AdminArea): string {
-  if (area === 'emissions') return '/admin/emisiones';
-  if (area === 'controls') return '/mandos';
+  if (area === 'recordings') return '/admin/grabaciones';
   return '/admin';
 }
 
 function areaFromPath(path: string): AdminArea {
-  if (path === '/admin/emisiones') return 'emissions';
-  if (path === '/mandos') return 'controls';
-  return 'dashboard';
+  if (path === '/admin/grabaciones') return 'recordings';
+  return 'production';
 }
 
 export function ProductionOverviewView({

@@ -32,11 +32,13 @@ afterEach(async () => {
 describe('production pilot', () => {
   it('records the composed program locally without YouTube and retains its path after restart', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'kpl-recording-'));
+    const recordingDirectory = join(directory, 'custom-recordings');
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
     const app = await createPilotApp('/bin/ffmpeg', directory);
     const response = await app.inject({ method: 'POST', url: '/api/pilot/sessions', payload: {
       courtSlug: 'pista-1', mode: 'recording', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
-      matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: new Date().toISOString(), privacyStatus: 'private',
+      matchdayNumber: 1, seasonLabel: 'T2', recordingDirectory,
+      scheduledAt: new Date().toISOString(), privacyStatus: 'private',
     } });
     expect(response.statusCode).toBe(201);
     const { id } = response.json().session;
@@ -50,7 +52,7 @@ describe('production pilot', () => {
     await app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/stop` });
     await waitForSession(app, id, (session) => session.status === 'stopped', 'recording stopped');
     const path = live.recordingFiles![0]!;
-    expect(path).toContain(join('recordings', 'pista-1', id));
+    expect(path).toContain(join(recordingDirectory, 'pista-1', id));
     const probe = spawnSync('/bin/ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', path], { encoding: 'utf8' });
     expect(probe.status, probe.stderr).toBe(0);
     expect(JSON.parse(probe.stdout).streams).toEqual(expect.arrayContaining([
@@ -65,16 +67,19 @@ describe('production pilot', () => {
     expect(saved.recordingFiles).toEqual([path]);
   }, 20_000);
 
-  it('protects program checks, cancellation and preview files with local operator access', async () => {
-    const app = await createPilotApp('/missing/ffmpeg', '', { require: async (authorization) => {
-      if (authorization !== 'Bearer operator') throw new PilotServiceError(403, 'FORBIDDEN', 'Acceso de operador requerido.');
+  it('protects program checks, cancellation and preview files with local administrator access', async () => {
+    const app = await createPilotApp('/missing/ffmpeg', '', { require: async (authorization, capability) => {
+      if (authorization !== 'Bearer admin' || capability !== 'production_admin') {
+        throw new PilotServiceError(403, 'FORBIDDEN', 'Acceso de administrador requerido.');
+      }
     } });
     const id = '11111111-1111-4111-8111-111111111111';
     for (const [method, suffix] of [['POST', 'preflight'], ['POST', 'preflight/cancel'], ['GET', `preflight-preview/${id}`]] as const) {
       const url = `/api/pilot/sessions/${id}/${suffix}`;
       expect((await app.inject({ method, url })).statusCode).toBe(403);
-      expect((await app.inject({ method, url, headers: { authorization: 'Bearer operator' }, remoteAddress: '192.168.1.20' })).statusCode).toBe(403);
-      expect((await app.inject({ method, url, headers: { authorization: 'Bearer operator' } })).statusCode).toBe(404);
+      expect((await app.inject({ method, url, headers: { authorization: 'Bearer admin' }, remoteAddress: '192.168.1.20' })).statusCode).toBe(403);
+      expect((await app.inject({ method, url, headers: { authorization: 'Bearer operator' } })).statusCode).toBe(403);
+      expect((await app.inject({ method, url, headers: { authorization: 'Bearer admin' } })).statusCode).toBe(404);
     }
   });
   it('persists operation receipts and returns current state when preparation is retried after restart', async () => {
@@ -236,6 +241,12 @@ exec /bin/ffmpeg "$@"
       method: 'PUT', url: '/api/pilot/configurations/pista-2', payload: configurationPayload,
     });
     expect(wrongCourtResponse.statusCode).toBe(400);
+    const relativeRecordingDirectory = await app.inject({
+      method: 'PUT', url: '/api/pilot/configurations/pista-1',
+      payload: { ...configurationPayload, recordingDirectory: 'grabaciones' },
+    });
+    expect(relativeRecordingDirectory.statusCode).toBe(400);
+    expect(relativeRecordingDirectory.json().error.message).toContain('ruta absoluta');
 
     const preview = await app.inject({ method: 'POST', url: '/api/pilot/thumbnail-preview', payload: configurationPayload });
     expect(preview.statusCode).toBe(200);

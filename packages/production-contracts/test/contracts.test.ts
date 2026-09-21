@@ -8,6 +8,8 @@ import {
   OperationSchema,
   OutputSchema,
   PilotCourtSlugSchema,
+  PreparePilotSessionInputSchema,
+  ProductionPlanSchema,
   PrincipalSchema,
   ProductionAssignmentSchema,
   ProductionEventDaySchema,
@@ -37,6 +39,26 @@ describe('production scheduling contracts', () => {
   it('accepts configured court slugs without fixing the inventory in code', () => {
     expect(PilotCourtSlugSchema.parse('pista-central')).toBe('pista-central');
     expect(PilotCourtSlugSchema.safeParse('central').success).toBe(false);
+  });
+
+  it('accepts an optional local recording output directory', () => {
+    const input = {
+      courtSlug: 'pista-central', mode: 'recording', sourceId: 'synthetic',
+      homeTeam: 'Kings', awayTeam: 'Lions', matchdayNumber: 1, seasonLabel: 'T2',
+      recordingDirectory: '/mnt/grabaciones', scheduledAt: instant, privacyStatus: 'private',
+    };
+
+    expect(PreparePilotSessionInputSchema.parse(input).recordingDirectory).toBe('/mnt/grabaciones');
+    expect(PreparePilotSessionInputSchema.safeParse({ ...input, recordingDirectory: '' }).success).toBe(false);
+  });
+
+  it('separates recording and live plans with mode-specific required fields', () => {
+    const common = { courtSlug: 'pista-1', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
+      matchdayNumber: 1, seasonLabel: 'T2' };
+    expect(ProductionPlanSchema.parse({ ...common, kind: 'recording', recordingDirectory: '/mnt/grabaciones' }).kind).toBe('recording');
+    expect(ProductionPlanSchema.parse({ ...common, kind: 'live', scheduledAt: instant, privacyStatus: 'private', description: 'Directo' }).kind).toBe('live');
+    expect(ProductionPlanSchema.safeParse({ ...common, kind: 'recording' }).success).toBe(false);
+    expect(ProductionPlanSchema.safeParse({ ...common, kind: 'live', scheduledAt: instant, privacyStatus: 'private' }).success).toBe(false);
   });
 
   it('parses an event day and scheduled event when the window is ordered', () => {

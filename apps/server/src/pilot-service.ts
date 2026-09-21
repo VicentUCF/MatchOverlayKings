@@ -3,7 +3,7 @@ import { spawn, spawnSync, type ChildProcessByStdio } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync } from 'node:fs';
 import { mkdir, readFile, rm } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { checkPilotMetadata, checkPilotMedia } from './pilot-preflight-checks.js';
 import { runPilotPreflight } from './pilot-preflight.js';
 import { measurePilotHost, checkIngestTransport } from './pilot-preflight-system.js';
@@ -19,6 +19,7 @@ import {
   PilotReadinessSchema,
   PilotConfigurationSchema,
   PilotConfigurationsSchema,
+  ProductionPlanSchema,
   PilotSessionSchema,
   PreparePilotSessionInputSchema,
   RunPilotPreflightInputSchema,
@@ -31,6 +32,7 @@ import {
   type PilotSource,
   type PilotVideoEncoder,
   type PreparePilotSessionInput,
+  type ProductionPlan,
 } from '@kpl/production-contracts';
 import { z } from 'zod';
 import { PilotSignalMonitor } from './pilot-signal-monitor.js';
@@ -74,12 +76,21 @@ const PersistedPilotSessionSchema = z.strictObject({
     courtSlug: PilotSessionSchema.shape.courtSlug,
     homeTeamId: z.string().min(1).optional(),
     awayTeamId: z.string().min(1).optional(),
+    overlayToken: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   }),
 });
 
 const PersistedPilotSessionsSchema = z.strictObject({
   version: z.literal(1),
   sessions: z.array(PersistedPilotSessionSchema),
+});
+
+const PersistedProductionPlansSchema = z.strictObject({
+  version: z.literal(2),
+  entries: z.array(z.strictObject({
+    plan: ProductionPlanSchema,
+    updatedAt: z.iso.datetime({ offset: true }),
+  })),
 });
 
 type InternalPilotSession = {
@@ -92,7 +103,7 @@ type InternalPilotSession = {
   retryAttempt: number;
   diagnostic: string;
   lastYouTubeCheckAt: number;
-  readonly overlay: Omit<PilotOverlayOptions, 'framesPerSecond'>;
+  overlay: Omit<PilotOverlayOptions, 'framesPerSecond'>;
   overlayController: AbortController | null;
   readonly rejectedEncoders: Set<string>;
   remoteStopPending: boolean;
@@ -228,6 +239,7 @@ export class PilotService {
     if (!input.success || input.data.courtSlug !== rawCourtSlug) {
       throw new PilotServiceError(400, 'INVALID_INPUT', 'Revisa la configuración de la pista.');
     }
+    assertRecordingDirectory(input.data);
     const source = this.readiness().sources.find(({ id }) => id === input.data.sourceId);
     if (source === undefined) {
       throw new PilotServiceError(409, 'NOT_READY', 'La fuente seleccionada ya no está disponible.');
@@ -330,6 +342,7 @@ export class PilotService {
     const parsed = PreparePilotSessionInputSchema.safeParse(rawInput);
     if (!parsed.success) throw new PilotServiceError(400, 'INVALID_INPUT', 'Revisa los datos del directo.');
     const input = parsed.data;
+    assertRecordingDirectory(input);
     this.operations.assertNoUnresolvedPreparation(input.courtSlug);
     if (this.ffmpegVersion === null) throw new PilotServiceError(503, 'NOT_READY', 'FFmpeg no está disponible.');
     const source = this.readiness().sources.find(({ id }) => id === input.sourceId);
@@ -571,7 +584,10 @@ export class PilotService {
     const id = session.public.id;
     const initialContext = this.preflightContext(session, -1);
     let uploadRevision = this.uploadCheck.revision;
-    await mkdir(dirname(this.configurationPath), { recursive: true, mode: 0o700 });
+    const hostDirectory = session.public.mode === 'recording'
+      ? this.recordingRoot(session)
+      : dirname(this.configurationPath);
+    await mkdir(hostDirectory, { recursive: true, mode: 0o700 });
     const mobile = this.mobileCamera?.list().find((camera) => camera.courtSlug === session.public.courtSlug && camera.state !== 'revoked') ?? null;
     const usesMobile = session.public.source.kind === 'mobile';
     const fps = usesMobile ? this.mobileCamera?.framesPerSecondForCourt(session.public.courtSlug) ?? 30 : 30;
@@ -584,7 +600,7 @@ export class PilotService {
       metadata: (step) => checkPilotMetadata(step, {
         source: session.public.source, mode: session.public.mode, mobile,
         assertMatch: () => match ??= this.assertSessionMatch(session, authorization),
-        host: () => host ??= (this.preflightDependencies.host ?? measurePilotHost)(dirname(this.configurationPath), signal),
+        host: () => host ??= (this.preflightDependencies.host ?? measurePilotHost)(hostDirectory, signal),
         destination: () => destination ??= session.public.broadcastId && session.streamId
           ? this.youtube.health(session.public.broadcastId, session.streamId) : Promise.reject(new Error('Missing destination')),
         transport: () => session.ingestUrl ? (this.preflightDependencies.transport ?? checkIngestTransport)(session.ingestUrl, signal)
@@ -741,6 +757,8 @@ export class PilotService {
     if (identity.homeTeamId !== session.overlay.homeTeamId || identity.awayTeamId !== session.overlay.awayTeamId) {
       throw new PilotServiceError(409, 'CONFLICT', 'El partido del marcador cambió. Conservamos la emisión detenida; revisa los equipos antes de continuar.');
     }
+    session.overlay = { ...session.overlay, overlayToken: identity.overlayToken };
+    await this.persistSessions();
   }
 
   public isCourtActive(courtSlug: PilotCourtSlug): boolean {
@@ -761,7 +779,7 @@ export class PilotService {
     const videoEncoding = selectVideoEncoder(this.videoEncoders, framesPerSecond, session.rejectedEncoders);
     let recordingPath: string | undefined;
     if (session.public.mode === 'recording') {
-      const directory = resolve(dirname(this.configurationPath), 'recordings', session.public.courtSlug, session.public.id);
+      const directory = resolve(this.recordingRoot(session), session.public.courtSlug, session.public.id);
       try { mkdirSync(directory, { recursive: true, mode: 0o700 }); }
       catch { throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo crear la carpeta de grabaciones. Revisa el espacio y los permisos.'); }
       recordingPath = join(directory, `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}.mp4`);
@@ -843,6 +861,11 @@ export class PilotService {
     void program.start(pipes[6]!, pipes[7]!).catch(() => {
       if (!this.shuttingDown && session.process === child) child.kill('SIGTERM');
     });
+  }
+
+  private recordingRoot(session: InternalPilotSession): string {
+    return session.configuration?.recordingDirectory
+      ?? resolve(dirname(this.configurationPath), 'recordings');
   }
 
   private applyComponentHealth(session: InternalPilotSession, wasDegraded: boolean): void {
@@ -1123,6 +1146,7 @@ export class PilotService {
             courtSlug: saved.overlay.courtSlug,
             ...(saved.overlay.homeTeamId === undefined ? {} : { homeTeamId: saved.overlay.homeTeamId }),
             ...(saved.overlay.awayTeamId === undefined ? {} : { awayTeamId: saved.overlay.awayTeamId }),
+            ...(saved.overlay.overlayToken === undefined ? {} : { overlayToken: saved.overlay.overlayToken }),
           },
           overlayController: null,
           rejectedEncoders: new Set(saved.rejectedEncoders ?? []),
@@ -1238,8 +1262,23 @@ export class PilotService {
 
   private async loadConfigurations(): Promise<void> {
     try {
-      const parsed = PilotConfigurationsSchema.parse(JSON.parse(await readFile(this.configurationPath, 'utf8')));
-      for (const configuration of parsed) this.configurationByCourt.set(configuration.courtSlug, configuration);
+      const raw = JSON.parse(await readFile(this.configurationPath, 'utf8')) as unknown;
+      const current = PersistedProductionPlansSchema.safeParse(raw);
+      if (current.success) {
+        for (const entry of current.data.entries) {
+          const configuration = configurationFromPlan(entry.plan, entry.updatedAt);
+          this.configurationByCourt.set(configuration.courtSlug, configuration);
+        }
+        return;
+      }
+      // One-time migration from the former mode-based array. The public API
+      // remains compatible while local persistence adopts the discriminated model.
+      const legacy = PilotConfigurationsSchema.parse(raw);
+      for (const configuration of legacy) {
+        const migrated = configurationFromPlan(planFromConfiguration(configuration, this.configurationPath), configuration.updatedAt);
+        this.configurationByCourt.set(migrated.courtSlug, migrated);
+      }
+      await this.persistConfigurations();
     } catch (error) {
       if (isMissingFile(error)) return;
       throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo leer la configuración guardada de las pistas.');
@@ -1247,13 +1286,52 @@ export class PilotService {
   }
 
   private async persistConfigurations(): Promise<void> {
-    try { await writePrivateJson(this.configurationPath, this.configurations()); }
+    const snapshot = PersistedProductionPlansSchema.parse({
+      version: 2,
+      entries: this.configurations().map((configuration) => ({
+        plan: planFromConfiguration(configuration, this.configurationPath),
+        updatedAt: configuration.updatedAt,
+      })),
+    });
+    try { await writePrivateJson(this.configurationPath, snapshot); }
     catch { throw new PilotServiceError(500, 'RUNTIME_ERROR', 'No se pudo guardar la configuración de las pistas.'); }
   }
 }
 
+function planFromConfiguration(configuration: PilotConfiguration, configurationPath: string): ProductionPlan {
+  const common = {
+    courtSlug: configuration.courtSlug, sourceId: configuration.sourceId,
+    homeTeam: configuration.homeTeam, awayTeam: configuration.awayTeam,
+    matchdayNumber: configuration.matchdayNumber, seasonLabel: configuration.seasonLabel,
+  };
+  if (configuration.mode === 'youtube') return ProductionPlanSchema.parse({
+    ...common, kind: 'live', scheduledAt: configuration.scheduledAt,
+    privacyStatus: configuration.privacyStatus,
+    description: configuration.description ?? 'Sigue en directo la jornada de Kings Padel League.',
+  });
+  return ProductionPlanSchema.parse({ ...common, kind: 'recording',
+    recordingDirectory: configuration.recordingDirectory ?? resolve(dirname(configurationPath), 'recordings') });
+}
+
+function configurationFromPlan(plan: ProductionPlan, updatedAt: string): PilotConfiguration {
+  const { kind, ...values } = plan;
+  void kind;
+  if (plan.kind === 'live') return PilotConfigurationSchema.parse({ ...values, mode: 'youtube', updatedAt });
+  return PilotConfigurationSchema.parse({ ...values, mode: 'recording', scheduledAt: updatedAt, privacyStatus: 'private', updatedAt });
+}
+
 function isMissingFile(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+}
+
+function assertRecordingDirectory(input: PreparePilotSessionInput): void {
+  if (input.recordingDirectory !== undefined && !isAbsolute(input.recordingDirectory)) {
+    throw new PilotServiceError(
+      400,
+      'INVALID_INPUT',
+      'La carpeta de grabaciones debe ser una ruta absoluta del equipo de emisión.',
+    );
+  }
 }
 
 function discoverSources(): readonly PilotSource[] {

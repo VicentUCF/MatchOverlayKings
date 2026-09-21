@@ -1,7 +1,7 @@
-import { Ellipsis, Home, LogOut, Radio, RefreshCw, SlidersHorizontal, UserRound } from 'lucide-react';
+import { Ellipsis, Film, LogOut, Radio, RefreshCw, UserRound } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 
-export type ProductionArea = 'dashboard' | 'emissions' | 'controls' | 'system' | 'visual';
+export type ProductionArea = 'production' | 'recordings' | 'system' | 'visual';
 export type ProductionNavigationRole = 'admin' | 'operator' | 'viewer';
 
 type ProductionNavigationProps = {
@@ -12,13 +12,12 @@ type ProductionNavigationProps = {
   readonly onSignOut?: (() => void) | undefined;
   readonly trailing?: ReactNode;
   readonly currentLabel?: string;
-  readonly onAreaChange?: ((area: 'dashboard' | 'emissions' | 'controls') => void) | undefined;
+  readonly onAreaChange?: ((area: 'production' | 'recordings') => void) | undefined;
 };
 
 const ADMIN_LINKS = [
-  { area: 'dashboard', href: '/admin', label: 'Inicio', icon: Home },
-  { area: 'emissions', href: '/admin/emisiones', label: 'Emisiones', icon: Radio },
-  { area: 'controls', href: '/mandos', label: 'Mandos', icon: SlidersHorizontal },
+  { area: 'production', href: '/admin', label: 'Producción', icon: Radio },
+  { area: 'recordings', href: '/admin/grabaciones', label: 'Grabaciones', icon: Film },
 ] as const;
 
 export function ProductionNavigation({
@@ -30,7 +29,7 @@ export function ProductionNavigation({
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const links = role === 'admin'
     ? ADMIN_LINKS
-    : ADMIN_LINKS.filter(({ area }) => area === (role === 'operator' ? 'controls' : 'system'));
+    : ADMIN_LINKS.filter(({ area }) => area === 'production');
   const hasSessionMenu = onRefresh !== undefined || onSignOut !== undefined;
 
   useEffect(() => {
@@ -53,11 +52,11 @@ export function ProductionNavigation({
 
   return (
     <header className="home-topbar production-navigation">
-      <a className="brand production-navigation__brand" href={role === 'operator' ? '/mandos' : '/admin'} aria-label="KPL Control Center">
+      <a className="brand production-navigation__brand" href="/admin" aria-label="KPL Control Center">
         <img src="/logos/kpl-wordmark.png" alt="" width="144" height="54" />
         <span>
           <strong>{role === 'operator' ? 'KPL Mandos' : 'KPL Control Center'}</strong>
-          <small>{role === 'operator' ? 'Operación de emisiones' : 'Centro de producción'}</small>
+          <small>{role === 'operator' ? 'Control visual asignado' : 'Centro de producción'}</small>
         </span>
       </a>
       {onAreaChange && role === 'admin' ? (

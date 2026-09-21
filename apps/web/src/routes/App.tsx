@@ -16,20 +16,21 @@ export function App() {
   }
 
   if (path === '/admin') {
-    return <AdminPage destination="dashboard" />;
+    return <AdminPage destination="production" />;
   }
 
-  if (path === '/admin/emisiones') {
-    return <AdminPage destination="emissions" />;
+  if (path === '/admin/grabaciones') {
+    return <AdminPage destination="recordings" />;
+  }
+
+  if (path === '/admin/emisiones' || path === '/mandos') {
+    window.location.replace(`/admin${window.location.search}`);
+    return null;
   }
 
   if (path === '/admin/sistema' || path === '/admin/sistema/configuracion') {
     window.location.replace('/admin');
     return null;
-  }
-
-  if (path === '/mandos') {
-    return <AdminPage destination="controls" />;
   }
 
   if (path === '/camera/pilot') {

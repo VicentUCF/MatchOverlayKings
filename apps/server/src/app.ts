@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { Server as SocketServer } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents } from '@kpl/shared';
 import { FileStore } from './file-store.js';
@@ -17,6 +17,7 @@ import { PilotYouTubeGateway } from './pilot-youtube.js';
 import { PilotMobileCameraError, PilotMobileCameraService } from './pilot-mobile-camera.js';
 import { BrowserPilotOverlayRenderer, type PilotOverlayRenderer } from './pilot-overlay.js';
 import { SupabaseProductionAccessGuard, type ProductionAccessGuard } from './production-access.js';
+import { RecordingLibrary } from './recording-library.js';
 
 export async function buildApp(
   config: ServerConfig,
@@ -55,9 +56,10 @@ export async function buildApp(
     dependencies.mobileCameraHealthProbe,
   );
   const browserPath = chromiumExecutablePath();
+  const youtube = new PilotYouTubeGateway(config.pilot.youtube);
   const pilot = new PilotService(
     config.pilot.ffmpegPath,
-    new PilotYouTubeGateway(config.pilot.youtube),
+    youtube,
     resolve(config.dataDir, 'pilot-configurations.json'),
     mobileCamera,
     dependencies.pilotOverlayRenderer ?? new BrowserPilotOverlayRenderer({
@@ -72,11 +74,18 @@ export async function buildApp(
   const productionAccess = dependencies.productionAccessGuard
     ?? new SupabaseProductionAccessGuard(config.pilot.supabase);
   await pilot.initialize();
+  const recordings = new RecordingLibrary(
+    resolve(config.dataDir, 'recording-library.json'),
+    join(dirname(config.pilot.ffmpegPath), 'ffprobe'),
+    youtube,
+  );
   try {
+    await recordings.initialize();
+    for (const session of await pilot.list()) await recordings.reconcileSession(session, pilot.configurations());
     await mobileCamera.initialize();
     await pilot.flushOperationalHistory();
   } catch (error) {
-    await Promise.allSettled([pilot.shutdown(), mobileCamera.shutdown()]);
+    await Promise.allSettled([recordings.shutdown(), pilot.shutdown(), mobileCamera.shutdown()]);
     throw error;
   }
   const io: KplSocketServer = new SocketServer<
@@ -275,46 +284,84 @@ export async function buildApp(
 
   app.post('/api/pilot/sessions', async (request, reply) => {
     requireLocalPilot(request.ip);
-    await productionAccess.require(request.headers.authorization, 'operator');
+    await productionAccess.require(request.headers.authorization, 'production_admin');
     const session = await pilot.prepare(request.body, request.headers.authorization, operationId(request));
     reply.status(201).send({ session });
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/start', async (request) => {
     requireLocalPilot(request.ip);
-    await productionAccess.require(request.headers.authorization, 'operator');
-    return { session: await pilot.start(request.params.sessionId, request.headers.authorization, operationId(request)) };
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    const session = await pilot.start(request.params.sessionId, request.headers.authorization, operationId(request));
+    await recordings.reconcileSession(session, pilot.configurations());
+    return { session };
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/preflight', async (request) => {
     requireLocalPilot(request.ip);
-    await productionAccess.require(request.headers.authorization, 'operator');
+    await productionAccess.require(request.headers.authorization, 'production_admin');
     return { session: await pilot.preflight(request.params.sessionId, request.body, request.headers.authorization, operationId(request)) };
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/preflight/cancel', async (request) => {
     requireLocalPilot(request.ip);
-    await productionAccess.require(request.headers.authorization, 'operator');
+    await productionAccess.require(request.headers.authorization, 'production_admin');
     return { session: await pilot.cancelPreflight(request.params.sessionId) };
   });
 
   app.get<{ Params: { sessionId: string; runId: string } }>('/api/pilot/sessions/:sessionId/preflight-preview/:runId', async (request, reply) => {
     requireLocalPilot(request.ip);
-    await productionAccess.require(request.headers.authorization, 'operator');
+    await productionAccess.require(request.headers.authorization, 'production_admin');
     reply.header('cache-control', 'no-store').type('video/mp4');
     return reply.send(await pilot.preflightPreview(request.params.sessionId, request.params.runId));
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/recover', async (request) => {
     requireLocalPilot(request.ip);
-    await productionAccess.require(request.headers.authorization, 'operator');
-    return { session: await pilot.recover(request.params.sessionId, request.headers.authorization, operationId(request)) };
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    const session = await pilot.recover(request.params.sessionId, request.headers.authorization, operationId(request));
+    await recordings.reconcileSession(session, pilot.configurations());
+    return { session };
   });
 
   app.post<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/stop', async (request) => {
     requireLocalPilot(request.ip);
-    await productionAccess.require(request.headers.authorization, 'operator');
-    return { session: await pilot.stop(request.params.sessionId, request.headers.authorization, operationId(request)) };
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    const session = await pilot.stop(request.params.sessionId, request.headers.authorization, operationId(request));
+    await recordings.reconcileSession(session, pilot.configurations());
+    return { session };
+  });
+
+  app.get('/api/pilot/recordings', async (request) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    await recordings.refreshRemoteStates();
+    return { assets: recordings.listAssets(), jobs: recordings.listJobs() };
+  });
+
+  app.post<{ Params: { assetId: string } }>('/api/pilot/recordings/:assetId/uploads', async (request, reply) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    const job = await recordings.createUpload(request.params.assetId, request.body);
+    reply.status(201).send({ job });
+  });
+
+  app.post<{ Params: { jobId: string } }>('/api/pilot/publications/:jobId/pause', async (request) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    return { job: await recordings.pause(request.params.jobId) };
+  });
+
+  app.post<{ Params: { jobId: string } }>('/api/pilot/publications/:jobId/resume', async (request) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    return { job: await recordings.resume(request.params.jobId) };
+  });
+
+  app.post<{ Params: { jobId: string } }>('/api/pilot/publications/:jobId/schedule', async (request) => {
+    requireLocalPilot(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    return { job: await recordings.schedule(request.params.jobId, request.body) };
   });
 
   app.get<{ Params: { sessionId: string } }>('/api/pilot/sessions/:sessionId/thumbnail', async (request, reply) => {
@@ -335,7 +382,7 @@ export async function buildApp(
         throw new PilotServiceError(400, 'INVALID_INPUT', 'YouTube no autorizó la conexión.');
       }
       await pilot.completeAuthorization(request.query.code, request.query.state);
-      reply.redirect('/admin/emisiones');
+      reply.redirect('/admin');
     },
   );
 
@@ -351,6 +398,7 @@ export async function buildApp(
     });
 
     app.get('/admin', async (_request, reply) => reply.sendFile('index.html'));
+    app.get('/admin/grabaciones', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/admin/emisiones', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/admin/sistema', async (_request, reply) => reply.sendFile('index.html'));
     app.get('/admin/sistema/configuracion', async (_request, reply) => reply.sendFile('index.html'));
@@ -364,10 +412,13 @@ export async function buildApp(
   }
 
   app.addHook('onClose', async () => {
-    try { await pilot.shutdown(); }
+    try { await recordings.shutdown(); }
     finally {
-      try { await mobileCamera.shutdown(); }
-      finally { await io.close(); }
+      try { await pilot.shutdown(); }
+      finally {
+        try { await mobileCamera.shutdown(); }
+        finally { await io.close(); }
+      }
     }
   });
 

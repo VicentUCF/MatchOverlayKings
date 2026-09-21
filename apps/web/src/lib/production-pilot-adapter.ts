@@ -13,6 +13,9 @@ import {
   PilotSessionSchema,
   PilotSessionsSchema,
   PreparePilotSessionInputSchema,
+  PublicationJobSchema,
+  PublicationJobsSchema,
+  RecordingAssetsSchema,
   type PilotConfiguration,
   type PilotCourtSlug,
   type PilotMobileCameraSession,
@@ -36,6 +39,8 @@ const TeamSchema = z.strictObject({
   logoUrl: z.string(), primaryColor: z.string(), secondaryColor: z.string(),
 });
 const TeamsEnvelopeSchema = z.strictObject({ teams: z.array(TeamSchema).readonly() });
+const RecordingsEnvelopeSchema = z.strictObject({ assets: RecordingAssetsSchema, jobs: PublicationJobsSchema });
+const PublicationEnvelopeSchema = z.strictObject({ job: PublicationJobSchema });
 
 export type PilotApiResult<Value> =
   | { readonly kind: 'success'; readonly value: Value }
@@ -70,7 +75,8 @@ export function createProductionPilotAdapter(
     try {
       const endpoint = `${baseUrl}${path}`;
       if (init?.method === 'POST' || init?.method === 'PUT' || init?.method === 'DELETE'
-        || path === '/api/pilot/operations' || path === '/api/pilot/incidents') {
+        || path === '/api/pilot/operations' || path === '/api/pilot/incidents'
+        || path === '/api/pilot/recordings') {
         const { data } = await supabase.auth.getSession();
         if (journaled) {
           storageKey = `kpl:operation:${baseUrl}:${data.session?.user.id ?? 'local'}:${path}:${String(init?.body ?? '')}`;
@@ -118,6 +124,19 @@ export function createProductionPilotAdapter(
     readiness: () => request('/api/pilot/readiness', PilotReadinessSchema),
     operations: () => request('/api/pilot/operations', z.strictObject({ operations: z.array(PilotOperationSchema) })),
     incidents: () => request('/api/pilot/incidents', z.strictObject({ incidents: z.array(PilotIncidentSchema) })),
+    recordings: () => request('/api/pilot/recordings', RecordingsEnvelopeSchema),
+    createPublication: (assetId: string, input: { readonly title: string; readonly description: string }) => request(
+      `/api/pilot/recordings/${encodeURIComponent(assetId)}/uploads`, PublicationEnvelopeSchema, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
+      }),
+    pausePublication: (jobId: string) => request(
+      `/api/pilot/publications/${encodeURIComponent(jobId)}/pause`, PublicationEnvelopeSchema, { method: 'POST' }),
+    resumePublication: (jobId: string) => request(
+      `/api/pilot/publications/${encodeURIComponent(jobId)}/resume`, PublicationEnvelopeSchema, { method: 'POST' }),
+    schedulePublication: (jobId: string, publishAt: string) => request(
+      `/api/pilot/publications/${encodeURIComponent(jobId)}/schedule`, PublicationEnvelopeSchema, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ publishAt }),
+      }),
     sessions: async (): Promise<PilotApiResult<readonly PilotSession[]>> => {
       const result = await request('/api/pilot/sessions', SessionsEnvelopeSchema);
       return result.kind === 'success'

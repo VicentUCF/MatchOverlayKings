@@ -90,16 +90,22 @@ describe('production runtime recovery', () => {
     const restarted = createService();
     await restarted.initialize();
     cleanups.push(() => restarted.shutdown());
-    expect(restarted.get(session.id).configuration).toEqual(configuration);
+    const migratedConfiguration = {
+      ...configuration,
+      mode: 'recording',
+      scheduledAt: expect.any(String),
+      recordingDirectory: join(directory, 'recordings'),
+    };
+    expect(restarted.get(session.id).configuration).toEqual(migratedConfiguration);
     expect(restarted.configurations()[0]).toHaveProperty('updatedAt');
     await restarted.shutdown();
     const persisted = JSON.parse(await readFile(path, 'utf8'));
-    expect(persisted.sessions[0].configuration).toEqual(configuration);
+    expect(persisted.sessions[0].configuration).toEqual(migratedConfiguration);
 
     const again = createService();
     await again.initialize();
     cleanups.push(() => again.shutdown());
-    expect(again.get(session.id).configuration).toEqual(configuration);
+    expect(again.get(session.id).configuration).toEqual(migratedConfiguration);
   });
 
   it('reports insufficient combined capacity without preventing either court from starting', async () => {

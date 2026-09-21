@@ -73,26 +73,26 @@ describe('tabbed production workspace', () => {
 
   it('warns while operating with the last valid Supabase inventory', () => {
     const html = renderToStaticMarkup(createElement(ProductionTabbedWorkspace, {
-      initialArea: 'dashboard', pilot, courts, inventoryStale: true, signOut: async () => undefined,
+      initialArea: 'production', pilot, courts, inventoryStale: true, signOut: async () => undefined,
     }));
 
     expect(html).toContain('Se conserva la última configuración válida');
   });
 
-  it('keeps Inicio, Emisiones and Mandos mounted with one shared controller', () => {
+  it('keeps Producción and Grabaciones as the two shared admin areas', () => {
     const html = renderToStaticMarkup(createElement(ProductionTabbedWorkspace, {
-      initialArea: 'dashboard', pilot, courts, signOut: async () => undefined,
+      initialArea: 'production', pilot, courts, signOut: async () => undefined,
     }));
 
-    expect((html.match(/role="tabpanel"/g) ?? [])).toHaveLength(3);
-    expect((html.match(/class="production-workspace-panel"/g) ?? [])).toHaveLength(3);
-    expect((html.match(/role="tabpanel"[^>]*hidden=""/g) ?? [])).toHaveLength(2);
+    expect((html.match(/role="tabpanel"/g) ?? [])).toHaveLength(2);
+    expect((html.match(/class="production-workspace-panel"/g) ?? [])).toHaveLength(2);
+    expect((html.match(/role="tabpanel"[^>]*hidden=""/g) ?? [])).toHaveLength(1);
     expect(html).toContain('Todas las pistas, en un solo sitio');
-    expect(html).toContain('Cargando el centro de emisiones');
+    expect(html).toContain('Nueva producción');
     expect(html).not.toContain('Sistema');
   });
 
-  it('offers the active YouTube stream from both Inicio and Mandos', () => {
+  it('offers the active YouTube stream from the production detail', () => {
     const readyPilot: ProductionPilotController = {
       ...pilot,
       state: {
@@ -110,6 +110,7 @@ describe('tabbed production workspace', () => {
         configurations: [{
           courtSlug: 'pista-1', mode: 'youtube', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
           matchdayNumber: 2, seasonLabel: 'T2', description: 'Descripción compartida de la jornada',
+          recordingDirectory: '/mnt/grabaciones',
           scheduledAt: '2026-09-14T18:00:00.000Z', privacyStatus: 'public',
           updatedAt: '2026-09-14T16:00:00.000Z',
         }],
@@ -118,22 +119,13 @@ describe('tabbed production workspace', () => {
       },
     };
     const html = renderToStaticMarkup(createElement(ProductionTabbedWorkspace, {
-      initialArea: 'controls', pilot: readyPilot, courts, signOut: async () => undefined,
+      initialArea: 'production', pilot: readyPilot, courts, signOut: async () => undefined,
     }));
 
-    expect((html.match(/Ver directo en YouTube/g) ?? [])).toHaveLength(2);
-    expect((html.match(/href="https:\/\/www.youtube.com\/watch\?v=broadcast-1"/g) ?? [])).toHaveLength(2);
-    expect(html).toContain('Grabación local');
-    expect(html).toContain('MP4 con audio y marcador para emitir después.');
+    expect((html.match(/Ver directo en YouTube/g) ?? [])).toHaveLength(1);
+    expect((html.match(/href="https:\/\/www.youtube.com\/watch\?v=broadcast-1"/g) ?? [])).toHaveLength(1);
     expect(html).not.toContain('Simulación');
-    expect(html).toContain('Datos compartidos');
-    expect(html).toContain('Descripción compartida de la jornada');
-    expect(html).toContain('aria-label="Información de este PC"');
-    expect(html).toContain('aria-label="Abrir ajustes generales"');
-    expect(html).toContain('<dialog');
-    expect((html.match(/id="pilot-home-pista-/g) ?? [])).toHaveLength(3);
-    expect(html).toContain('<option value="Kings of Favar">Kings of Favar</option>');
-    expect(html).toContain('<option value="Red Lions">Red Lions</option>');
+    expect(html).toContain('Nueva producción');
   });
 
   it('offers recovery and finalization without creating another broadcast', () => {

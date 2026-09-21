@@ -11,3 +11,4 @@ export * from './scheduling.js';
 export * from './supabase.js';
 export * from './pilot-signal.js';
 export * from './pilot-preflight.js';
+export * from './recordings.js';

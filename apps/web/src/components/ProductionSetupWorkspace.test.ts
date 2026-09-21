@@ -65,13 +65,15 @@ function findButtonAction(node: ReactNode, label: string): (() => void) | undefi
 describe('production setup workspace', () => {
   it('separates administrator configuration from operator controls', () => {
     expect(overviewHtml('admin')).toContain('Configuración técnica');
-    expect(overviewHtml('admin')).toContain('Emisiones');
+    expect(overviewHtml('admin')).toContain('Producción');
+    expect(overviewHtml('admin')).toContain('Grabaciones');
     expect(overviewHtml('admin')).toContain('Mandos');
     expect(overviewHtml('operator')).not.toContain('Configuración técnica');
-    expect(overviewHtml('operator')).not.toContain('Emisiones');
+    expect(overviewHtml('operator')).toContain('Producción');
+    expect(overviewHtml('operator')).not.toContain('Grabaciones');
     expect(overviewHtml('operator')).toContain('Mandos');
     expect(overviewHtml('viewer')).not.toContain('Configuración técnica');
-    expect(overviewHtml('viewer')).not.toContain('Emisiones');
+    expect(overviewHtml('viewer')).not.toContain('Grabaciones');
     expect(overviewHtml('viewer')).not.toContain('Mandos');
   });
 

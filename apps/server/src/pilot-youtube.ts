@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { google } from 'googleapis';
@@ -25,6 +26,13 @@ export type PilotYouTubeHealth = {
   readonly streamStatus: string | null;
   readonly healthStatus: string | null;
   readonly broadcastStatus: string | null;
+};
+
+export type YouTubeUploadedVideo = {
+  readonly id: string;
+  readonly uploadStatus: string | null;
+  readonly privacyStatus: string | null;
+  readonly publishAt: string | null;
 };
 
 export class PilotYouTubeError extends Error {
@@ -156,6 +164,106 @@ export class PilotYouTubeGateway {
     }
   }
 
+  public async createResumableVideoUpload(input: {
+    readonly title: string;
+    readonly description: string;
+    readonly sizeBytes: number;
+  }): Promise<string> {
+    const token = await this.accessToken();
+    const response = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Length': String(input.sizeBytes),
+        'X-Upload-Content-Type': 'video/mp4',
+      },
+      body: JSON.stringify({
+        snippet: { title: input.title, description: input.description, categoryId: '17' },
+        status: { privacyStatus: 'private', selfDeclaredMadeForKids: false },
+      }),
+    });
+    const location = response.headers.get('location');
+    if (!response.ok || !location) throw new PilotYouTubeError('API_ERROR', await youtubeUploadMessage(response));
+    return location;
+  }
+
+  public async queryResumableVideoUpload(uploadUrl: string, totalBytes: number): Promise<{
+    readonly uploadedBytes: number;
+    readonly videoId: string | null;
+  }> {
+    assertGoogleUploadUrl(uploadUrl);
+    const response = await fetch(uploadUrl, {
+      method: 'PUT', headers: {
+        Authorization: `Bearer ${await this.accessToken()}`,
+        'Content-Length': '0', 'Content-Range': `bytes */${totalBytes}`,
+      },
+    });
+    if (response.status === 308) return { uploadedBytes: uploadedRange(response), videoId: null };
+    if (!response.ok) throw new PilotYouTubeError('API_ERROR', await youtubeUploadMessage(response));
+    const payload = await response.json() as { id?: unknown };
+    if (typeof payload.id !== 'string') throw new PilotYouTubeError('API_ERROR');
+    return { uploadedBytes: totalBytes, videoId: payload.id };
+  }
+
+  public async uploadVideoChunk(input: {
+    readonly uploadUrl: string;
+    readonly path: string;
+    readonly start: number;
+    readonly end: number;
+    readonly totalBytes: number;
+    readonly signal: AbortSignal;
+  }): Promise<{ readonly uploadedBytes: number; readonly videoId: string | null }> {
+    assertGoogleUploadUrl(input.uploadUrl);
+    const length = input.end - input.start + 1;
+    const response = await fetch(input.uploadUrl, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${await this.accessToken()}`,
+        'Content-Type': 'video/mp4',
+        'Content-Length': String(length),
+        'Content-Range': `bytes ${input.start}-${input.end}/${input.totalBytes}`,
+      },
+      body: createReadStream(input.path, { start: input.start, end: input.end }),
+      signal: input.signal,
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' });
+    if (response.status === 308) return { uploadedBytes: uploadedRange(response), videoId: null };
+    if (!response.ok) throw new PilotYouTubeError('API_ERROR', await youtubeUploadMessage(response));
+    const payload = await response.json() as { id?: unknown };
+    if (typeof payload.id !== 'string') throw new PilotYouTubeError('API_ERROR');
+    return { uploadedBytes: input.totalBytes, videoId: payload.id };
+  }
+
+  public async inspectUploadedVideo(id: string): Promise<YouTubeUploadedVideo> {
+    try {
+      const response = await this.client().videos.list({ id: [id], part: ['status', 'processingDetails'] });
+      const video = response.data.items?.[0];
+      if (!video) throw new PilotYouTubeError('API_ERROR', 'YouTube ya no encuentra el vídeo subido.');
+      return {
+        id,
+        uploadStatus: video.status?.uploadStatus ?? video.processingDetails?.processingStatus ?? null,
+        privacyStatus: video.status?.privacyStatus ?? null,
+        publishAt: video.status?.publishAt ?? null,
+      };
+    } catch (error) {
+      if (error instanceof PilotYouTubeError) throw error;
+      throw new PilotYouTubeError('API_ERROR', youtubeApiErrorMessage(error));
+    }
+  }
+
+  public async scheduleUploadedVideo(id: string, publishAt: string): Promise<YouTubeUploadedVideo> {
+    try {
+      await this.client().videos.update({
+        part: ['status'],
+        requestBody: { id, status: { privacyStatus: 'private', publishAt } },
+      });
+      return this.inspectUploadedVideo(id);
+    } catch (error) {
+      throw new PilotYouTubeError('API_ERROR', youtubeApiErrorMessage(error));
+    }
+  }
+
   public async cancelBroadcast(broadcastId: string): Promise<void> {
     await this.completeBroadcast(broadcastId);
   }
@@ -183,6 +291,14 @@ export class PilotYouTubeGateway {
   private client() {
     if (!this.authorized || this.oauth === null) throw new PilotYouTubeError('NOT_AUTHORIZED');
     return google.youtube({ version: 'v3', auth: this.oauth });
+  }
+
+  private async accessToken(): Promise<string> {
+    const oauth = this.requireConfigured();
+    if (!this.authorized) throw new PilotYouTubeError('NOT_AUTHORIZED');
+    const token = await oauth.getAccessToken();
+    if (!token.token) throw new PilotYouTubeError('NOT_AUTHORIZED');
+    return token.token;
   }
 
   private requireConfigured() {
@@ -257,6 +373,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isTokenRecord(value: unknown): value is Record<string, string | number> {
   return typeof value === 'object' && value !== null
     && Object.values(value).every((item) => typeof item === 'string' || typeof item === 'number');
+}
+
+function assertGoogleUploadUrl(value: string): void {
+  let parsed: URL;
+  try { parsed = new URL(value); } catch { throw new PilotYouTubeError('API_ERROR', 'La sesión de subida guardada no es válida.'); }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'www.googleapis.com'
+    || !parsed.pathname.startsWith('/upload/youtube/v3/videos')) {
+    throw new PilotYouTubeError('API_ERROR', 'La sesión de subida guardada no pertenece a YouTube.');
+  }
+}
+
+function uploadedRange(response: Response): number {
+  const match = response.headers.get('range')?.match(/bytes=0-(\d+)/i);
+  return match?.[1] ? Number(match[1]) + 1 : 0;
+}
+
+async function youtubeUploadMessage(response: Response): Promise<string> {
+  try {
+    const payload = await response.json() as { error?: { message?: unknown } };
+    if (typeof payload.error?.message === 'string') return `YouTube rechazó la subida: ${payload.error.message.slice(0, 300)}`;
+  } catch { /* The bounded generic message below is safe for the operator. */ }
+  return `YouTube rechazó la subida (${response.status}).`;
 }
 
 function preparationError(error: unknown): PilotYouTubeError {

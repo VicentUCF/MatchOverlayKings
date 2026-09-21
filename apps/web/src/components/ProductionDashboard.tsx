@@ -100,7 +100,8 @@ export function ProductionDashboardView({
             <CourtCameraMonitor courtSlug={court.slug} mobileCamera={mobileCamera} source={session?.source.id ?? configuration?.sourceId} detailed />
             <CourtOverlayMonitor key={`overlay-${court.slug}`} courtSlug={court.slug} />
           </> : null}
-          <ScorerAccess key={`scorer-${court.slug}`} courtSlug={court.slug} />
+          <ScorerAccess key={`scorer-${court.slug}`} courtSlug={court.slug}
+            seasonLabel={configuration?.seasonLabel ?? 'T2'} matchdayNumber={configuration?.matchdayNumber ?? 1} />
         </div>
         <aside className="production-detail-controls" aria-label={`Realización de ${court.name}`}>
           <section className="production-output-monitor">
@@ -125,7 +126,7 @@ export function ProductionDashboardView({
             onRecover={(value) => void pilot.recover(value)} onStop={(value) => void pilot.stop(value)}
             onElapsed={() => undefined} preflight={pilot} /> : null}
           {!configuration && state.kind === 'ready' ? <button type="button" className="refresh-button" onClick={onOpenConfiguration}>
-            <Settings2 aria-hidden="true" />Configurar emisión</button> : null}
+            <Settings2 aria-hidden="true" />Configurar producción</button> : null}
           <PilotOperationHistory key={`history-${court.slug}`} initialCourt={court.slug} />
         </aside>
       </div>
@@ -176,7 +177,7 @@ export function ProductionDashboardView({
               <nav className="production-dashboard-court__actions" aria-label={`Supervisión de ${item.name}`}>
                 <button type="button" className="production-setup-submit" id={`production-open-${item.slug}`} data-monitor-court={item.slug} onClick={() => select(item.slug)}>
                   <Radio aria-hidden="true" />Abrir pista</button>
-                {!config && ready ? <button type="button" className="refresh-button" onClick={onOpenConfiguration}><Settings2 aria-hidden="true" />Configurar emisión</button> : null}
+                {!config && ready ? <button type="button" className="refresh-button" onClick={onOpenConfiguration}><Settings2 aria-hidden="true" />Configurar producción</button> : null}
                 {url ? <a className="refresh-button" href={url} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />Ver directo en YouTube</a> : null}
               </nav>
             </div>
@@ -189,7 +190,7 @@ export function ProductionDashboardView({
   </section>;
   if (embedded) return content;
   return <main className="home-page production-dashboard-page">
-    <ProductionNavigation active="dashboard" role="admin" onRefresh={() => void refresh()}
+    <ProductionNavigation active="production" role="admin" onRefresh={() => void refresh()}
       refreshing={ready?.refreshing ?? false} onSignOut={() => void signOut()} />
     {content}
   </main>;
