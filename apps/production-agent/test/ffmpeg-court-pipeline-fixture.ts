@@ -1,15 +1,15 @@
 import { CourtIdSchema } from '@kpl/production-contracts';
-import type { FfmpegCourtPipelineOptions, OverlayFrameSourceFactoryPort } from '../src/ffmpeg-court-pipeline-model.js';
-import { ProcessAdapterError, type ManagedProcessPort, type ManagedProcessStatus, type ProcessCloseStatus, type ProcessDiagnostics, type ProcessSignal, type ProcessSignalResult, type ProcessSpawnerPort } from '../src/managed-process.js';
+import type { FfmpegCourtPipelineOptions, OverlayFrameSourceFactoryPort } from '../src/infrastructure/ffmpeg/ffmpeg-court-pipeline-model.js';
+import { ProcessAdapterError, type ManagedProcessPort, type ManagedProcessStatus, type ProcessCloseStatus, type ProcessDiagnostics, type ProcessSignal, type ProcessSignalResult, type ProcessSpawnerPort } from '../src/infrastructure/process/managed-process.js';
 import {
   MediaMtxApiClientError,
   type MediaMtxApiClientErrorCode,
   type MediaMtxPathsSnapshot,
-} from '../src/mediamtx-api-client.js';
-import { OverlayInputDescriptorSchema } from '../src/media-runtime-config.js';
-import { ProfileFingerprintSchema, ReconcileInputSchema, type PipelineTarget } from '../src/models.js';
-import type { ProcessCommandPlan } from '../src/process-command-plan.js';
-import type { SchedulerPort } from '../src/process-stop.js';
+} from '../src/infrastructure/mediamtx/mediamtx-api-client.js';
+import { OverlayInputDescriptorSchema } from '../src/infrastructure/config/media-runtime-config.js';
+import { ProfileFingerprintSchema, ReconcileInputSchema, type PipelineTarget } from '../src/domain/models.js';
+import type { ProcessCommandPlan } from '../src/infrastructure/process/process-command-plan.js';
+import type { SchedulerPort } from '../src/infrastructure/process/process-stop.js';
 import { COURT_ID, reconcileInput } from './fixtures.js';
 import { mediaConfig, PATHS } from './mediamtx-service-fixture.js';
 

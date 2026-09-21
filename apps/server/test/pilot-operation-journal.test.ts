@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PilotConfigurationSchema, PilotSessionSchema } from '@kpl/production-contracts';
-import { PilotOperationJournal } from '../src/pilot-operation-journal.js';
+import { PilotOperationJournal } from '../src/features/pilot/pilot-operation-journal.js';
 
 const directories: string[] = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map((path) => rm(path, { recursive: true, force: true }))); });

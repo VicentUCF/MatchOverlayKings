@@ -1,9 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { RecordingLibrary } from '../recordings/recording-library.js';
-import { PilotOperationError } from '../../pilot-operation-journal.js';
-import type { PilotService } from '../../pilot-service.js';
-import { PilotServiceError } from '../../pilot-service-error.js';
-import type { ProductionAccessGuard } from '../../production-access.js';
+import { PilotOperationError } from './pilot-operation-journal.js';
+import type { PilotService } from './pilot-service.js';
+import { PilotServiceError } from './pilot-service-error.js';
+import type { ProductionAccessGuard } from '../production/production-access.js';
 
 export function registerPilotRoutes(
   app: FastifyInstance,

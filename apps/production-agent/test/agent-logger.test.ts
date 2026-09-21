@@ -5,7 +5,7 @@ import {
   VersionSchema,
 } from '@kpl/production-contracts';
 import { describe, expect, it } from 'vitest';
-import { JsonLineLogger } from '../src/agent-logger.js';
+import { JsonLineLogger } from '../src/infrastructure/process/agent-logger.js';
 
 describe('JsonLineLogger', () => {
   it('writes deterministic JSON lines containing only parsed safe fields', () => {

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PublicationJob, RecordingAsset } from '@kpl/production-contracts';
 import { RecordingLibrary } from '../src/features/recordings/recording-library.js';
-import { PilotYouTubeError, type PilotYouTubeGateway } from '../src/pilot-youtube.js';
+import { PilotYouTubeError, type PilotYouTubeGateway } from '../src/features/pilot/pilot-youtube.js';
 import type {
   PublicationReconcileTask,
   PublicationTaskHandler,

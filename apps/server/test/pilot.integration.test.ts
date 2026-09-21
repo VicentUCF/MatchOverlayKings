@@ -1,4 +1,4 @@
-import { PilotService } from '../src/pilot-service.js';
+import { PilotService } from '../src/features/pilot/pilot-service.js';
 import { passingPreflight } from './pilot-preflight-fixture.js';
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
@@ -16,11 +16,11 @@ import {
   PilotReadinessSchema,
   PilotSessionSchema,
 } from '@kpl/production-contracts';
-import { buildApp } from '../src/app.js';
-import { PilotServiceError } from '../src/pilot-service.js';
-import type { ProductionAccessGuard } from '../src/production-access.js';
-import { buildPilotMediaMtxConfiguration } from '../src/pilot-mobile-camera.js';
-import type { PilotOverlayRenderer } from '../src/pilot-overlay.js';
+import { buildApp } from '../src/bootstrap/app.js';
+import { PilotServiceError } from '../src/features/pilot/pilot-service.js';
+import type { ProductionAccessGuard } from '../src/features/production/production-access.js';
+import { buildPilotMediaMtxConfiguration } from '../src/features/pilot/pilot-mobile-camera.js';
+import type { PilotOverlayRenderer } from '../src/features/pilot/pilot-overlay.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 const allowProductionAccess = { require: async () => undefined };

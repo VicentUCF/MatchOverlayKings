@@ -1,0 +1,128 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import type { PilotYouTubeConfig } from '../features/pilot/pilot-youtube.js';
+
+export interface PilotServerConfig {
+  ffmpegPath: string;
+  supabase?: { url: string; publishableKey: string };
+  youtube: PilotYouTubeConfig;
+  mobileCamera?: PilotMobileCameraRuntimeConfig;
+  controlOrigins?: readonly string[];
+}
+
+export interface PilotMobileCameraRuntimeConfig {
+  mediaMtxPath: string | null;
+  lanHost: string | null;
+  lanCidr: string | null;
+  adminHost?: string | null;
+  cameraPageOrigin: string;
+  webRtcPort: number;
+  webRtcUdpPort: number;
+  rtspPort: number;
+  apiPort: number;
+}
+
+export interface ServerConfig {
+  host: string;
+  port: number;
+  dataDir: string;
+  webDistDir: string;
+  controlPin: string | null;
+  rabbitMq?: { url: string; queuePrefix: string } | null;
+  pilot: PilotServerConfig;
+}
+
+export function readConfig(): ServerConfig {
+  const credentials = readGoogleOAuthCredentials(process.env.KPL_PILOT_YOUTUBE_CREDENTIALS_PATH);
+  const cameraPageOrigin = origin(process.env.KPL_PILOT_CAMERA_PAGE_ORIGIN);
+  return {
+    host: process.env.HOST ?? '0.0.0.0',
+    port: Number(process.env.PORT ?? 4300),
+    dataDir: process.env.KPL_DATA_DIR
+      ? resolve(process.env.KPL_DATA_DIR)
+      : resolve(process.cwd(), '../../data'),
+    webDistDir: process.env.KPL_WEB_DIST
+      ? resolve(process.env.KPL_WEB_DIST)
+      : resolve(process.cwd(), '../web/dist'),
+    controlPin: process.env.KPL_CONTROL_PIN?.trim() || null,
+    rabbitMq: process.env.KPL_RABBITMQ_URL?.trim()
+      ? {
+        url: process.env.KPL_RABBITMQ_URL.trim(),
+        queuePrefix: process.env.KPL_RABBITMQ_QUEUE_PREFIX?.trim() || 'kpl.publications',
+      }
+      : null,
+    pilot: {
+      supabase: {
+        url: process.env.VITE_SUPABASE_URL?.trim() ?? '',
+        publishableKey: process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ?? '',
+      },
+      ffmpegPath: process.env.KPL_PILOT_FFMPEG_PATH?.trim() || '/bin/ffmpeg',
+      controlOrigins: origins(process.env.KPL_PILOT_CONTROL_ORIGINS, cameraPageOrigin),
+      mobileCamera: {
+        mediaMtxPath: process.env.KPL_PILOT_MEDIAMTX_PATH?.trim() || null,
+        lanHost: process.env.KPL_PILOT_LAN_HOST?.trim() || null,
+        lanCidr: process.env.KPL_PILOT_LAN_CIDR?.trim() || null,
+        adminHost: process.env.KPL_PILOT_ADMIN_HOST?.trim() || null,
+        cameraPageOrigin,
+        webRtcPort: port(process.env.KPL_PILOT_WEBRTC_PORT, 8889),
+        webRtcUdpPort: port(process.env.KPL_PILOT_WEBRTC_UDP_PORT, 8189),
+        rtspPort: port(process.env.KPL_PILOT_RTSP_PORT, 8554),
+        apiPort: port(process.env.KPL_PILOT_MEDIAMTX_API_PORT, 9998),
+      },
+      youtube: {
+        clientId: process.env.KPL_PILOT_YOUTUBE_CLIENT_ID?.trim() || credentials?.clientId || null,
+        clientSecret: process.env.KPL_PILOT_YOUTUBE_CLIENT_SECRET?.trim() || credentials?.clientSecret || null,
+        redirectUri: process.env.KPL_PILOT_YOUTUBE_REDIRECT_URI?.trim()
+          || `http://localhost:${Number(process.env.PORT ?? 4300)}/api/pilot/youtube/auth/callback`,
+        tokenPath: process.env.KPL_PILOT_YOUTUBE_TOKEN_PATH
+          ? resolve(process.env.KPL_PILOT_YOUTUBE_TOKEN_PATH)
+          : null,
+      },
+    },
+  };
+}
+
+function origins(value: string | undefined, fallback: string): readonly string[] {
+  const candidates = value?.split(',').map((candidate) => candidate.trim()).filter(Boolean) ?? [];
+  const valid = candidates.flatMap((candidate) => {
+    try {
+      const parsed = new URL(candidate);
+      return parsed.protocol === 'https:' ? [parsed.origin] : [];
+    } catch {
+      return [];
+    }
+  });
+  return [...new Set(valid.length > 0 ? valid : [fallback])];
+}
+
+function port(value: string | undefined, fallback: number): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isInteger(parsed) && parsed >= 1024 && parsed <= 65_535 ? parsed : fallback;
+}
+
+function origin(value: string | undefined): string {
+  const candidate = value?.trim() || 'https://live.kingspadelleague.es';
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === 'https:' ? parsed.origin : 'https://live.kingspadelleague.es';
+  } catch {
+    return 'https://live.kingspadelleague.es';
+  }
+}
+
+function readGoogleOAuthCredentials(path: string | undefined): { clientId: string; clientSecret: string } | null {
+  if (!path?.trim()) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(resolve(path), 'utf8')) as unknown;
+    if (typeof parsed !== 'object' || parsed === null || !('web' in parsed)) return null;
+    const web = (parsed as { web?: unknown }).web;
+    if (typeof web !== 'object' || web === null) return null;
+    const { client_id: clientId, client_secret: clientSecret } = web as Record<string, unknown>;
+    return typeof clientId === 'string' && clientId.length > 0
+      && typeof clientSecret === 'string' && clientSecret.length > 0
+      ? { clientId, clientSecret }
+      : null;
+  } catch {
+    return null;
+  }
+}

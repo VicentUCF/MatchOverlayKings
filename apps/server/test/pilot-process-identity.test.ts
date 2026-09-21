@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { encoderProcessIdentity, stopOrphanedEncoder } from '../src/pilot-process-identity.js';
+import { encoderProcessIdentity, stopOrphanedEncoder } from '../src/features/pilot/pilot-process-identity.js';
 
 const processes: ChildProcess[] = [];
 afterEach(() => { for (const child of processes.splice(0)) child.kill('SIGKILL'); });

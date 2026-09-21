@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FfmpegCourtPipeline } from '../src/ffmpeg-court-pipeline.js';
+import { FfmpegCourtPipeline } from '../src/infrastructure/ffmpeg/ffmpeg-court-pipeline.js';
 import {
   createContext,
   deferred,

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { io as createClient } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
-import { buildApp } from '../src/app.js';
+import { buildApp } from '../src/bootstrap/app.js';
 import type { Ack, ClientToServerEvents, MatchState, ServerToClientEvents } from '@kpl/shared';
 
 type ClientSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

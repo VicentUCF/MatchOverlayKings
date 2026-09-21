@@ -1,13 +1,13 @@
 import { CourtIdSchema } from '@kpl/production-contracts';
 import { describe, expect, it } from 'vitest';
-import { resolveFfmpegCourtPlan } from '../src/ffmpeg-court-plan.js';
+import { resolveFfmpegCourtPlan } from '../src/infrastructure/ffmpeg/ffmpeg-court-plan.js';
 import type {
   FfmpegCourtPipelineOptions,
   OverlayFrameSource,
   OverlayFrameSourceFactoryPort,
-} from '../src/ffmpeg-court-pipeline-model.js';
-import { LocalMediaRuntimeConfigSchema, OverlayInputDescriptorSchema } from '../src/media-runtime-config.js';
-import { ProfileFingerprintSchema, ReconcileInputSchema, type PipelineTarget } from '../src/models.js';
+} from '../src/infrastructure/ffmpeg/ffmpeg-court-pipeline-model.js';
+import { LocalMediaRuntimeConfigSchema, OverlayInputDescriptorSchema } from '../src/infrastructure/config/media-runtime-config.js';
+import { ProfileFingerprintSchema, ReconcileInputSchema, type PipelineTarget } from '../src/domain/models.js';
 import { AUDIO_DEVICE_ID, COURT_ID, VIDEO_DEVICE_ID, reconcileInput } from './fixtures.js';
 
 const courtIds = [

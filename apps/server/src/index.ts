@@ -1,5 +1,5 @@
-import { buildApp } from './app.js';
-import { readConfig } from './config.js';
+import { buildApp } from './bootstrap/app.js';
+import { readConfig } from './bootstrap/config.js';
 
 const config = readConfig();
 const { app } = await buildApp(config);

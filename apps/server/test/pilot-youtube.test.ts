@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { google } from 'googleapis';
-import { PilotYouTubeError, PilotYouTubeGateway, youtubeApiErrorMessage } from '../src/pilot-youtube.js';
+import { PilotYouTubeError, PilotYouTubeGateway, youtubeApiErrorMessage } from '../src/features/pilot/pilot-youtube.js';
 
 afterEach(() => vi.restoreAllMocks());
 

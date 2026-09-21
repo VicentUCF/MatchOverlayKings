@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseLocalAgentEnvironment } from '../src/local-runtime-config.js';
+import { parseLocalAgentEnvironment } from '../src/infrastructure/config/local-runtime-config.js';
 
 const courtIds = [
   '10000000-0000-4000-8000-000000000001',

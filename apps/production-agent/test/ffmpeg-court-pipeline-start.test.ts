@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FfmpegCourtPipeline } from '../src/ffmpeg-court-pipeline.js';
-import { ProfileFingerprintSchema } from '../src/models.js';
+import { FfmpegCourtPipeline } from '../src/infrastructure/ffmpeg/ffmpeg-court-pipeline.js';
+import { ProfileFingerprintSchema } from '../src/domain/models.js';
 import { createContext, deferred, expectPending, flushUntil, progress, snapshot, target } from './ffmpeg-court-pipeline-fixture.js';
 
 describe('FFmpeg court pipeline startup', () => {

@@ -22,6 +22,7 @@
     "production:local:down": "./scripts/local-production.sh down",
     "production:local:logs": "./scripts/local-production.sh logs",
     "production:smoke": "node scripts/check-live-readiness.mjs",
+    "check:architecture": "node scripts/check-app-source-roots.mjs",
     "start:server": "npm run start -w @kpl/server",
     "build": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/production-assets && npm run build -w @kpl/server && npm run build -w @kpl/web",
     "build:vercel": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/web",
@@ -32,7 +33,7 @@
     "supabase:deploy": "node scripts/apply-supabase-migrations.mjs",
     "supabase:ensure-admin": "node scripts/ensure-supabase-admin.mjs",
     "supabase:check": "node scripts/check-supabase.mjs",
-    "verify": "npm run lint && npm run test && npm run build"
+    "verify": "npm run check:architecture && npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

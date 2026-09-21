@@ -1,23 +1,23 @@
-export { fingerprintProfile } from './fingerprint.js';
+export { fingerprintProfile } from './domain/fingerprint.js';
 export {
   FfmpegProgressError,
   FfmpegProgressParser,
   type FfmpegProgressErrorCode,
   type FfmpegProgressRecord,
-} from './ffmpeg-progress.js';
+} from './infrastructure/ffmpeg/ffmpeg-progress.js';
 export {
   FfmpegHealthError,
   FfmpegHealthTracker,
   type FfmpegHealth,
   type FfmpegHealthErrorCode,
-} from './ffmpeg-health.js';
-export { FfmpegCourtPipeline } from './ffmpeg-court-pipeline.js';
+} from './infrastructure/ffmpeg/ffmpeg-health.js';
+export { FfmpegCourtPipeline } from './infrastructure/ffmpeg/ffmpeg-court-pipeline.js';
 export {
   FfmpegCourtPipelineError,
   type FfmpegCourtPipelineErrorCode,
   type FfmpegCourtPipelineLifecycle,
   type FfmpegCourtPipelineOptions,
-} from './ffmpeg-court-pipeline-model.js';
+} from './infrastructure/ffmpeg/ffmpeg-court-pipeline-model.js';
 export {
   NodeProcessSpawner,
   ProcessAdapterError,
@@ -29,11 +29,11 @@ export {
   type ProcessSignal,
   type ProcessSignalResult,
   type ProcessSpawnerPort,
-} from './managed-process.js';
+} from './infrastructure/process/managed-process.js';
 export {
   ProgressStreamError,
   type ProgressStreamErrorCode,
-} from './progress-queue.js';
+} from './infrastructure/process/progress-queue.js';
 export {
   NodeScheduler,
   ProcessStopError,
@@ -42,9 +42,9 @@ export {
   type ProcessStopErrorCode,
   type SchedulerPort,
   type StopProcessOptions,
-} from './process-stop.js';
-export { buildFfmpegCommandPlan, type FfmpegPlanInput } from './ffmpeg-plan.js';
-export { buildMediaMtxPlan, type MediaMtxPlan } from './mediamtx-plan.js';
+} from './infrastructure/process/process-stop.js';
+export { buildFfmpegCommandPlan, type FfmpegPlanInput } from './infrastructure/ffmpeg/ffmpeg-plan.js';
+export { buildMediaMtxPlan, type MediaMtxPlan } from './infrastructure/mediamtx/mediamtx-plan.js';
 export {
   MediaMtxApiClient,
   MediaMtxApiClientError,
@@ -55,7 +55,7 @@ export {
   type MediaMtxApiClientPort,
   type MediaMtxPathsSnapshot,
   type MediaMtxPathStatus,
-} from './mediamtx-api-client.js';
+} from './infrastructure/mediamtx/mediamtx-api-client.js';
 export {
   createMediaMtxApiCredentials,
   MediaMtxApiCredentialFactory,
@@ -65,7 +65,7 @@ export {
   type MediaMtxApiCredentialsErrorCode,
   type MediaMtxApiPlannerCredentials,
   type RandomBytesPort,
-} from './mediamtx-api-credentials.js';
+} from './infrastructure/mediamtx/mediamtx-api-credentials.js';
 export {
   EphemeralRuntimeFilesError,
   isEphemeralRuntimeCleanupRecovery,
@@ -75,20 +75,20 @@ export {
   type EphemeralRuntimeFilesErrorCode,
   type EphemeralRuntimeFilesOptions,
   type EphemeralRuntimeFilesPort,
-} from './ephemeral-runtime-files.js';
+} from './infrastructure/process/ephemeral-runtime-files.js';
 export {
   MediaMtxReadinessError,
   waitForMediaMtxReadiness,
   type MediaMtxReadinessErrorCode,
   type MediaMtxReadinessOptions,
-} from './mediamtx-readiness.js';
+} from './infrastructure/mediamtx/mediamtx-readiness.js';
 export {
   MediaMtxService,
   MediaMtxServiceError,
   type MediaMtxServiceErrorCode,
   type MediaMtxServiceOptions,
   type MediaMtxServiceStatus,
-} from './mediamtx-service.js';
+} from './infrastructure/mediamtx/mediamtx-service.js';
 export {
   AlsaAudioDescriptorSchema,
   LocalMediaBindingsSchema,
@@ -101,8 +101,8 @@ export {
   type LocalSrtProgramSink,
   type OverlayInputDescriptor,
   type V4l2VideoDescriptor,
-} from './media-runtime-config.js';
-export type { ProcessCommandPlan, ProcessStdioPlan } from './process-command-plan.js';
+} from './infrastructure/config/media-runtime-config.js';
+export type { ProcessCommandPlan, ProcessStdioPlan } from './infrastructure/process/process-command-plan.js';
 export {
   AgentLoggerError,
   JsonLineLogger,
@@ -111,7 +111,7 @@ export {
   type AgentLogLevel,
   type AgentLogger,
   type JsonLineLoggerOptions,
-} from './agent-logger.js';
+} from './infrastructure/process/agent-logger.js';
 export {
   AgentConfigSchema,
   CourtSnapshotSchema,
@@ -121,31 +121,31 @@ export {
   type CourtSnapshot,
   type CourtWorkerConfig,
   type SupervisorSnapshots,
-} from './config.js';
-export { CourtWorker } from './court-worker.js';
+} from './domain/config.js';
+export { CourtWorker } from './application/court-worker.js';
 export {
   LocalAgentRuntimeConfigError,
   LocalAgentRuntimeConfigSchema,
   parseLocalAgentEnvironment,
   type LocalAgentRuntimeConfig,
   type RuntimeCredential,
-} from './local-runtime-config.js';
+} from './infrastructure/config/local-runtime-config.js';
 export {
   LocalSecretResolver,
   LocalSecretResolverError,
   type LocalSecretResolverErrorCode,
   type ResolvedSecret,
-} from './local-secret-resolver.js';
+} from './infrastructure/config/local-secret-resolver.js';
 export {
   ControlPlaneAdapterError,
   type ControlPlaneAdapterErrorCode,
   type ControlPlanePort,
-} from './control-plane.js';
+} from './infrastructure/supabase/control-plane.js';
 export type {
   ControlPlaneRequest,
   ControlPlaneRequestExecutor,
   ControlPlaneResponse,
-} from './control-plane-request.js';
+} from './infrastructure/supabase/control-plane-request.js';
 export {
   PipelineRuntimeSchema,
   ProfileFingerprintSchema,
@@ -159,15 +159,15 @@ export {
   type RestartAction,
   type StartAction,
   type StopAction,
-} from './models.js';
-export type { CourtPipelinePort } from './ports.js';
-export { reconcileOutput } from './reconcile.js';
+} from './domain/models.js';
+export type { CourtPipelinePort } from './domain/ports.js';
+export { reconcileOutput } from './domain/reconcile.js';
 export {
   createAuthenticatedSupabaseControlPlane,
   createAuthenticatedSupabaseSdkClient,
   type AuthenticatedSupabaseClient,
-} from './supabase-client.js';
-export { SupabaseControlPlane } from './supabase-control-plane.js';
+} from './infrastructure/supabase/supabase-client.js';
+export { SupabaseControlPlane } from './infrastructure/supabase/supabase-control-plane.js';
 export type {
   AdmissionDecision,
   CourtInspectionResult,
@@ -175,31 +175,31 @@ export type {
   CourtWorkerResult,
   SupervisorReconciliationResult,
   SupervisorShutdownResult,
-} from './orchestration-models.js';
-export { Supervisor, type CourtPipelinePorts } from './supervisor.js';
+} from './domain/orchestration-models.js';
+export { Supervisor, type CourtPipelinePorts } from './application/supervisor.js';
 export {
   loadProductionAgentConfig,
   parseProductionAgentConfig,
   ProductionAgentConfigError,
   type ProductionAgentConfig,
-} from './production-agent-config.js';
+} from './application/production-agent-config.js';
 export {
   composeProductionAgent,
   ProductionCompositionError,
   type ProductionAgentComposition,
   type ProductionCourtComposition,
-} from './production-composition.js';
+} from './application/production-composition.js';
 export {
   ObservedStateProjectionError,
   ObservedStateProjector,
-} from './observed-state-projection.js';
+} from './application/observed-state-projection.js';
 export {
   ProductionReconciliationError,
   ProductionReconciliationLoop,
   type ProductionReconciliationLoopOptions,
   type ReconciliationControlPlanePort,
   type ReconciliationSupervisorPort,
-} from './production-reconciliation-loop.js';
+} from './application/production-reconciliation-loop.js';
 export {
   NodeProductionSignalSource,
   ProductionAgentLifecycle,
@@ -208,5 +208,5 @@ export {
   type ProductionAgentLoopPort,
   type ProductionSignal,
   type ProductionSignalSource,
-} from './production-agent-lifecycle.js';
-export { runProductionAgent } from './main.js';
+} from './application/production-agent-lifecycle.js';
+export { runProductionAgent } from './bootstrap/main.js';

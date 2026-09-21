@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ProductionEventBus, productionSseEvent } from '../src/production-events.js';
+import { ProductionEventBus, productionSseEvent } from '../src/features/production/production-events.js';
 
 afterEach(() => { vi.useRealTimers(); });
 

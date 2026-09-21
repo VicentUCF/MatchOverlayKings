@@ -1,12 +1,12 @@
-import type { LocalMediaRuntimeConfig } from '../src/media-runtime-config.js';
-import { LocalMediaRuntimeConfigSchema } from '../src/media-runtime-config.js';
+import type { LocalMediaRuntimeConfig } from '../src/infrastructure/config/media-runtime-config.js';
+import { LocalMediaRuntimeConfigSchema } from '../src/infrastructure/config/media-runtime-config.js';
 import type {
   MediaMtxApiClientError,
   MediaMtxApiClientPort,
   MediaMtxPathsSnapshot,
-} from '../src/mediamtx-api-client.js';
-import type { MediaMtxApiCredentials } from '../src/mediamtx-api-credentials.js';
-import type { EphemeralRuntimeArtifact, EphemeralRuntimeFilesPort } from '../src/ephemeral-runtime-files.js';
+} from '../src/infrastructure/mediamtx/mediamtx-api-client.js';
+import type { MediaMtxApiCredentials } from '../src/infrastructure/mediamtx/mediamtx-api-credentials.js';
+import type { EphemeralRuntimeArtifact, EphemeralRuntimeFilesPort } from '../src/infrastructure/process/ephemeral-runtime-files.js';
 import type {
   ManagedProcessPort,
   ManagedProcessStatus,
@@ -15,9 +15,9 @@ import type {
   ProcessSignal,
   ProcessSignalResult,
   ProcessSpawnerPort,
-} from '../src/managed-process.js';
-import type { ProcessCommandPlan } from '../src/process-command-plan.js';
-import type { SchedulerPort } from '../src/process-stop.js';
+} from '../src/infrastructure/process/managed-process.js';
+import type { ProcessCommandPlan } from '../src/infrastructure/process/process-command-plan.js';
+import type { SchedulerPort } from '../src/infrastructure/process/process-stop.js';
 
 export const PATHS = ['court-1', 'court-2', 'court-3', 'court-4'] as const;
 const COURT_IDS = [

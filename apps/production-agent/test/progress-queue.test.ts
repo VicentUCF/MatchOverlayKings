@@ -1,6 +1,6 @@
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { BoundedProgressQueue } from '../src/progress-queue.js';
+import { BoundedProgressQueue } from '../src/infrastructure/process/progress-queue.js';
 import { bounded } from './managed-process-fixture.js';
 
 describe('BoundedProgressQueue consumer ownership', () => {

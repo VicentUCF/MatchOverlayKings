@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { PilotPreflightDependencies } from '../src/pilot-service.js';
+import type { PilotPreflightDependencies } from '../src/features/pilot/pilot-service.js';
 
 /** Isolates lifecycle tests from the real media probe, covered in pilot-preflight-media.test.ts. */
 export const passingPreflight: PilotPreflightDependencies = {

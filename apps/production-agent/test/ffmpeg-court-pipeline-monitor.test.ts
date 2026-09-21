@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createFfmpegCourtGeneration, recordGenerationFault } from '../src/ffmpeg-court-generation.js';
-import { monitorFfmpegGeneration } from '../src/ffmpeg-court-monitor.js';
-import { FfmpegCourtPipeline } from '../src/ffmpeg-court-pipeline.js';
-import { resolveFfmpegCourtPlan } from '../src/ffmpeg-court-plan.js';
-import { PipelineRuntimeSchema } from '../src/models.js';
+import { createFfmpegCourtGeneration, recordGenerationFault } from '../src/infrastructure/ffmpeg/ffmpeg-court-generation.js';
+import { monitorFfmpegGeneration } from '../src/infrastructure/ffmpeg/ffmpeg-court-monitor.js';
+import { FfmpegCourtPipeline } from '../src/infrastructure/ffmpeg/ffmpeg-court-pipeline.js';
+import { resolveFfmpegCourtPlan } from '../src/infrastructure/ffmpeg/ffmpeg-court-plan.js';
+import { PipelineRuntimeSchema } from '../src/domain/models.js';
 import {
   createContext,
   deferred,

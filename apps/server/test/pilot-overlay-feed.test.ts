@@ -2,7 +2,7 @@ import { Writable } from 'node:stream';
 import { getEventListeners } from 'node:events';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { PilotOverlayHealth } from '@kpl/production-contracts';
-import { PilotOverlayFeed } from '../src/pilot-overlay-feed.js';
+import { PilotOverlayFeed } from '../src/features/pilot/pilot-overlay-feed.js';
 
 afterEach(() => vi.useRealTimers());
 

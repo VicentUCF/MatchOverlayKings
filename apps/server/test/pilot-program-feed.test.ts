@@ -2,7 +2,7 @@ import { Writable } from 'node:stream';
 import { spawnSync } from 'node:child_process';
 import { renderContinuityFrame } from '@kpl/production-assets';
 import { expect, it, vi } from 'vitest';
-import { PilotProgramFeed, type ProgramSourceState } from '../src/pilot-program-feed.js';
+import { PilotProgramFeed, type ProgramSourceState } from '../src/features/pilot/pilot-program-feed.js';
 
 it('renders escaped titles and a BT.709 continuity frame that FFmpeg decodes with the intended colors', () => {
   const frame = renderContinuityFrame('Pista 1', 'Kings & Lions <Final>');

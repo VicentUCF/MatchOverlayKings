@@ -1,9 +1,9 @@
 import { createServer } from 'node:net';
 import { expect, it, vi, afterEach } from 'vitest';
 import { PilotPreflightCheckIdSchema, type PilotPreflight } from '@kpl/production-contracts';
-import { runPilotPreflight, MEDIA_CHECKS } from '../src/pilot-preflight.js';
-import { checkIngestTransport, measurePilotHost } from '../src/pilot-preflight-system.js';
-import { checkPilotMetadata } from '../src/pilot-preflight-checks.js';
+import { runPilotPreflight, MEDIA_CHECKS } from '../src/features/pilot/pilot-preflight.js';
+import { checkIngestTransport, measurePilotHost } from '../src/features/pilot/pilot-preflight-system.js';
+import { checkPilotMetadata } from '../src/features/pilot/pilot-preflight-checks.js';
 
 afterEach(() => vi.useRealTimers());
 const success = { status: 'pass' as const, message: 'Comprobado' };

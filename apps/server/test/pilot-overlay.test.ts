@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { overlayUrl } from '../src/pilot-overlay.js';
+import { overlayUrl } from '../src/features/pilot/pilot-overlay.js';
 
 describe('pilot browser overlay', () => {
   it('pins the streamed overlay to the configured team IDs', () => {

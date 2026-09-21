@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SupabaseProductionAccessGuard } from '../src/production-access.js';
+import { SupabaseProductionAccessGuard } from '../src/features/production/production-access.js';
 
 describe('production runtime access', () => {
   it.each([

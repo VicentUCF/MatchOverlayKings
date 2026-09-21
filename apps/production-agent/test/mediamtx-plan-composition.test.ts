@@ -3,7 +3,7 @@ import {
   buildMediaMtxCommand,
   buildMediaMtxConfigYaml,
   buildMediaMtxPlan,
-} from '../src/mediamtx-plan.js';
+} from '../src/infrastructure/mediamtx/mediamtx-plan.js';
 import { mediaConfig } from './mediamtx-service-fixture.js';
 
 const apiUser = {

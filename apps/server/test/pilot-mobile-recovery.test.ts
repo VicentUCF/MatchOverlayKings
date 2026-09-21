@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type * as ChildProcess from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PilotMobileCameraService } from '../src/pilot-mobile-camera.js';
-import type { PilotMobileRuntimeEvent } from '../src/pilot-mobile-events.js';
-import { PilotService } from '../src/pilot-service.js';
-import { PilotYouTubeGateway } from '../src/pilot-youtube.js';
+import { PilotMobileCameraService } from '../src/features/pilot/pilot-mobile-camera.js';
+import type { PilotMobileRuntimeEvent } from '../src/features/pilot/pilot-mobile-events.js';
+import { PilotService } from '../src/features/pilot/pilot-service.js';
+import { PilotYouTubeGateway } from '../src/features/pilot/pilot-youtube.js';
 
 const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', async (original) => ({ ...await original<typeof ChildProcess>(), spawn: mocks.spawn }));

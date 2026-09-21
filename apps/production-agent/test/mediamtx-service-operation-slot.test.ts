@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MediaMtxApiClientError, type MediaMtxPathsSnapshot } from '../src/mediamtx-api-client.js';
-import { MediaMtxService } from '../src/mediamtx-service.js';
+import { MediaMtxApiClientError, type MediaMtxPathsSnapshot } from '../src/infrastructure/mediamtx/mediamtx-api-client.js';
+import { MediaMtxService } from '../src/infrastructure/mediamtx/mediamtx-service.js';
 import {
   FakeApiClient,
   FakeArtifact,

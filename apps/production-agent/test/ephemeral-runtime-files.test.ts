@@ -19,8 +19,8 @@ import {
   NodeEphemeralRuntimeFiles,
   type EphemeralRuntimeCleanupRecovery,
   type EphemeralRuntimeFilesOptions,
-} from '../src/ephemeral-runtime-files.js';
-import { isTrustedAncestor } from '../src/local-secret-path-trust.js';
+} from '../src/infrastructure/process/ephemeral-runtime-files.js';
+import { isTrustedAncestor } from '../src/infrastructure/config/local-secret-path-trust.js';
 
 const CONFIG_YAML = 'api: yes\napiAddress: 127.0.0.1:9997\n';
 

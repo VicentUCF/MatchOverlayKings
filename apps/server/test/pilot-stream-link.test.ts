@@ -5,10 +5,10 @@ import { join } from 'node:path';
 import type { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PreparePilotSessionInput } from '@kpl/production-contracts';
-import type { PilotOverlayRenderer } from '../src/pilot-overlay.js';
-import { PilotService } from '../src/pilot-service.js';
-import { PilotYouTubeGateway } from '../src/pilot-youtube.js';
-import { SupabasePilotStreamLink, type PilotStreamLink } from '../src/pilot-stream-link.js';
+import type { PilotOverlayRenderer } from '../src/features/pilot/pilot-overlay.js';
+import { PilotService } from '../src/features/pilot/pilot-service.js';
+import { PilotYouTubeGateway } from '../src/features/pilot/pilot-youtube.js';
+import { SupabasePilotStreamLink, type PilotStreamLink } from '../src/features/pilot/pilot-stream-link.js';
 
 const watchUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
 const identity = { homeTeamId: 'kings-of-favar', awayTeamId: 'red-lions' };

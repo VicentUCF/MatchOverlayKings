@@ -1,17 +1,17 @@
 import { passingPreflight } from './pilot-preflight-fixture.js';
 import { EventEmitter } from 'node:events';
 import type * as ChildProcess from 'node:child_process';
-import type * as VideoEncoders from '../src/pilot-video-encoder.js';
+import type * as VideoEncoders from '../src/features/pilot/pilot-video-encoder.js';
 import { PassThrough } from 'node:stream';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PilotService, type PilotPreflightDependencies } from '../src/pilot-service.js';
-import { PilotYouTubeGateway } from '../src/pilot-youtube.js';
-import { YouTubePreparationSchema } from '../src/pilot-youtube-preparation.js';
-import type { ProgramFeedOptions } from '../src/pilot-program-feed.js';
-import type { PilotOverlayOptions } from '../src/pilot-overlay.js';
+import { PilotService, type PilotPreflightDependencies } from '../src/features/pilot/pilot-service.js';
+import { PilotYouTubeGateway } from '../src/features/pilot/pilot-youtube.js';
+import { YouTubePreparationSchema } from '../src/features/pilot/pilot-youtube-preparation.js';
+import type { ProgramFeedOptions } from '../src/features/pilot/pilot-program-feed.js';
+import type { PilotOverlayOptions } from '../src/features/pilot/pilot-overlay.js';
 
 const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', async (original) => ({
@@ -19,7 +19,7 @@ vi.mock('node:child_process', async (original) => ({
   spawn: mocks.spawn,
   spawnSync: () => ({ status: 0, stdout: 'ffmpeg test\n' }),
 }));
-vi.mock('../src/pilot-video-encoder.js', async (original) => {
+vi.mock('../src/features/pilot/pilot-video-encoder.js', async (original) => {
   const actual = await original<typeof VideoEncoders>();
   return { ...actual, detectVideoEncoders: async () => [actual.CPU_ENCODER] };
 });

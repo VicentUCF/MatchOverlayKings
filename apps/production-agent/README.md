@@ -17,6 +17,20 @@ con secuencia monotona y completa las operaciones reclamadas despues de informar
 boton de `/admin` reconoce `reconciliation_requested`, no una salida ya aplicada. Los snapshots
 autorizados son la fuente de verdad.
 
+## Estructura interna
+
+- `src/domain`: modelos y reglas puras de admisión y reconciliación, sin detalles de transporte.
+- `src/application`: coordinación de workers, supervisor, composición y ciclo de reconciliación.
+- `src/infrastructure/process`: procesos administrados, colas locales, logging y canales auxiliares.
+- `src/infrastructure/ffmpeg`: planificación, ejecución, monitorización y cierre de pipelines FFmpeg.
+- `src/infrastructure/mediamtx`: generación, API, readiness y ciclo de vida de MediaMTX.
+- `src/infrastructure/config`: configuración local y resolución segura de secretos.
+- `src/infrastructure/supabase`: adaptación del plano de control remoto.
+- `src/bootstrap`: arranque del ejecutable histórico.
+
+La raíz `src` conserva únicamente `index.ts` como fachada pública. Los archivos nuevos deben entrar
+en la capa que posea su responsabilidad, no directamente en esa raíz.
+
 ## Limites del MVP
 
 - No admite Android, YouTube ni camaras de red.

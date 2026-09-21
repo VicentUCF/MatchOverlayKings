@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CPU_ENCODER, detectVideoEncoders, encoderFilter, encoderInputArguments, encoderKey,
   encoderOutputArguments, isHardwareEncoderFailure, selectVideoEncoder,
-} from '../src/pilot-video-encoder.js';
+} from '../src/features/pilot/pilot-video-encoder.js';
 
 describe('automatic video encoding', () => {
   it('rejects compiled-in encoders whose hardware cannot actually encode', async () => {

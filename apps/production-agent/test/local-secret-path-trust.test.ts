@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTrustedAncestor } from '../src/local-secret-path-trust.js';
+import { isTrustedAncestor } from '../src/infrastructure/config/local-secret-path-trust.js';
 
 const EFFECTIVE_USER_ID = 1000;
 

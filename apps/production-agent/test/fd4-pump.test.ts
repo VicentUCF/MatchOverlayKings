@@ -1,6 +1,6 @@
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { pumpFd4Input } from '../src/fd4-pump.js';
+import { pumpFd4Input } from '../src/infrastructure/process/fd4-pump.js';
 import { deferred, expectPending } from './ffmpeg-court-pipeline-fixture.js';
 
 function pendingChunks(): AsyncIterable<Uint8Array> {

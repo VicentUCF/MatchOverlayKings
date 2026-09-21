@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   MediaMtxApiClientError,
   type MediaMtxPathsSnapshot,
-} from '../src/mediamtx-api-client.js';
-import { MediaMtxReadinessError, waitForMediaMtxReadiness } from '../src/mediamtx-readiness.js';
+} from '../src/infrastructure/mediamtx/mediamtx-api-client.js';
+import { MediaMtxReadinessError, waitForMediaMtxReadiness } from '../src/infrastructure/mediamtx/mediamtx-readiness.js';
 import {
   FakeProcess,
   ManualScheduler,

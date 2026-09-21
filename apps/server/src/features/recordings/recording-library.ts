@@ -15,9 +15,9 @@ import {
   type RecordingAsset,
   type RecordingStream,
 } from '@kpl/production-contracts';
-import { PilotServiceError } from '../../pilot-service-error.js';
+import { PilotServiceError } from '../pilot/pilot-service-error.js';
 import { JsonRecordingSnapshotStore, type RecordingSnapshotStore } from './recording-snapshot-store.js';
-import { PilotYouTubeError, type PilotYouTubeGateway } from '../../pilot-youtube.js';
+import { PilotYouTubeError, type PilotYouTubeGateway } from '../pilot/pilot-youtube.js';
 import {
   InMemoryPublicationTaskQueue,
   PUBLICATION_MAX_ATTEMPTS,

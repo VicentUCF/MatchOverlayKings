@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SerializedTaskQueue } from '../src/serialized-task-queue.js';
+import { SerializedTaskQueue } from '../src/infrastructure/process/serialized-task-queue.js';
 
 describe('SerializedTaskQueue', () => {
   it('recovers its tail after a non-Error rejection while preserving the rejection', async () => {

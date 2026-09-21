@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createMediaMtxApiCredentials,
   type RandomBytesPort,
-} from '../src/mediamtx-api-credentials.js';
+} from '../src/infrastructure/mediamtx/mediamtx-api-credentials.js';
 
 function deterministicBytes(...values: readonly number[]): RandomBytesPort {
   let next = 0;

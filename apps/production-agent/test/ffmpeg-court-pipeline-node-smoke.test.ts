@@ -2,10 +2,10 @@ import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FfmpegCourtPipeline } from '../src/ffmpeg-court-pipeline.js';
-import type { FfmpegCourtPipelineOptions } from '../src/ffmpeg-court-pipeline-model.js';
-import { NodeProcessSpawner } from '../src/managed-process.js';
-import { NodeScheduler } from '../src/process-stop.js';
+import { FfmpegCourtPipeline } from '../src/infrastructure/ffmpeg/ffmpeg-court-pipeline.js';
+import type { FfmpegCourtPipelineOptions } from '../src/infrastructure/ffmpeg/ffmpeg-court-pipeline-model.js';
+import { NodeProcessSpawner } from '../src/infrastructure/process/managed-process.js';
+import { NodeScheduler } from '../src/infrastructure/process/process-stop.js';
 import { createContext, deferred, snapshot, target, TestFailure } from './ffmpeg-court-pipeline-fixture.js';
 
 const CHILD_SOURCE = `#!/usr/bin/env node

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FfmpegCourtPipeline } from '../src/ffmpeg-court-pipeline.js';
-import type { PipelineRuntime } from '../src/models.js';
+import { FfmpegCourtPipeline } from '../src/infrastructure/ffmpeg/ffmpeg-court-pipeline.js';
+import type { PipelineRuntime } from '../src/domain/models.js';
 import {
   createContext,
   flushUntil,

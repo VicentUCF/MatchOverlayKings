@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { afterEach, expect, it, vi } from 'vitest';
-import { measurePilotUpload, PilotUploadCheck, uploadPilotSample } from '../src/pilot-upload-check.js';
-import { checkPilotMetadata } from '../src/pilot-preflight-checks.js';
-import { runPilotPreflight, MEDIA_CHECKS } from '../src/pilot-preflight.js';
+import { measurePilotUpload, PilotUploadCheck, uploadPilotSample } from '../src/features/pilot/pilot-upload-check.js';
+import { checkPilotMetadata } from '../src/features/pilot/pilot-preflight-checks.js';
+import { runPilotPreflight, MEDIA_CHECKS } from '../src/features/pilot/pilot-preflight.js';
 
 afterEach(() => vi.useRealTimers());
 const signal = () => new AbortController().signal;

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { AUDIO_SIGNAL_FILTER, VIDEO_SIGNAL_FILTER, PilotSignalMonitor } from '../src/pilot-signal-monitor.js';
+import { AUDIO_SIGNAL_FILTER, VIDEO_SIGNAL_FILTER, PilotSignalMonitor } from '../src/features/pilot/pilot-signal-monitor.js';
 
 describe('signal monitoring', () => {
   it('detects and clears black, frozen and silent segments using real FFmpeg filters', async () => {

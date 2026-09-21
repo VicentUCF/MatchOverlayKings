@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { writePrivateJson } from '../../private-json.js';
+import { writePrivateJson } from '../../core/private-json.js';
 
 export interface RecordingSnapshotStore {
   read(): Promise<unknown>;

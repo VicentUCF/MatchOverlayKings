@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type RequestListener, type Server, type ServerResponse } from 'node:http';
 import { describe, expect, it } from 'vitest';
-import { MediaMtxApiClient, MediaMtxApiClientError } from '../src/mediamtx-api-client.js';
-import { createMediaMtxApiCredentials } from '../src/mediamtx-api-credentials.js';
+import { MediaMtxApiClient, MediaMtxApiClientError } from '../src/infrastructure/mediamtx/mediamtx-api-client.js';
+import { createMediaMtxApiCredentials } from '../src/infrastructure/mediamtx/mediamtx-api-credentials.js';
 
 type LoopbackServer = {
   readonly port: number;

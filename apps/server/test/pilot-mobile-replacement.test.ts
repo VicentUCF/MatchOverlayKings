@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { PassThrough, Writable } from 'node:stream';
 import { expect, it, vi } from 'vitest';
-import { PilotProgramFeed } from '../src/pilot-program-feed.js';
+import { PilotProgramFeed } from '../src/features/pilot/pilot-program-feed.js';
 
 const mocks = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn }));

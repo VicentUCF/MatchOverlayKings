@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PilotMobileCameraLink } from '@kpl/production-contracts';
-import { PilotMobileCameraService } from '../src/pilot-mobile-camera.js';
-import { encoderProcessIdentity } from '../src/pilot-process-identity.js';
+import { PilotMobileCameraService } from '../src/features/pilot/pilot-mobile-camera.js';
+import { encoderProcessIdentity } from '../src/features/pilot/pilot-process-identity.js';
 
 const cleanups: Array<() => Promise<unknown>> = [];
 afterEach(async () => { while (cleanups.length) await cleanups.pop()?.(); });

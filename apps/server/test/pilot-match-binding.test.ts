@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PreparePilotSessionInput } from '@kpl/production-contracts';
-import { SupabasePilotMatchBinding, type PilotMatchBinding } from '../src/pilot-match-binding.js';
-import { PilotService, PilotServiceError } from '../src/pilot-service.js';
-import { PilotYouTubeError, PilotYouTubeGateway } from '../src/pilot-youtube.js';
+import { SupabasePilotMatchBinding, type PilotMatchBinding } from '../src/features/pilot/pilot-match-binding.js';
+import { PilotService, PilotServiceError } from '../src/features/pilot/pilot-service.js';
+import { PilotYouTubeError, PilotYouTubeGateway } from '../src/features/pilot/pilot-youtube.js';
 
 const input: PreparePilotSessionInput = {
   courtSlug: 'pista-1', mode: 'simulation', sourceId: 'synthetic', homeTeam: 'Kings of Favar', awayTeam: 'Red Lions',

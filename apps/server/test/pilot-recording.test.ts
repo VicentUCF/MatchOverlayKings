@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
-import { pilotProgramCommand } from '../src/pilot-program-command.js';
-import { CPU_ENCODER } from '../src/pilot-video-encoder.js';
-import { checkPilotMetadata } from '../src/pilot-preflight-checks.js';
+import { pilotProgramCommand } from '../src/features/pilot/pilot-program-command.js';
+import { CPU_ENCODER } from '../src/features/pilot/pilot-video-encoder.js';
+import { checkPilotMetadata } from '../src/features/pilot/pilot-preflight-checks.js';
 
 it('writes the full composed program to a non-overwriting fragmented MP4 instead of the network', () => {
   const { argv } = pilotProgramCommand('ffmpeg', 'rtmp://unused/live', 30, CPU_ENCODER, undefined, '/data/part 1.mp4');

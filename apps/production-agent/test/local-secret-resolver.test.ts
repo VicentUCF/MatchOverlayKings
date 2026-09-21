@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { LocalSecretRefSchema } from '@kpl/production-contracts';
 import { describe, expect, it } from 'vitest';
-import { LocalSecretResolver } from '../src/local-secret-resolver.js';
+import { LocalSecretResolver } from '../src/infrastructure/config/local-secret-resolver.js';
 
 async function withSecretRoot<Result>(
   test: (rootPath: string) => Promise<Result>,

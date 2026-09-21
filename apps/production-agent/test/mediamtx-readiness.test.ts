@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { MediaMtxApiClientError } from '../src/mediamtx-api-client.js';
+import { MediaMtxApiClientError } from '../src/infrastructure/mediamtx/mediamtx-api-client.js';
 import {
   MediaMtxReadinessError,
   waitForMediaMtxReadiness,
-} from '../src/mediamtx-readiness.js';
+} from '../src/infrastructure/mediamtx/mediamtx-readiness.js';
 import {
   FakeApiClient,
   FakeProcess,

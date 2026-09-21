@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import type { ProductionAccessGuard } from '../../production-access.js';
-import { PilotServiceError } from '../../pilot-service-error.js';
+import type { ProductionAccessGuard } from '../production/production-access.js';
+import { PilotServiceError } from '../pilot/pilot-service-error.js';
 import { browseRecordingDirectories } from './recording-directory-browser.js';
 import type { RecordingLibrary } from './recording-library.js';
 

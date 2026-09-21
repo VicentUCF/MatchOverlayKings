@@ -1,6 +1,6 @@
 import type { youtube_v3 } from 'googleapis';
 import { describe, expect, it, vi } from 'vitest';
-import { YouTubePreparationSchema, YouTubePreparationTransaction, type YouTubePreparation } from '../src/pilot-youtube-preparation.js';
+import { YouTubePreparationSchema, YouTubePreparationTransaction, type YouTubePreparation } from '../src/features/pilot/pilot-youtube-preparation.js';
 
 const input = { title: 'Kings vs Lions', description: 'Descripción del partido', scheduledAt: '2099-01-01T12:00:00.000Z',
   privacyStatus: 'unlisted' as const, thumbnail: new Uint8Array([1, 2]) };

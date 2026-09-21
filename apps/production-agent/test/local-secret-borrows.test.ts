@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalSecretRefSchema } from '@kpl/production-contracts';
 import { describe, expect, it } from 'vitest';
-import { LocalSecretResolver } from '../src/local-secret-resolver.js';
+import { LocalSecretResolver } from '../src/infrastructure/config/local-secret-resolver.js';
 import { deferred } from './fake-support.js';
 
 async function withSecret<Result>(

@@ -4,10 +4,10 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import { BrowserPilotOverlayRenderer } from '../src/pilot-overlay.js';
-import { probePilotMedia, type PilotMediaProbeOptions } from '../src/pilot-preflight-media.js';
-import { detectVideoEncoders } from '../src/pilot-video-encoder.js';
-import { checkPilotMedia } from '../src/pilot-preflight-checks.js';
+import { BrowserPilotOverlayRenderer } from '../src/features/pilot/pilot-overlay.js';
+import { probePilotMedia, type PilotMediaProbeOptions } from '../src/features/pilot/pilot-preflight-media.js';
+import { detectVideoEncoders } from '../src/features/pilot/pilot-video-encoder.js';
+import { checkPilotMedia } from '../src/features/pilot/pilot-preflight-checks.js';
 
 let directory: string;
 let renderer: BrowserPilotOverlayRenderer;

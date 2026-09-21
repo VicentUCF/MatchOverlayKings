@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createFfmpegCourtGeneration } from '../src/ffmpeg-court-generation.js';
-import { consumeFfmpegProgress } from '../src/ffmpeg-court-progress.js';
-import type { ProcessCloseStatus } from '../src/managed-process.js';
-import { PipelineRuntimeSchema } from '../src/models.js';
+import { createFfmpegCourtGeneration } from '../src/infrastructure/ffmpeg/ffmpeg-court-generation.js';
+import { consumeFfmpegProgress } from '../src/infrastructure/ffmpeg/ffmpeg-court-progress.js';
+import type { ProcessCloseStatus } from '../src/infrastructure/process/managed-process.js';
+import { PipelineRuntimeSchema } from '../src/domain/models.js';
 import {
   ByteQueue,
   createContext,

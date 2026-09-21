@@ -5,8 +5,8 @@ import { Writable } from 'node:stream';
 import { chromium, type Browser } from 'playwright';
 import { expect, it } from 'vitest';
 import type { PilotOverlayHealth } from '@kpl/production-contracts';
-import { BrowserPilotOverlayRenderer } from '../src/pilot-overlay.js';
-import { ffmpegEnvironment } from '../src/pilot-video-encoder.js';
+import { BrowserPilotOverlayRenderer } from '../src/features/pilot/pilot-overlay.js';
+import { ffmpegEnvironment } from '../src/features/pilot/pilot-video-encoder.js';
 
 it('keeps FFmpeg progressing through page, data and browser faults while preserving the last valid overlay', async () => {
   const navigations = new Map<string, number>();

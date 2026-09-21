@@ -1,6 +1,6 @@
 import { OutputIdSchema } from '@kpl/production-contracts';
 import { describe, expect, it } from 'vitest';
-import { FfmpegCourtPipeline } from '../src/ffmpeg-court-pipeline.js';
+import { FfmpegCourtPipeline } from '../src/infrastructure/ffmpeg/ffmpeg-court-pipeline.js';
 import { ByteQueue, createContext, deferred, expectPending, FakeProcess, flushUntil, progress, snapshot, target } from './ffmpeg-court-pipeline-fixture.js';
 
 async function startPipeline() {
