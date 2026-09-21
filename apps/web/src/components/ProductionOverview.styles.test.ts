@@ -9,6 +9,14 @@ const courtCardCss = readFileSync(
   new URL('../styles/components/production-court-card.css', import.meta.url),
   'utf8',
 );
+const resetCss = readFileSync(
+  new URL('../styles/generic/reset.css', import.meta.url),
+  'utf8',
+);
+const overviewCss = readFileSync(
+  new URL('../styles/pages/production-overview.css', import.meta.url),
+  'utf8',
+);
 
 function declarationsFor(css: string, selector: string): string {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -18,6 +26,18 @@ function declarationsFor(css: string, selector: string): string {
 }
 
 describe('production overview accessibility styles', () => {
+  it('uses border-box sizing for elements and their generated content', () => {
+    expect(resetCss).toMatch(/\*,\s*\*::before,\s*\*::after\s*\{[^}]*box-sizing: border-box;/);
+  });
+
+  it('keeps every workspace panel inside the shared production container', () => {
+    const declarations = declarationsFor(overviewCss, '.production-workspace-panel');
+
+    expect(declarations).toContain('width: min(100%, var(--kpl-container-xl));');
+    expect(declarations).toContain('min-width: 0;');
+    expect(declarations).toContain('margin-inline: auto;');
+  });
+
   it('uses the production control-size token for interactive target heights', () => {
     expect(declarationsFor(controlsCss, '.production-overview-page .refresh-button')).toContain(
       'min-height: var(--kpl-control-size-md);',

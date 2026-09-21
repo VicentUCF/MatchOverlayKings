@@ -3,6 +3,12 @@
   padding-bottom: max(var(--kpl-space-7), env(safe-area-inset-bottom));
 }
 
+.production-workspace-panel {
+  width: min(100%, var(--kpl-container-xl));
+  min-width: 0;
+  margin-inline: auto;
+}
+
 .production-workspace-panel:not([hidden]) {
   animation: production-panel-enter var(--kpl-duration-fast) var(--kpl-ease-standard);
 }

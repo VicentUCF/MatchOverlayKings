@@ -438,9 +438,9 @@ En la configuración de la pista, selecciona **Grabación local**, guarda y puls
 Pulsa **Detener** antes de utilizar el archivo como fuente multimedia para emitirlo después.
 
 Los archivos están en `data/recordings/<pista>/<sesión>/` con la configuración por
-defecto. En **Ajustes generales** de Emisiones puedes indicar una ruta absoluta alternativa;
-el runtime creará dentro de ella las subcarpetas de pista y sesión. El panel muestra las rutas
-en el PC del runtime. Si usas Docker, `/app/data/recordings`
+defecto. En **Ajustes generales** de Emisiones, pulsa **Elegir carpeta** para recorrer las
+carpetas reales del equipo de emisión y seleccionar otra ubicación sin escribir ni copiar rutas;
+el runtime creará dentro de ella las subcarpetas de pista y sesión. Si usas Docker, `/app/data/recordings`
 corresponde a `./data/recordings` en el host. La carpeta se sitúa junto al archivo de configuración
 del runtime. Las grabaciones se conservan al detener o reiniciar el servicio.
 Cada reinicio del encoder crea un archivo nuevo, sin sobrescribir las partes anteriores.
