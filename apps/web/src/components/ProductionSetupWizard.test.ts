@@ -39,6 +39,7 @@ function controller(sessions: readonly PilotSession[] = []): ProductionPilotCont
       refreshing: false, pendingCourts: [], courtErrors: {}, error: null,
     },
     localAdminUrl: 'http://127.0.0.1:4310/admin',
+    recordingDirectories: async () => ({ kind: 'error', message: 'No disponible en la prueba' }),
     refresh: async () => undefined,
     configure: async () => false,
     createMobileCamera: async () => null,
@@ -66,7 +67,9 @@ describe('guided production setup', () => {
     expect(html).toContain('Temporada');
     expect(html).toContain('Jornada');
     expect(html).toContain('Carpeta de grabaciones');
-    expect(html).toContain('Todos los archivos de esta producción se guardarán aquí.');
+    expect(html).toContain('Elegir carpeta');
+    expect(html).toContain('Elige una carpeta real del equipo de emisión.');
+    expect(html).toContain('readOnly');
     expect((html.match(/type="checkbox"/g) ?? [])).toHaveLength(3);
     expect(html).toContain('Selecciona al menos una pista');
     expect(html).not.toContain('1 Partido');

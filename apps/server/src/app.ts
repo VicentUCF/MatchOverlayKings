@@ -213,7 +213,7 @@ export async function buildApp(
     try {
       return await browseRecordingDirectories(config.dataDir, request.query.path);
     } catch (error) {
-      throw new PilotServiceError(400, 'DIRECTORY_UNAVAILABLE',
+      throw new PilotServiceError(400, 'INVALID_INPUT',
         error instanceof Error ? error.message : 'No se puede abrir esta carpeta.');
     }
   });

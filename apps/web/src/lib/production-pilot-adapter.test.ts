@@ -19,6 +19,21 @@ const session = {
 } as const;
 
 describe('production pilot adapter', () => {
+  it('opens a real runtime folder without asking the browser for a hidden local path', async () => {
+    const listing = {
+      current: '/srv/kpl/recordings', parent: '/srv/kpl',
+      directories: [{ name: 'pista-1', path: '/srv/kpl/recordings/pista-1' }],
+    };
+    const fetcher = vi.fn(async () => Response.json(listing));
+    const adapter = createProductionPilotAdapter(fetcher as typeof fetch);
+
+    await expect(adapter.recordingDirectories('/srv/kpl/recordings')).resolves.toEqual({ kind: 'success', value: listing });
+    expect(fetcher).toHaveBeenCalledWith(
+      '/api/pilot/recording-directories?path=%2Fsrv%2Fkpl%2Frecordings',
+      undefined,
+    );
+  });
+
   it('allows a fresh local check after restart instead of reusing an interrupted preflight forever', async () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(Response.json({ error: { code: 'OPERATION_INTERRUPTED', message: 'Reinicio' } }, { status: 409 }))

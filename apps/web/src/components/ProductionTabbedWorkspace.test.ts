@@ -10,6 +10,7 @@ import { ProductionPilotWorkspaceView } from './ProductionPilotWorkspace.js';
 const pilot: ProductionPilotController = {
   state: { kind: 'loading' },
   localAdminUrl: 'http://127.0.0.1:4310/admin',
+  recordingDirectories: async () => ({ kind: 'error', message: 'No disponible en la prueba' }),
   refresh: async () => undefined,
   configure: async () => false,
   createMobileCamera: async () => null,

@@ -4,7 +4,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderLiveScoreboardPng } from '@kpl/production-assets';
@@ -30,6 +30,24 @@ afterEach(async () => {
 });
 
 describe('production pilot', () => {
+  it('lets only the local production administrator browse real recording folders', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'kpl-directory-api-'));
+    cleanups.push(() => rm(directory, { recursive: true, force: true }));
+    const app = await createPilotApp('/missing/ffmpeg', directory, { require: async (authorization, capability) => {
+      if (authorization !== 'Bearer admin' || capability !== 'production_admin') {
+        throw new PilotServiceError(403, 'FORBIDDEN', 'Acceso de administrador requerido.');
+      }
+    } });
+
+    expect((await app.inject({ method: 'GET', url: '/api/pilot/recording-directories' })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/api/pilot/recording-directories',
+      headers: { authorization: 'Bearer admin' }, remoteAddress: '192.168.1.20' })).statusCode).toBe(403);
+    const response = await app.inject({ method: 'GET', url: '/api/pilot/recording-directories',
+      headers: { authorization: 'Bearer admin' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ current: resolve(directory, 'recordings'), directories: [] });
+  });
+
   it('records the composed program locally without YouTube and retains its path after restart', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'kpl-recording-'));
     const recordingDirectory = join(directory, 'custom-recordings');
