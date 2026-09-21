@@ -10,7 +10,7 @@ Esta validación comprueba dos riesgos principales antes de una jornada real:
 Ejecutar:
 
 ```bash
-npm run pilot:benchmark
+npm run benchmark:streams
 ```
 
 Se considera aprobada si las tres salidas 1080p30 H.264 + AAC terminan sin error y la más lenta mantiene al menos `1.15×`. Es una prueba aislada de CPU y no sustituye la prueba con capturadoras, overlays y red reales.
@@ -19,7 +19,7 @@ Resultado de referencia obtenido en este PC (Ryzen 5 5600G, 32 GB): `3.04×`, `3
 
 ## Puerta 2 — recorrido de tres pistas
 
-1. Ejecutar `npm run production:local:foreground` y abrir `http://localhost:4310/admin`.
+1. Ejecutar `npm run runtime:start` y abrir `http://localhost:4310/admin`.
 2. Entrar en **Emisiones**, elegir simulación y guardar las tres pistas.
 3. Abrir **Mandos** o entregar al operador `http://localhost:4310/mandos`.
 4. Preparar las tres señales y comprobar sus títulos y miniaturas.

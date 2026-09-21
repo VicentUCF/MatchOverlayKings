@@ -22,12 +22,12 @@ Frontend Vite/React para controlar marcadores de padel y overlays OBS de KingsPa
   MediaMTX, overlays, miniaturas, YouTube, persistencia y recuperación.
 - `apps/production-agent` se conserva como archivo histórico del reconciliador. Está fuera de
   `build`, `test` y `verify`; no se arranca junto al runtime unificado ni expone una ruta operativa
-  alternativa. Su comprobación aislada se ejecuta con `npm run verify:archived-agent`.
+  alternativa. Su comprobación aislada se ejecuta con `npm run archived-agent:verify`.
 
 ## Desarrollo
 
 ```bash
-npm install
+npm ci
 cp apps/web/.env.example apps/web/.env.local
 ```
 
@@ -43,6 +43,26 @@ Levanta Supabase local o usa un proyecto remoto con las migraciones de `supabase
 ```bash
 npm run dev
 ```
+
+`npm run dev` levanta únicamente el frontend Vite para desarrollar la interfaz. No inicia el
+runtime de emisión, RabbitMQ, FFmpeg ni MediaMTX. La aplicación completa para operar emisiones se
+levanta con Docker mediante `npm run docker:up`.
+
+### Comandos principales
+
+| Comando | Uso |
+| --- | --- |
+| `npm run dev` | Frontend local con recarga en caliente en `http://localhost:5173`. |
+| `npm run preview` | Build y previsualización local del frontend en `http://localhost:4300`. |
+| `npm run docker:check` | Valida variables, red, GPU y configuración de Docker Compose. |
+| `npm run docker:up` | Construye y levanta la aplicación completa en Docker. |
+| `npm run docker:logs` | Sigue los logs del runtime de emisión. |
+| `npm run docker:down` | Detiene los contenedores sin borrar los datos persistentes. |
+| `npm run verify` | Ejecuta arquitectura, lint, tests y build completo. |
+
+`npm run runtime:start` ejecuta el runtime completo directamente en el host y se reserva para
+diagnóstico avanzado; requiere que FFmpeg, MediaMTX y el resto de dependencias estén configurados
+fuera de Docker.
 
 URLs locales con Vite:
 
@@ -120,8 +140,8 @@ La instalación soportada usa Docker Compose:
 ```bash
 cp .env.pilot.docker.example .env.pilot.docker
 # Completa Supabase, la IP/CIDR de la LAN, el origen HTTPS del panel y, si procede, YouTube.
-npm run production:local:check
-npm run production:local:up
+npm run docker:check
+npm run docker:up
 ```
 
 Configura `KPL_PILOT_CONTROL_ORIGINS` con el origen exacto del panel, sin ruta; por ejemplo,
@@ -133,9 +153,8 @@ Abre el panel de Vercel en el PC de emisión y acepta el permiso de red local cu
 solicite. Si el permiso se deniega o el navegador no implementa esta conexión, usa el botón
 **Abrir panel local** o entra en `http://localhost:4310/admin`. Los valores
 `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` se incorporan a la web al construir la
-imagen; cambiar cualquiera de ellos exige repetir `npm run production:local:up`. Para seguir el
-servicio usa `npm run production:local:logs`, y para apagarlo sin borrar la configuración usa
-`npm run production:local:down`.
+imagen; cambiar cualquiera de ellos exige repetir `npm run docker:up`. Para seguir el servicio usa
+`npm run docker:logs`, y para apagarlo sin borrar la configuración usa `npm run docker:down`.
 
 El arranque espera a que el servidor y FFmpeg estén listos. Docker reinicia el servicio si cae,
 limita los registros a cinco archivos de 10 MB y concede 20 segundos para detener limpiamente las
@@ -151,8 +170,8 @@ En un equipo nuevo con Docker Compose y acceso a Internet:
 ```bash
 cp .env.pilot.docker.example .env.pilot.docker
 # Edita las credenciales de Supabase; la red LAN se detecta al arrancar.
-npm run production:local:up
-npm run production:local:logs
+npm run docker:up
+npm run docker:logs
 ```
 
 Compose levanta un único contenedor con Node, FFmpeg, el frontend de producción y MediaMTX `1.21.0`.
@@ -161,7 +180,7 @@ UDP `8189`. La API MediaMTX y RTSP no se publican al host: permanecen en loopbac
 contenedor. La carpeta `./data` conserva la configuración local y el token OAuth si se usa YouTube;
 `.env.pilot.docker` no se versiona.
 
-`npm run production:local:up` y `npm run production:local:check` detectan la interfaz con ruta
+`npm run docker:up` y `npm run docker:check` detectan la interfaz con ruta
 predeterminada de Windows y actualizan `KPL_PILOT_LAN_HOST` y `KPL_PILOT_LAN_CIDR` en el archivo
 local `.env.pilot.docker`. En Linux nativo usan la ruta IPv4 predeterminada. Para fijar valores
 manualmente configura `KPL_PILOT_AUTO_LAN=0`. Dentro de WSL, si UFW está activo, autoriza la red
@@ -252,8 +271,8 @@ El Compose usa una red bridge privada fija (`172.30.0.0/24`): solo su gateway `1
 usar las rutas administrativas, mientras que el teléfono sigue limitado a los endpoints móviles
 con token y origen HTTPS.
 
-Para apagarlo sin borrar datos: `npm run production:local:down`. Para actualizar la imagen, repite
-`npm run production:local:up`.
+Para apagarlo sin borrar datos: `npm run docker:down`. Para actualizar la imagen, repite
+`npm run docker:up`.
 
 ### Codificación automática por GPU
 
@@ -264,7 +283,7 @@ en Windows nativo, AMD AMF e Intel Quick Sync; en Linux, los dispositivos VAAPI
 AMD/Intel. Si ninguno funciona, mantiene CPU (x264). La prueba detecta compatibilidad,
 no garantiza capacidad para varias pistas simultáneas: valida la carga con simulaciones.
 
-El arranque habitual `npm run production:local:up` expone automáticamente NVIDIA cuando
+El arranque habitual `npm run docker:up` expone automáticamente NVIDIA cuando
 hay controlador y runtime Docker compatibles, o los dispositivos `/dev/dri/renderD*`
 en Linux con sus grupos de acceso. La imagen incluye los controladores VAAPI Mesa e
 Intel. Para NVIDIA en Linux instala también NVIDIA Container Toolkit y configura su
@@ -310,7 +329,7 @@ real contra una salida nula: no crea recursos externos ni publica contenido.
 Para ejecutarlo en primer plano, fuera de Docker:
 
 ```bash
-npm run production:local:foreground
+npm run runtime:start
 ```
 
 Abre `http://localhost:4310/admin`, inicia sesión y entra en **Emisiones**. Guarda cada pista
@@ -372,7 +391,7 @@ vaya a utilizar; no se aceptan comodines.
 El build de Vercel usa:
 
 ```bash
-npm run build:vercel
+npm run build:web
 ```
 
 Salida: `apps/web/dist`. Las rutas SPA se reescriben a `index.html` en `vercel.json`.
@@ -382,7 +401,7 @@ Salida: `apps/web/dist`. Las rutas SPA se reescriben a `index.html` en `vercel.j
 ```bash
 npm run lint
 npm run test
-npm run build:vercel
+npm run build:web
 npm run test:e2e
 ```
 
@@ -428,7 +447,7 @@ Con el contenedor levantado, el smoke check comprueba el proceso, FFmpeg y sesio
 pendientes. Para convertir YouTube y Android en requisitos obligatorios:
 
 ```bash
-KPL_SMOKE_REQUIRE_YOUTUBE=true KPL_SMOKE_REQUIRE_MOBILE=true npm run production:smoke
+KPL_SMOKE_REQUIRE_YOUTUBE=true KPL_SMOKE_REQUIRE_MOBILE=true npm run smoke
 ```
 
 ## Grabación local para falso directo

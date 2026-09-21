@@ -13,7 +13,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'npm run preview:web',
+    command: 'npm run preview',
     url: 'http://127.0.0.1:4300',
     reuseExistingServer: true,
     timeout: 120_000,

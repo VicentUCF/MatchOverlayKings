@@ -26,13 +26,13 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
 ## El día anterior
 
 - [ ] Ejecutar `npm run verify` con el código exacto que se utilizará.
-- [ ] Ejecutar `npm run production:local:check`.
+- [ ] Ejecutar `npm run docker:check`.
 - [ ] Confirmar que las migraciones de Supabase están aplicadas con
   `npm run supabase:check`.
-- [ ] Levantar el sistema con `npm run production:local:up`.
+- [ ] Levantar el sistema con `npm run docker:up`.
 - [ ] Abrir `http://localhost:4310/ready` y comprobar que responde con `ok: true`.
 - [ ] Entrar en `http://localhost:4310/admin` y conectar YouTube.
-- [ ] Ejecutar `KPL_SMOKE_REQUIRE_YOUTUBE=true npm run production:smoke` y resolver
+- [ ] Ejecutar `KPL_SMOKE_REQUIRE_YOUTUBE=true npm run smoke` y resolver
   todos los resultados `ERROR`.
 - [ ] Configurar los partidos y guardarlos para vincular emisión y marcador.
 - [ ] Preparar una emisión privada de prueba por cada fuente física que se usará.
@@ -68,7 +68,7 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
 - [ ] Después de pulsar `Emitir`, FPS, bitrate y velocidad empiezan a actualizarse.
 - [ ] YouTube informa `live · active · good` antes de cambiar la privacidad o compartir
   el enlace.
-- [ ] `KPL_SMOKE_REQUIRE_YOUTUBE=true npm run production:smoke` no devuelve
+- [ ] `KPL_SMOKE_REQUIRE_YOUTUBE=true npm run smoke` no devuelve
   errores. Añadir `KPL_SMOKE_REQUIRE_MOBILE=true` cuando la fuente sea Android.
 
 ## Durante el directo
@@ -81,7 +81,7 @@ el runtime local se reinicia, sin crear broadcasts duplicados.
   `Fallida`; usar `Recuperar emisión` para conservar el broadcast existente.
 - No reiniciar Docker como primera respuesta a un fallo de cámara. Revisar antes
   la pista, el mensaje y el estado del móvil.
-- Consultar registros con `npm run production:local:logs` desde una terminal de
+- Consultar registros con `npm run docker:logs` desde una terminal de
   soporte, sin cerrar el navegador del operador.
 
 ## Historial y recuperación de operaciones
@@ -172,8 +172,8 @@ Referencia técnica: [metadatos y filtros de FFmpeg](https://ffmpeg.org/ffmpeg-f
 1. No cerrar ni recrear el directo en YouTube.
 2. Abrir `http://localhost:4310/ready`.
 3. Si responde, abrir `http://localhost:4310/mandos` y operar desde el panel local.
-4. Si no responde, consultar `npm run production:local:logs`.
-5. Reiniciar con `npm run production:local:up` solo si el servicio no se recupera.
+4. Si no responde, consultar `npm run docker:logs`.
+5. Reiniciar con `npm run docker:up` solo si el servicio no se recupera.
 6. Volver a Mandos; la sesión debe aparecer como `Interrumpida`.
 7. Comprobar la fuente y pulsar `Recuperar emisión`.
 
@@ -230,7 +230,7 @@ conservar su ajuste anterior de cierre automático.
 
 ### El servicio o el PC se reinician
 
-1. Levantar el servicio con `npm run production:local:up`.
+1. Levantar el servicio con `npm run docker:up`.
 2. Abrir Mandos y localizar `Interrumpida`.
 3. No preparar otra emisión.
 4. Para una cámara Android, mantener abierta su pestaña y esperar a que recupere
@@ -287,8 +287,8 @@ evento:
 
 1. Preparar e iniciar una señal.
 2. Esperar a que aparezcan métricas estables.
-3. Ejecutar `npm run production:local:down`.
-4. Levantar de nuevo con `npm run production:local:up`.
+3. Ejecutar `npm run docker:down`.
+4. Levantar de nuevo con `npm run docker:up`.
 5. Confirmar que la sesión aparece como `Interrumpida`, con el mismo título y el
    mismo enlace de YouTube si corresponde.
 6. Reconectar la cámara Android si se utilizaba.
@@ -303,7 +303,7 @@ evento:
 - [ ] Guardar los logs relevantes de cualquier incidencia.
 - [ ] Registrar minutos de preparación, intervenciones y tiempo de recuperación.
 - [ ] No borrar `./data`: contiene configuración, OAuth y el journal recuperable.
-- [ ] Apagar con `npm run production:local:down`.
+- [ ] Apagar con `npm run docker:down`.
 
 ## Resultado mínimo para considerar superada la prueba
 
