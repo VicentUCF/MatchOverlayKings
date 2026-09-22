@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { CalendarClock, CircleAlert, ExternalLink, Film, HardDrive, Pause, Play, RefreshCw, Upload } from 'lucide-react';
+import { CalendarClock, CircleAlert, ExternalLink, Film, HardDrive, Pause, Play, RefreshCw, Trash2, Upload } from 'lucide-react';
 import type { PublicationJob, RecordingAsset } from '@kpl/production-contracts';
 import { createProductionPilotAdapter } from '../production/production-pilot-adapter.js';
 import { PostproductionWorkspace } from '../postproduction/PostproductionWorkspace.js';
@@ -133,7 +133,11 @@ export function RecordingLibraryWorkspace() {
         onPause={(job) => mutate(job.id, () => adapter.pausePublication(job.id))}
         onResume={(job) => mutate(job.id, () => adapter.resumePublication(job.id))}
         onRetry={(job) => mutate(job.id, () => adapter.retryPublication(job.id))}
-        onSchedule={(job, publishAt) => mutate(job.id, () => adapter.schedulePublication(job.id, publishAt))} />)}
+        onSchedule={(job, publishAt) => mutate(job.id, () => adapter.schedulePublication(job.id, publishAt))}
+        onDelete={(recording) => {
+          if (!window.confirm(`¿Borrar “${recording.title}”?\n\nSe eliminarán la ficha y el archivo MP4 del dispositivo. Las publicaciones ya creadas en YouTube no se borrarán.`)) return Promise.resolve();
+          return mutate(recording.id, () => adapter.deleteRecording(recording.id));
+        }} />)}
     </div>
   </section></>;
 }
@@ -144,7 +148,7 @@ export function recordingPollDelay(state: LibraryState): number | null {
   return null;
 }
 
-function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onRetry, onSchedule }: {
+function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onRetry, onSchedule, onDelete }: {
   readonly asset: RecordingAsset;
   readonly job: PublicationJob | null;
   readonly pending: string | null;
@@ -153,6 +157,7 @@ function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onRet
   readonly onResume: (job: PublicationJob) => Promise<void>;
   readonly onRetry: (job: PublicationJob) => Promise<void>;
   readonly onSchedule: (job: PublicationJob, publishAt: string) => Promise<void>;
+  readonly onDelete: (asset: RecordingAsset) => Promise<void>;
 }) {
   const [title, setTitle] = useState(asset.title.slice(0, 100));
   const [description, setDescription] = useState('Partido de Kings Padel League.');
@@ -163,7 +168,13 @@ function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onRet
   const submitSchedule = (event: FormEvent) => { event.preventDefault(); if (job) void onSchedule(job, new Date(publishAt).toISOString()); };
   return <article className="recording-card" aria-labelledby={`recording-${asset.id}`}>
     <header><div><span className="production-court-card__slug">{asset.courtSlug}</span><h2 id={`recording-${asset.id}`}>{asset.title}</h2></div>
-      <span className={`production-status ${asset.state === 'ready' ? 'success' : asset.state === 'invalid' ? 'danger' : 'info'}`}>{assetLabel(asset)}{asset.origin === 'renovated' ? ' · Renovado' : ''}</span></header>
+      <div className="recording-card__header-actions">
+        <span className={`production-status ${asset.state === 'ready' ? 'success' : asset.state === 'invalid' ? 'danger' : 'info'}`}>{assetLabel(asset)}{asset.origin === 'renovated' ? ' · Renovado' : ''}</span>
+        <button type="button" className="refresh-button recording-delete-button"
+          disabled={asset.state === 'recording' || pending !== null}
+          title={asset.state === 'recording' ? 'Detén la grabación antes de borrarla' : undefined}
+          onClick={() => void onDelete(asset)}><Trash2 aria-hidden="true" />{pending === asset.id ? 'Borrando…' : 'Borrar'}</button>
+      </div></header>
     <dl className="recording-card__facts">
       <div><dt>Jornada</dt><dd>{asset.matchdayNumber} · {asset.seasonLabel}</dd></div>
       <div><dt>Duración</dt><dd>{asset.durationSeconds === null ? '—' : duration(asset.durationSeconds)}</dd></div>

@@ -8,11 +8,12 @@ import type { PostproductionService } from './postproduction-service.js';
 
 export function registerPostproductionRoutes(app: FastifyInstance, dependencies: {
   readonly sourceRoot: string;
+  readonly operatorOrigin: string;
   readonly postproduction: PostproductionService;
   readonly productionAccess: ProductionAccessGuard;
   readonly requireLocal: (ip: string) => void;
 }): void {
-  const { sourceRoot, postproduction, productionAccess, requireLocal } = dependencies;
+  const { sourceRoot, operatorOrigin, postproduction, productionAccess, requireLocal } = dependencies;
   const admin = async (ip: string, authorization: string | undefined) => {
     requireLocal(ip); await productionAccess.require(authorization, 'production_admin');
   };
@@ -33,6 +34,11 @@ export function registerPostproductionRoutes(app: FastifyInstance, dependencies:
   app.get<{ Params: { projectId: string } }>('/api/pilot/postproduction/projects/:projectId', async (request) => {
     await admin(request.ip, request.headers.authorization); return { project: postproduction.get(request.params.projectId) };
   });
+  app.delete<{ Params: { projectId: string } }>('/api/pilot/postproduction/projects/:projectId', async (request) => {
+    await admin(request.ip, request.headers.authorization);
+    await postproduction.deleteProject(request.params.projectId);
+    return { ok: true };
+  });
   app.put<{ Params: { projectId: string } }>('/api/pilot/postproduction/projects/:projectId/checkpoint', async (request) => {
     await admin(request.ip, request.headers.authorization);
     return { project: await postproduction.checkpoint(request.params.projectId, request.body) };
@@ -51,6 +57,20 @@ export function registerPostproductionRoutes(app: FastifyInstance, dependencies:
     await admin(request.ip, request.headers.authorization);
     const token = postproduction.issueMediaToken(request.params.projectId);
     return { url: `/api/pilot/postproduction/projects/${encodeURIComponent(request.params.projectId)}/media?token=${encodeURIComponent(token)}` };
+  });
+  app.post<{ Params: { projectId: string } }>('/api/pilot/postproduction/projects/:projectId/operator-access', async (request) => {
+    await admin(request.ip, request.headers.authorization);
+    const access = postproduction.issueOperatorAccess(request.params.projectId);
+    const controlId = `postproduction-${request.params.projectId}`;
+    return {
+      controlUrl: `${operatorOrigin}/control/${encodeURIComponent(controlId)}#token=${encodeURIComponent(access.token)}`,
+      expiresAt: access.expiresAt,
+    };
+  });
+  app.put<{ Params: { projectId: string } }>('/api/pilot/postproduction/projects/:projectId/playhead', async (request) => {
+    await admin(request.ip, request.headers.authorization);
+    postproduction.updatePlayhead(request.params.projectId, request.body);
+    return { ok: true };
   });
   app.get<{ Params: { projectId: string }; Querystring: { token?: string } }>(
     '/api/pilot/postproduction/projects/:projectId/media', async (request, reply) => {
@@ -72,6 +92,23 @@ export function registerPostproductionRoutes(app: FastifyInstance, dependencies:
       requireLocal(request.ip); return postproduction.renderState(request.params.projectId, request.query.token ?? '');
     },
   );
+  app.get<{ Params: { projectId: string } }>('/api/postproduction-control/:projectId/state', async (request) => (
+    postproduction.operatorSnapshot(request.params.projectId, bearerToken(request.headers.authorization))
+  ));
+  app.post<{ Params: { projectId: string } }>('/api/postproduction-control/:projectId/command', async (request) => (
+    postproduction.operatorCommand(request.params.projectId, bearerToken(request.headers.authorization), request.body)
+  ));
+}
+
+function bearerToken(authorization: string | undefined): string {
+  if (!authorization?.startsWith('Bearer ')) {
+    throw new PilotServiceError(401, 'FORBIDDEN', 'Falta el enlace de acceso del operador.');
+  }
+  const token = authorization.slice('Bearer '.length).trim();
+  if (!/^[a-f0-9]{64}$/.test(token)) {
+    throw new PilotServiceError(401, 'FORBIDDEN', 'El enlace de acceso del operador no es válido.');
+  }
+  return token;
 }
 
 function parseRange(value: string | undefined, size: number): { start: number; end: number } | null {

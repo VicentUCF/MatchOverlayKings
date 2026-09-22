@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { stat } from 'node:fs/promises';
+import { rm, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -35,12 +35,14 @@ type Snapshot = {
   readonly assets: readonly RecordingAsset[];
   readonly jobs: readonly PublicationJob[];
   readonly reconciliations: Readonly<Record<string, string>>;
+  readonly deletedAssetIds: readonly string[];
 };
 
 export class RecordingLibrary {
   private assets = new Map<string, RecordingAsset>();
   private jobs = new Map<string, PublicationJob>();
   private reconciliations = new Map<string, string>();
+  private deletedAssetIds = new Set<string>();
   private uploads = new Map<string, AbortController>();
   private queueRecoveryTimer: NodeJS.Timeout | null = null;
 
@@ -57,11 +59,13 @@ export class RecordingLibrary {
     try {
       const parsed = await this.snapshots.read();
       if (typeof parsed !== 'object' || parsed === null) throw new Error('Invalid recording index');
-      const snapshot = parsed as { assets?: unknown; jobs?: unknown };
+      const snapshot = parsed as { assets?: unknown; jobs?: unknown; deletedAssetIds?: unknown };
       const assets = RecordingAssetsSchema.safeParse(snapshot.assets ?? []);
       const jobs = PublicationJobsSchema.safeParse(snapshot.jobs ?? []);
-      if (!assets.success || !jobs.success) throw new Error('Invalid recording index');
+      const deletedAssetIds = parseDeletedAssetIds(snapshot.deletedAssetIds ?? []);
+      if (!assets.success || !jobs.success || deletedAssetIds === null) throw new Error('Invalid recording index');
       this.assets = new Map(assets.data.map((asset) => [asset.id, asset]));
+      this.deletedAssetIds = new Set(deletedAssetIds);
       this.jobs = new Map(jobs.data.map((job): [string, PublicationJob] => [job.id, job.state === 'uploading'
         ? { ...job, state: 'paused', error: 'La subida se pausó al reiniciar el runtime.' }
         : job]));
@@ -94,6 +98,7 @@ export class RecordingLibrary {
     for (const filePath of session.recordingFiles ?? []) {
       this.assertOwnedPath(filePath, configuration.recordingDirectory ?? resolve(dirname(this.path), 'recordings'));
       const id = createHash('sha256').update(`${session.id}\0${filePath}`).digest('hex');
+      if (this.deletedAssetIds.has(id)) continue;
       const previous = this.assets.get(id);
       const active = session.status !== 'stopped';
       const candidate = RecordingAssetSchema.parse({
@@ -119,8 +124,9 @@ export class RecordingLibrary {
     readonly seasonLabel: string;
     readonly matchdayNumber: number;
     readonly path: string;
+    readonly storageRoot?: string;
   }): Promise<RecordingAsset> {
-    this.assertOwnedPath(input.path, resolve(dirname(this.path), 'recordings'));
+    this.assertOwnedPath(input.path, input.storageRoot ?? resolve(dirname(this.path), 'recordings'));
     const id = createHash('sha256').update(`${input.projectId}\0${input.path}`).digest('hex');
     const now = new Date().toISOString();
     const asset = RecordingAssetSchema.parse({
@@ -129,6 +135,7 @@ export class RecordingLibrary {
       createdAt: now, finalizedAt: null, sizeBytes: null, durationSeconds: null, streams: [],
       state: 'validating', error: null, origin: 'renovated', sourceProjectId: input.projectId,
     });
+    this.deletedAssetIds.delete(id);
     this.assets.set(id, asset);
     await this.validate(id);
     await this.persist();
@@ -153,6 +160,24 @@ export class RecordingLibrary {
     await this.persist();
     this.startUpload(job.id);
     return job;
+  }
+
+  public async deleteAsset(assetId: string): Promise<void> {
+    const asset = this.assets.get(assetId);
+    if (!asset) throw new PilotServiceError(404, 'NOT_FOUND', 'No existe esa grabación.');
+    if (asset.state === 'recording') {
+      throw new PilotServiceError(409, 'CONFLICT', 'Detén la grabación antes de borrarla.');
+    }
+    const jobs = [...this.jobs.values()].filter((job) => job.assetId === assetId);
+    for (const job of jobs) this.uploads.get(job.id)?.abort();
+    await rm(asset.path, { force: true });
+    this.assets.delete(assetId);
+    this.deletedAssetIds.add(assetId);
+    for (const job of jobs) {
+      this.jobs.delete(job.id);
+      this.reconciliations.delete(job.id);
+    }
+    await this.persist();
   }
 
   public async pause(jobId: string): Promise<PublicationJob> {
@@ -408,6 +433,7 @@ export class RecordingLibrary {
       assets: this.listAssets(),
       jobs: this.listJobs(),
       reconciliations: Object.fromEntries(this.reconciliations),
+      deletedAssetIds: [...this.deletedAssetIds].sort(),
     };
     await this.snapshots.write(snapshot);
     this.onChange();
@@ -416,6 +442,12 @@ export class RecordingLibrary {
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+}
+
+function parseDeletedAssetIds(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((id) => typeof id === 'string' && /^[a-f0-9]{64}$/.test(id))
+    ? value
+    : null;
 }
 
 function mapYouTube(error: unknown): PilotServiceError {

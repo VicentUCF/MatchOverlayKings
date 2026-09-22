@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -16,6 +17,80 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { while (cleanups.length) await cleanups.pop()?.(); });
 
 describe('recording library', () => {
+  it('deletes a stopped recording, its publication metadata and keeps it deleted after reconciliation', async () => {
+    const fixture = await createFixture();
+    const asset = { ...fixture.asset, id: createHash('sha256').update(`${fixture.asset.sessionId}\0${fixture.asset.path}`).digest('hex') };
+    const now = new Date().toISOString();
+    const paused: PublicationJob = {
+      id: '11111111-1111-4111-8111-111111111111', assetId: asset.id, state: 'paused',
+      title: asset.title, description: '', uploadUrl: null, uploadedBytes: 0, totalBytes: 16,
+      youtubeVideoId: null, watchUrl: null, publishAt: null, createdAt: now, updatedAt: now, error: null,
+    };
+    await writeFile(fixture.indexPath, JSON.stringify({ assets: [asset], jobs: [paused] }));
+    const library = new RecordingLibrary(fixture.indexPath, '/bin/false', fakeGateway().value);
+    await library.initialize();
+
+    await library.deleteAsset(asset.id);
+
+    expect(library.listAssets()).toEqual([]);
+    expect(library.listJobs()).toEqual([]);
+    await expect(stat(asset.path)).rejects.toMatchObject({ code: 'ENOENT' });
+    await library.reconcileSession({
+      id: asset.sessionId, courtSlug: asset.courtSlug, mode: 'recording', status: 'stopped', title: asset.title,
+      recordingFiles: [asset.path],
+    } as never, [{
+      courtSlug: asset.courtSlug, recordingDirectory: join(dirname(fixture.indexPath), 'recordings'),
+      seasonLabel: asset.seasonLabel, matchdayNumber: asset.matchdayNumber,
+    }] as never);
+    expect(library.listAssets()).toEqual([]);
+    await library.shutdown();
+
+    const restarted = new RecordingLibrary(fixture.indexPath, '/bin/false', fakeGateway().value);
+    await restarted.initialize();
+    await restarted.reconcileSession({
+      id: asset.sessionId, courtSlug: asset.courtSlug, mode: 'recording', status: 'stopped', title: asset.title,
+      recordingFiles: [asset.path],
+    } as never, [{
+      courtSlug: asset.courtSlug, recordingDirectory: join(dirname(fixture.indexPath), 'recordings'),
+      seasonLabel: asset.seasonLabel, matchdayNumber: asset.matchdayNumber,
+    }] as never);
+    expect(restarted.listAssets()).toEqual([]);
+    await restarted.shutdown();
+  });
+
+  it('does not delete a recording while it is active', async () => {
+    const fixture = await createFixture();
+    await writeFile(fixture.indexPath, JSON.stringify({ assets: [{ ...fixture.asset, state: 'recording' }], jobs: [] }));
+    const library = new RecordingLibrary(fixture.indexPath, '/bin/false', fakeGateway().value);
+    await library.initialize();
+
+    await expect(library.deleteAsset(fixture.asset.id)).rejects.toThrow('Detén la grabación');
+    await expect(stat(fixture.asset.path)).resolves.toBeDefined();
+    await library.shutdown();
+  });
+
+  it('registers a rendered asset directly from its configured external output root', async () => {
+    const fixture = await createFixture();
+    const outputRoot = join(dirname(fixture.indexPath), 'device-output');
+    const outputPath = join(outputRoot, 'renovado.mp4');
+    await mkdir(outputRoot);
+    await writeFile(outputPath, Buffer.alloc(16, 1));
+    const library = new RecordingLibrary(fixture.indexPath, '/bin/false', fakeGateway().value);
+    await library.initialize();
+
+    await expect(library.registerDerivedAsset({
+      projectId: '11111111-1111-4111-8111-111111111111', courtSlug: 'pista-1',
+      title: 'Partido renovado', seasonLabel: 'T2', matchdayNumber: 1,
+      path: outputPath, storageRoot: outputRoot,
+    })).resolves.toMatchObject({ path: outputPath, origin: 'renovated' });
+
+    await expect(library.registerDerivedAsset({
+      projectId: '33333333-3333-4333-8333-333333333333', courtSlug: 'pista-1',
+      title: 'Fuera de raíz', seasonLabel: 'T2', matchdayNumber: 1, path: outputPath,
+    })).rejects.toThrow('fuera de la carpeta configurada');
+    await library.shutdown();
+  });
+
   it('persists one resumable upload, reconciles it after restart and schedules publication', async () => {
     const fixture = await createFixture();
     const gateway = fakeGateway();

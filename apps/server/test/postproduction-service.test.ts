@@ -20,6 +20,19 @@ afterEach(async () => {
 });
 
 describe('PostproductionService', () => {
+  it('deletes an editing project while preserving its original video', async () => {
+    const fixture = await createFixture();
+    const project = await fixture.service.create(createInput('match.mp4'));
+    const projectPath = join(fixture.dataRoot, 'postproduction', 'projects', `${project.id}.json`);
+
+    await fixture.service.deleteProject(project.id);
+
+    expect(fixture.service.list()).toEqual([]);
+    expect(() => fixture.service.get(project.id)).toThrow('No existe ese proyecto');
+    await expect(readFile(projectPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(fixture.sourceRoot, 'match.mp4'))).resolves.toBeDefined();
+  });
+
   it('replays and persists a completed-game checkpoint', async () => {
     const fixture = await createFixture();
     const project = await fixture.service.create(createInput('match.mp4'));
@@ -52,11 +65,34 @@ describe('PostproductionService', () => {
       .rejects.toThrow('no coincide con la huella');
   });
 
+  it('records commands from the usual operator control at the current video position', async () => {
+    const fixture = await createFixture();
+    const project = await fixture.service.create(createInput('match.mp4'));
+    const access = fixture.service.issueOperatorAccess(project.id);
+    fixture.service.updatePlayhead(project.id, { playheadMs: 4_250 });
+
+    let snapshot = fixture.service.operatorSnapshot(project.id, access.token);
+    for (let index = 0; index < 4; index += 1) {
+      snapshot = await fixture.service.operatorCommand(project.id, access.token, {
+        expectedVersion: (snapshot.state as unknown as MatchState).version,
+        commandId: randomUUID(), kind: 'add_point', payload: { side: 'home' },
+      });
+    }
+
+    const saved = fixture.service.get(project.id);
+    expect(saved.checkpoint.actions).toHaveLength(4);
+    expect(saved.checkpoint.actions.every(({ timestampMs }) => timestampMs === 4_250)).toBe(true);
+    expect((saved.checkpoint.state as unknown as MatchState).sets[0]?.homeGames).toBe(1);
+    expect(saved.checkpoint.reason).toBe('game');
+    expect(snapshot.playheadMs).toBe(4_250);
+    expect(() => fixture.service.operatorSnapshot(project.id, '0'.repeat(64))).toThrow('no es válido');
+  });
+
   it('renders a short synthetic MP4 through a temporary file and registers the result', async () => {
     const root = await mkdtemp(join(tmpdir(), 'kpl-postproduction-render-'));
     temporaryDirectories.push(root);
-    const dataRoot = join(root, 'data'); const sourceRoot = join(root, 'source');
-    await mkdir(dataRoot); await mkdir(sourceRoot);
+    const dataRoot = join(root, 'data'); const sourceRoot = join(root, 'source'); const outputRoot = join(root, 'device-output');
+    await mkdir(dataRoot); await mkdir(sourceRoot); await mkdir(outputRoot);
     const sourcePath = join(sourceRoot, 'short.mp4');
     await execFileAsync('/usr/bin/ffmpeg', [
       '-nostdin', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=320x240:r=30',
@@ -76,7 +112,7 @@ describe('PostproductionService', () => {
     };
     const registerDerivedAsset = vi.fn(async () => ({ id: 'a'.repeat(64), state: 'ready', error: null }));
     const service = new PostproductionService(
-      dataRoot, sourceRoot, '/usr/bin/ffmpeg', '/usr/bin/ffprobe', 'http://127.0.0.1:4310', join(root, 'missing.mp3'),
+      dataRoot, sourceRoot, outputRoot, '/usr/bin/ffmpeg', '/usr/bin/ffprobe', 'http://127.0.0.1:4310', join(root, 'missing.mp3'),
       renderer, { registerDerivedAsset } as unknown as RecordingLibrary, () => false,
     );
     await service.initialize();
@@ -87,8 +123,11 @@ describe('PostproductionService', () => {
 
     expect(completed.status).toBe('ready');
     expect(registerDerivedAsset).toHaveBeenCalledOnce();
-    await expect(readFile(join(dataRoot, 'recordings', 'renovated', `${project.id}.mp4`))).resolves.not.toHaveLength(0);
-    await expect(readFile(join(dataRoot, 'recordings', 'renovated', `${project.id}.mp4.partial`))).rejects.toThrow();
+    await expect(readFile(join(outputRoot, `${project.id}.mp4`))).resolves.not.toHaveLength(0);
+    await expect(readFile(join(outputRoot, `${project.id}.mp4.partial`))).rejects.toThrow();
+    expect(registerDerivedAsset).toHaveBeenCalledWith(expect.objectContaining({
+      path: join(outputRoot, `${project.id}.mp4`), storageRoot: outputRoot,
+    }));
   }, 15_000);
 });
 
@@ -97,7 +136,8 @@ async function createFixture() {
   temporaryDirectories.push(root);
   const dataRoot = join(root, 'data');
   const sourceRoot = join(root, 'source');
-  await mkdir(dataRoot); await mkdir(sourceRoot);
+  const outputRoot = join(root, 'output');
+  await mkdir(dataRoot); await mkdir(sourceRoot); await mkdir(outputRoot);
   await writeFile(join(sourceRoot, 'match.mp4'), 'synthetic-video');
   const ffprobePath = join(root, 'ffprobe');
   await writeFile(ffprobePath, `#!/bin/sh
@@ -107,7 +147,7 @@ printf '%s' '{"format":{"duration":"12"},"streams":[{"codec_type":"video","width
   const renderer = { start: vi.fn(), close: vi.fn() } as unknown as PilotOverlayRenderer;
   const recordings = { registerDerivedAsset: vi.fn() } as unknown as RecordingLibrary;
   const service = new PostproductionService(
-    dataRoot, sourceRoot, '/bin/false', ffprobePath, 'http://127.0.0.1:4310', join(root, 'missing.mp3'),
+    dataRoot, sourceRoot, outputRoot, '/bin/false', ffprobePath, 'http://127.0.0.1:4310', join(root, 'missing.mp3'),
     renderer, recordings, () => false,
   );
   await service.initialize();

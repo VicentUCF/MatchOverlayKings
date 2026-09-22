@@ -19,6 +19,16 @@ const session = {
 } as const;
 
 describe('production pilot adapter', () => {
+  it('deletes recordings and postproduction projects through their admin endpoints', async () => {
+    const fetcher = vi.fn(async () => Response.json({ ok: true }));
+    const adapter = createProductionPilotAdapter(fetcher as typeof fetch);
+
+    await expect(adapter.deleteRecording('a'.repeat(64))).resolves.toEqual({ kind: 'success', value: { ok: true } });
+    await expect(adapter.deletePostproductionProject(session.id)).resolves.toEqual({ kind: 'success', value: { ok: true } });
+    expect(fetcher).toHaveBeenNthCalledWith(1, `/api/pilot/recordings/${'a'.repeat(64)}`, { method: 'DELETE' });
+    expect(fetcher).toHaveBeenNthCalledWith(2, `/api/pilot/postproduction/projects/${session.id}`, { method: 'DELETE' });
+  });
+
   it('exposes an explicit retry for a terminal publication reconciliation', async () => {
     const job = {
       id: '11111111-1111-4111-8111-111111111111', assetId: 'a'.repeat(64), state: 'processing',

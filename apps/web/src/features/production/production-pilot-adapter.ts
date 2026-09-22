@@ -18,6 +18,8 @@ import {
   PublicationJobsSchema,
   PostproductionProjectSchema,
   PostproductionProjectsSchema,
+  PostproductionOperatorAccessSchema,
+  PostproductionPlayheadInputSchema,
   PostproductionSourceListingSchema,
   CreatePostproductionProjectInputSchema,
   RelinkPostproductionSourceInputSchema,
@@ -29,6 +31,7 @@ import {
   type PilotSession,
   type PilotPreflightCheckId,
   type PreparePilotSessionInput,
+  type PostproductionPlayheadInput,
   type UpdatePilotMobileCameraDesiredInput,
   type CreatePostproductionProjectInput,
   type RelinkPostproductionSourceInput,
@@ -59,6 +62,7 @@ const PublicationEnvelopeSchema = z.strictObject({ job: PublicationJobSchema });
 const PostproductionProjectEnvelopeSchema = z.strictObject({ project: PostproductionProjectSchema });
 const PostproductionProjectsEnvelopeSchema = z.strictObject({ projects: PostproductionProjectsSchema });
 const MediaTokenEnvelopeSchema = z.strictObject({ url: z.string().startsWith('/api/pilot/postproduction/') });
+const OperationAcceptedSchema = z.strictObject({ ok: z.literal(true) });
 const RecordingDirectoryListingSchema = z.strictObject({
   current: z.string().min(1),
   parent: z.string().min(1).nullable(),
@@ -167,6 +171,8 @@ export function createProductionPilotAdapter(
       PostproductionSourceListingSchema,
     ),
     postproductionProjects: () => request('/api/pilot/postproduction/projects', PostproductionProjectsEnvelopeSchema),
+    deletePostproductionProject: (id: string) => request(
+      `/api/pilot/postproduction/projects/${encodeURIComponent(id)}`, OperationAcceptedSchema, { method: 'DELETE' }),
     createPostproductionProject: (input: CreatePostproductionProjectInput) => {
       const parsed = CreatePostproductionProjectInputSchema.safeParse(input);
       if (!parsed.success) return Promise.resolve({ kind: 'error' as const, message: 'Revisa los datos de la renovación.' });
@@ -196,10 +202,24 @@ export function createProductionPilotAdapter(
       const result = await request(`/api/pilot/postproduction/projects/${encodeURIComponent(id)}/media-token`, MediaTokenEnvelopeSchema, { method: 'POST' });
       return result.kind === 'success' ? { kind: 'success', value: `${baseUrl}${result.value.url}` } : result;
     },
+    createPostproductionOperatorAccess: (id: string) => request(
+      `/api/pilot/postproduction/projects/${encodeURIComponent(id)}/operator-access`,
+      PostproductionOperatorAccessSchema,
+      { method: 'POST' },
+    ),
+    updatePostproductionPlayhead: (id: string, input: PostproductionPlayheadInput) => {
+      const parsed = PostproductionPlayheadInputSchema.safeParse(input);
+      if (!parsed.success) return Promise.resolve({ kind: 'error' as const, message: 'La posición del vídeo no es válida.' });
+      return request(`/api/pilot/postproduction/projects/${encodeURIComponent(id)}/playhead`, OperationAcceptedSchema, {
+        method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(parsed.data),
+      });
+    },
     recordingDirectories: (path?: string) => request(
       `/api/pilot/recording-directories${path ? `?path=${encodeURIComponent(path)}` : ''}`,
       RecordingDirectoryListingSchema,
     ),
+    deleteRecording: (assetId: string) => request(
+      `/api/pilot/recordings/${encodeURIComponent(assetId)}`, OperationAcceptedSchema, { method: 'DELETE' }),
     createPublication: (assetId: string, input: { readonly title: string; readonly description: string }) => request(
       `/api/pilot/recordings/${encodeURIComponent(assetId)}/uploads`, PublicationEnvelopeSchema, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),

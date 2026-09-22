@@ -108,6 +108,7 @@ export async function buildApp(
   const postproduction = new PostproductionService(
     config.dataDir,
     config.postproductionSourceRoot ?? resolve(config.dataDir, 'imports'),
+    config.postproductionOutputRoot ?? resolve(config.dataDir, 'exports'),
     config.pilot.ffmpegPath,
     join(dirname(config.pilot.ffmpegPath), 'ffprobe'),
     `http://127.0.0.1:${config.port}`,
@@ -281,6 +282,9 @@ export async function buildApp(
   });
   registerPostproductionRoutes(app, {
     sourceRoot: config.postproductionSourceRoot,
+    operatorOrigin: config.pilot.mobileCamera?.lanHost
+      ? `http://${config.pilot.mobileCamera.lanHost}:${config.port}`
+      : `http://localhost:${config.port}`,
     postproduction,
     productionAccess,
     requireLocal: requireLocalPilot,

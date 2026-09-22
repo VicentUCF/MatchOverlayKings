@@ -8,9 +8,12 @@ import { promisify } from 'node:util';
 import {
   CreatePostproductionProjectInputSchema,
   PostproductionProjectSchema,
+  PostproductionControlCommandInputSchema,
+  PostproductionPlayheadInputSchema,
   RelinkPostproductionSourceInputSchema,
   SavePostproductionCheckpointInputSchema,
   type PostproductionAction,
+  type PostproductionControlSnapshot,
   type PostproductionProject,
   type PostproductionSource,
 } from '@kpl/production-contracts';
@@ -33,14 +36,22 @@ type RenderRuntime = {
   clockMs: number;
 };
 
+type OperatorSession = {
+  readonly token: string;
+  readonly expiresAt: number;
+};
+
 export class PostproductionService {
   private readonly projects = new Map<string, PostproductionProject>();
   private readonly mediaTokens = new Map<string, { projectId: string; expiresAt: number; verified: boolean }>();
+  private readonly operatorSessions = new Map<string, OperatorSession>();
+  private readonly playheads = new Map<string, number>();
   private render: RenderRuntime | null = null;
 
   public constructor(
     private readonly dataDirectory: string,
     private readonly sourceRoot: string,
+    private readonly outputRoot: string,
     private readonly ffmpegPath: string,
     private readonly ffprobePath: string,
     private readonly baseUrl: string,
@@ -65,6 +76,7 @@ export class PostproductionService {
             } : null }
           : parsed;
         this.projects.set(project.id, project);
+        this.playheads.set(project.id, project.checkpoint.playheadMs);
         if (project !== parsed) await this.persist(project);
       } catch { /* A corrupt project is isolated; other projects remain available. */ }
     }
@@ -98,8 +110,24 @@ export class PostproductionService {
       render: null, createdAt: now, updatedAt: now,
     });
     this.projects.set(id, project);
+    this.playheads.set(id, 0);
     await this.persist(project);
     return project;
+  }
+
+  public async deleteProject(id: string): Promise<void> {
+    const project = this.get(id);
+    if (project.status === 'rendering' || this.render?.projectId === id) {
+      throw new PilotServiceError(409, 'CONFLICT', 'Cancela el render antes de borrar el proyecto.');
+    }
+    await rm(join(this.projectsDirectory(), `${id}.json`), { force: true });
+    this.projects.delete(id);
+    this.playheads.delete(id);
+    this.operatorSessions.delete(id);
+    for (const [token, grant] of this.mediaTokens) {
+      if (grant.projectId === id) this.mediaTokens.delete(token);
+    }
+    this.onChange();
   }
 
   public async checkpoint(id: string, rawInput: unknown): Promise<PostproductionProject> {
@@ -120,8 +148,83 @@ export class PostproductionService {
       updatedAt: now,
     });
     this.projects.set(id, next);
+    this.playheads.set(id, input.data.playheadMs);
     await this.persist(next);
     return next;
+  }
+
+  public issueOperatorAccess(id: string): { token: string; expiresAt: string } {
+    const project = this.get(id);
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = Date.now() + 18 * 60 * 60_000;
+    this.operatorSessions.set(id, { token, expiresAt });
+    this.playheads.set(id, this.playheads.get(id) ?? project.checkpoint.playheadMs);
+    return { token, expiresAt: new Date(expiresAt).toISOString() };
+  }
+
+  public updatePlayhead(id: string, rawInput: unknown): void {
+    const project = this.get(id);
+    const input = PostproductionPlayheadInputSchema.safeParse(rawInput);
+    if (!input.success || input.data.playheadMs > Math.ceil(project.source.durationSeconds * 1_000)) {
+      throw new PilotServiceError(400, 'INVALID_INPUT', 'La posición del vídeo no es válida.');
+    }
+    this.playheads.set(id, input.data.playheadMs);
+  }
+
+  public operatorSnapshot(id: string, token: string): PostproductionControlSnapshot {
+    this.requireOperatorSession(id, token);
+    const project = this.get(id);
+    return {
+      projectId: project.id,
+      state: project.checkpoint.state,
+      teams: project.teams,
+      playheadMs: this.playheads.get(id) ?? project.checkpoint.playheadMs,
+      revision: project.revision,
+    };
+  }
+
+  public async operatorCommand(id: string, token: string, rawInput: unknown): Promise<PostproductionControlSnapshot> {
+    this.requireOperatorSession(id, token);
+    const input = PostproductionControlCommandInputSchema.safeParse(rawInput);
+    if (!input.success) throw new PilotServiceError(400, 'INVALID_INPUT', 'La orden del operador no es válida.');
+    const current = this.get(id);
+    if (current.status === 'rendering') throw new PilotServiceError(409, 'CONFLICT', 'No se puede editar mientras se genera el MP4.');
+    const previousState = current.checkpoint.state as unknown as MatchState;
+    if (current.checkpoint.actions.some(({ id: actionId }) => actionId === input.data.commandId)) {
+      return this.operatorSnapshot(id, token);
+    }
+    if (input.data.expectedVersion !== previousState.version) {
+      throw new PilotServiceError(409, 'CONFLICT', 'El marcador cambió. Se está actualizando el mando; repite la acción.');
+    }
+    const lastTimestampMs = current.checkpoint.actions.at(-1)?.timestampMs ?? 0;
+    const playheadMs = Math.max(this.playheads.get(id) ?? current.checkpoint.playheadMs, lastTimestampMs);
+    const action: PostproductionAction = {
+      id: input.data.commandId,
+      timestampMs: playheadMs,
+      kind: input.data.kind,
+      payload: input.data.payload,
+    };
+    let state: MatchState;
+    try { state = replayMatchActions(previousState, [action]); }
+    catch (error) { throw new PilotServiceError(400, 'INVALID_INPUT', error instanceof Error ? error.message : 'La orden no se puede aplicar.'); }
+    const now = new Date().toISOString();
+    const next = PostproductionProjectSchema.parse({
+      ...current,
+      status: current.status === 'ready' ? 'editing' : current.status,
+      revision: current.revision + 1,
+      render: current.status === 'ready' ? null : current.render,
+      checkpoint: {
+        playheadMs,
+        actions: [...current.checkpoint.actions, action],
+        state,
+        reason: gameCount(state) > gameCount(previousState) ? 'game' : 'manual',
+        savedAt: now,
+      },
+      updatedAt: now,
+    });
+    this.projects.set(id, next);
+    await this.persist(next);
+    return this.operatorSnapshot(id, token);
   }
 
   public issueMediaToken(id: string): string {
@@ -204,6 +307,14 @@ export class PostproductionService {
 
   public async shutdown(): Promise<void> {
     this.render?.controller.abort();
+  }
+
+  private requireOperatorSession(id: string, token: string): void {
+    const session = this.operatorSessions.get(id);
+    if (!session || session.token !== token || session.expiresAt < Date.now()) {
+      this.operatorSessions.delete(id);
+      throw new PilotServiceError(401, 'FORBIDDEN', 'El enlace del operador no es válido o ha caducado.');
+    }
   }
 
   private async inspectSource(sourcePath: string): Promise<PostproductionSource> {
@@ -323,6 +434,7 @@ export class PostproductionService {
     const asset = await this.recordings.registerDerivedAsset({
       projectId: project.id, courtSlug: project.courtSlug, title: `${project.title} · Renovado`,
       seasonLabel: project.seasonLabel, matchdayNumber: project.matchdayNumber, path: output,
+      storageRoot: this.outputDirectory(),
     });
     if (asset.state !== 'ready') throw new Error(asset.error ?? 'El MP4 generado no superó la validación.');
     const current = this.get(project.id);
@@ -360,7 +472,7 @@ export class PostproductionService {
   }
 
   private projectsDirectory(): string { return resolve(this.dataDirectory, 'postproduction', 'projects'); }
-  private outputDirectory(): string { return resolve(this.dataDirectory, 'recordings', 'renovated'); }
+  private outputDirectory(): string { return resolve(this.outputRoot); }
   private temporaryOutput(projectId: string): string { return join(this.outputDirectory(), `${projectId}.mp4.partial`); }
   private async validateRenderedOutput(path: string, project: PostproductionProject): Promise<void> {
     const probe = await execFileAsync(this.ffprobePath, ['-v', 'error', '-show_format', '-show_streams', '-of', 'json', path],
@@ -397,6 +509,10 @@ function assertMatchState(value: MatchState): void {
   }
 }
 
+function gameCount(state: MatchState): number {
+  return state.sets.reduce((total, set) => total + set.homeGames + set.awayGames, 0);
+}
+
 async function hashFile(path: string): Promise<string> {
   const hash = createHash('sha256');
   await new Promise<void>((resolvePromise, reject) => {
@@ -406,12 +522,12 @@ async function hashFile(path: string): Promise<string> {
   return hash.digest('hex');
 }
 
-async function resolveReal(path: string): Promise<string> {
-  const { realpath } = await import('node:fs/promises'); return realpath(path);
-}
-
 function frameRate(value: string): number {
   const [left, right] = value.split('/').map(Number); return right ? (left ?? 30) / right : Number(value) || 30;
+}
+
+async function resolveReal(path: string): Promise<string> {
+  const { realpath } = await import('node:fs/promises'); return realpath(path);
 }
 
 function invalidSource(error: unknown): PilotServiceError {

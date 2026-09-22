@@ -45,7 +45,10 @@ export function OverlayPage({ eventId }: { eventId: string }) {
   </div>;
 }
 
-export function OverlayScene({ match }: { match: { readonly state: MatchState | null; readonly teams: Team[]; readonly leagueSnapshot?: LeagueSnapshot | null } }) {
+export function OverlayScene({ match, embedded = false }: {
+  match: { readonly state: MatchState | null; readonly teams: Team[]; readonly leagueSnapshot?: LeagueSnapshot | null };
+  readonly embedded?: boolean;
+}) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const sideChangeBaselineVersionRef = useRef<number | null>(null);
   const lastSideChangeKeyRef = useRef<string | null>(null);
@@ -75,6 +78,7 @@ export function OverlayScene({ match }: { match: { readonly state: MatchState | 
   });
 
   useEffect(() => {
+    if (embedded) return undefined;
     document.documentElement.classList.add('overlay-document');
     document.body.classList.add('overlay-body');
 
@@ -82,7 +86,7 @@ export function OverlayScene({ match }: { match: { readonly state: MatchState | 
       document.documentElement.classList.remove('overlay-document');
       document.body.classList.remove('overlay-body');
     };
-  }, []);
+  }, [embedded]);
 
   useEffect(() => {
     if (!match.state) {

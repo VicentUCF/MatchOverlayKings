@@ -92,6 +92,30 @@ export const RelinkPostproductionSourceInputSchema = z.strictObject({
   sourcePath: z.string().min(1).max(4_096),
 }).readonly();
 
+export const PostproductionOperatorAccessSchema = z.strictObject({
+  controlUrl: z.url(),
+  expiresAt: z.iso.datetime({ offset: true }),
+}).readonly();
+
+export const PostproductionPlayheadInputSchema = z.strictObject({
+  playheadMs: z.number().int().nonnegative(),
+}).readonly();
+
+export const PostproductionControlCommandInputSchema = z.strictObject({
+  expectedVersion: z.number().int().nonnegative(),
+  commandId: z.uuid(),
+  kind: PostproductionActionKindSchema,
+  payload: JsonValueSchema,
+}).readonly();
+
+export const PostproductionControlSnapshotSchema = z.strictObject({
+  projectId: z.uuid(),
+  state: JsonValueSchema,
+  teams: JsonValueSchema,
+  playheadMs: z.number().int().nonnegative(),
+  revision: z.number().int().positive(),
+}).readonly();
+
 export type PostproductionProjectStatus = z.infer<typeof PostproductionProjectStatusSchema>;
 export type PostproductionActionKind = z.infer<typeof PostproductionActionKindSchema>;
 export type PostproductionAction = z.infer<typeof PostproductionActionSchema>;
@@ -103,3 +127,7 @@ export type PostproductionSourceListing = z.infer<typeof PostproductionSourceLis
 export type CreatePostproductionProjectInput = z.infer<typeof CreatePostproductionProjectInputSchema>;
 export type SavePostproductionCheckpointInput = z.infer<typeof SavePostproductionCheckpointInputSchema>;
 export type RelinkPostproductionSourceInput = z.infer<typeof RelinkPostproductionSourceInputSchema>;
+export type PostproductionOperatorAccess = z.infer<typeof PostproductionOperatorAccessSchema>;
+export type PostproductionPlayheadInput = z.infer<typeof PostproductionPlayheadInputSchema>;
+export type PostproductionControlCommandInput = z.infer<typeof PostproductionControlCommandInputSchema>;
+export type PostproductionControlSnapshot = z.infer<typeof PostproductionControlSnapshotSchema>;

@@ -32,6 +32,13 @@ export function registerRecordingRoutes(
     return { assets: recordings.listAssets(), jobs: recordings.listJobs() };
   });
 
+  app.delete<{ Params: { assetId: string } }>('/api/pilot/recordings/:assetId', async (request) => {
+    requireLocal(request.ip);
+    await productionAccess.require(request.headers.authorization, 'production_admin');
+    await recordings.deleteAsset(request.params.assetId);
+    return { ok: true };
+  });
+
   app.post<{ Params: { assetId: string } }>('/api/pilot/recordings/:assetId/uploads', async (request, reply) => {
     requireLocal(request.ip);
     await productionAccess.require(request.headers.authorization, 'production_admin');

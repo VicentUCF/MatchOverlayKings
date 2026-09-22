@@ -61,14 +61,20 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
   const [pending, setPending] = useState(false);
   const stateRef = useRef<MatchState | null>(null);
   const controlToken = role === 'control' || role === 'overlay' ? token : '';
+  const postproductionProjectId = postproductionProjectIdFromControlId(eventId);
   const loadState = useCallback(async () => {
+    if (postproductionProjectId) {
+      const snapshot = await fetchPostproductionControlSnapshot(postproductionProjectId, controlToken);
+      setTeams(snapshot.teams);
+      return snapshot.state;
+    }
     if (!controlToken) return fetchMatchState(eventId, role === 'viewer');
     const { data, error } = await supabase.rpc('visual_control_command', {
       p_court_slug: eventId, p_token: controlToken, p_action: 'state',
     });
     if (error) throw new Error(error.message);
     return data as MatchState | null;
-  }, [controlToken, eventId, role]);
+  }, [controlToken, eventId, postproductionProjectId, role]);
 
   const acceptState = useCallback((nextState: MatchState | null) => {
     const current = stateRef.current;
@@ -81,9 +87,10 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
   }, []);
 
   const refreshEvents = useCallback(async () => {
+    if (postproductionProjectId) { setEvents([]); return; }
     const nextEvents = controlToken ? [] : await fetchEventSummaries({ liveOnly: role !== 'control' });
     setEvents(nextEvents);
-  }, [controlToken, role]);
+  }, [controlToken, postproductionProjectId, role]);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,13 +98,13 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
     async function loadInitialData() {
       try {
         const [teamsPayload, eventsPayload, statePayload] = await Promise.all([
-          fetchTeams(),
+          postproductionProjectId ? Promise.resolve([]) : fetchTeams(),
           controlToken ? Promise.resolve([]) : fetchEventSummaries({ liveOnly: role !== 'control' }),
           loadState(),
         ]);
 
         if (!cancelled) {
-          setTeams(teamsPayload);
+          if (!postproductionProjectId) setTeams(teamsPayload);
           setEvents(eventsPayload);
           acceptState(statePayload);
           setConnectionState('connected');
@@ -116,10 +123,10 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
     return () => {
       cancelled = true;
     };
-  }, [acceptState, controlToken, eventId, loadState, role]);
+  }, [acceptState, controlToken, eventId, loadState, postproductionProjectId, role]);
 
   useEffect(() => {
-    if (controlToken) return;
+    if (controlToken || postproductionProjectId) return;
     setConnectionState('connecting');
     let unsubscribe: (() => void) | null = null;
 
@@ -141,7 +148,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
     return () => {
       unsubscribe?.();
     };
-  }, [acceptState, controlToken, eventId, role]);
+  }, [acceptState, controlToken, eventId, postproductionProjectId, role]);
 
   useEffect(() => {
     if (role === 'control' && !controlToken) {
@@ -199,6 +206,20 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
           expectedVersion: current.version,
           commandId: createCommandId(),
         };
+        if (postproductionProjectId) {
+          const command = toPostproductionCommand(event, commandPayload);
+          const response = await fetch(`/api/postproduction-control/${encodeURIComponent(postproductionProjectId)}/command`, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${controlToken}`, 'content-type': 'application/json' },
+            body: JSON.stringify(command),
+          });
+          const responsePayload = await response.json() as unknown;
+          if (!response.ok) throw new Error(controlResponseError(responsePayload));
+          const snapshot = controlSnapshot(responsePayload);
+          setTeams(snapshot.teams);
+          acceptState(snapshot.state);
+          return true;
+        }
         const { rpcName, params } = toRpcCall(event, commandPayload);
         const { data, error: rpcError } = await (controlToken
           ? supabase.rpc('visual_control_command', { p_court_slug: eventId, p_token: controlToken, p_action: rpcName, p_params: params })
@@ -220,7 +241,7 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
         setPending(false);
       }
     },
-    [acceptState, controlToken, eventId, refreshEvents],
+    [acceptState, controlToken, eventId, postproductionProjectId, refreshEvents],
   );
 
   return useMemo(
@@ -253,6 +274,59 @@ export function useMatchSocket(eventId: string, role: ClientRole, token: string)
     }),
     [connectionState, confirmedAt, error, events, pending, refreshEvents, send, state, teams],
   );
+}
+
+function postproductionProjectIdFromControlId(eventId: string): string | null {
+  const match = /^postproduction-([a-f0-9-]{36})$/i.exec(eventId);
+  return match?.[1] ?? null;
+}
+
+async function fetchPostproductionControlSnapshot(projectId: string, token: string): Promise<{
+  state: MatchState; teams: Team[];
+}> {
+  const response = await fetch(`/api/postproduction-control/${encodeURIComponent(projectId)}/state`, {
+    headers: { authorization: `Bearer ${token}` }, cache: 'no-store',
+  });
+  const payload = await response.json() as unknown;
+  if (!response.ok) throw new Error(controlResponseError(payload));
+  return controlSnapshot(payload);
+}
+
+function controlSnapshot(payload: unknown): { state: MatchState; teams: Team[] } {
+  if (typeof payload !== 'object' || payload === null) throw new Error('El runtime devolvió un estado de renovación no válido.');
+  const value = payload as { state?: unknown; teams?: unknown };
+  if (typeof value.state !== 'object' || value.state === null || !Array.isArray(value.teams)) {
+    throw new Error('El runtime devolvió un estado de renovación no válido.');
+  }
+  return { state: value.state as MatchState, teams: value.teams as Team[] };
+}
+
+function controlResponseError(payload: unknown): string {
+  if (typeof payload !== 'object' || payload === null) return 'El runtime rechazó la orden del operador.';
+  const error = (payload as { error?: unknown }).error;
+  if (typeof error !== 'object' || error === null) return 'El runtime rechazó la orden del operador.';
+  const message = (error as { message?: unknown }).message;
+  return typeof message === 'string' ? message : 'El runtime rechazó la orden del operador.';
+}
+
+function toPostproductionCommand(event: RpcEventName, payload: Record<string, unknown>) {
+  const base = { expectedVersion: payload.expectedVersion, commandId: payload.commandId };
+  switch (event) {
+    case 'score:addPoint': return { ...base, kind: 'add_point', payload: { side: payload.side } };
+    case 'score:undo': return { ...base, kind: 'undo', payload: {} };
+    case 'score:resetMatch': return { ...base, kind: 'reset', payload: {} };
+    case 'score:manualPatch': return { ...base, kind: 'manual_patch', payload: { patch: payload.patch } };
+    case 'match:updateMeta': return { ...base, kind: 'update_meta', payload: { patch: payload.patch } };
+    case 'match:setStatus': return { ...base, kind: 'set_status', payload: { status: payload.status } };
+    case 'overlay:updateSettings': return { ...base, kind: 'update_overlay', payload: { patch: payload.patch } };
+    case 'match:useCard': return { ...base, kind: 'use_card', payload: { side: payload.side, cardId: payload.cardId, cardName: payload.cardName } };
+    case 'overlay:triggerDataScene': return { ...base, kind: 'trigger_data_scene', payload: { kind: payload.kind, target: payload.target } };
+    case 'overlay:updateSponsorTicker': return { ...base, kind: 'update_sponsor_ticker', payload: { patch: payload.patch } };
+    case 'overlay:triggerSponsorFullscreen': return { ...base, kind: 'trigger_sponsor_ad', payload: {
+      sponsorIds: payload.sponsorIds, durationSeconds: payload.durationSeconds,
+    } };
+    case 'match:newMatch': throw new Error('Una renovación solo controla el partido asociado al vídeo.');
+  }
 }
 
 function errorMessage(error: unknown): string {

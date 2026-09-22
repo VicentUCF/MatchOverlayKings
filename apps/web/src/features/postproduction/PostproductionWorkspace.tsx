@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ArrowLeft, CircleAlert, Film, FolderOpen, Pause, Play, RefreshCw, Save, Scissors, Sparkles, Square, X } from 'lucide-react';
+import { ArrowLeft, CircleAlert, Copy, ExternalLink, Film, FolderOpen, HardDrive, Maximize2, Pause, RefreshCw, Scissors, Sparkles, Trash2, X } from 'lucide-react';
 import {
   type JsonValue,
   type PostproductionAction,
@@ -7,15 +7,11 @@ import {
   type PostproductionProject,
   type PostproductionSourceListing,
 } from '@kpl/production-contracts';
-import {
-  applyMatchAction, createInitialMatchState, formatPoint, getCompletedSetCount,
-  type MatchState, type Side, type Team,
-} from '@kpl/shared';
+import { applyMatchAction, createInitialMatchState, type MatchState, type Side, type Team } from '@kpl/shared';
 import { createProductionPilotAdapter } from '../production/production-pilot-adapter.js';
 import { fetchLeagueSnapshot } from '../../lib/league-data.js';
-import { MATCH_CARDS } from '../../lib/match-cards.js';
-import { SPONSORS } from '../../lib/sponsors.js';
-import { Scoreboard } from '../match-display/Scoreboard.js';
+import type { LeagueSnapshot } from '../../lib/league-data.js';
+import { OverlayScene } from '../../routes/OverlayPage.js';
 
 const adapter = createProductionPilotAdapter();
 
@@ -25,6 +21,7 @@ export function PostproductionWorkspace() {
   const [selected, setSelected] = useState<PostproductionProject | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -38,14 +35,22 @@ export function PostproductionWorkspace() {
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => adapter.subscribeToEvents(({ scope }) => { if (scope === 'postproduction') void load(); }), [load]);
+  const deleteProject = async (project: PostproductionProject) => {
+    if (!window.confirm(`¿Borrar “${project.title}”?\n\nSe eliminarán el proyecto y su cronología. El MP4 original y las grabaciones ya generadas se conservarán.`)) return;
+    setDeleting(project.id); setError(null);
+    const result = await adapter.deletePostproductionProject(project.id);
+    setDeleting(null);
+    if (result.kind === 'error') { setError(result.message); return; }
+    await load();
+  };
 
-  if (selected) return <PostproductionEditor key={`${selected.id}:${selected.revision}`} project={selected}
+  if (selected) return <PostproductionEditor key={selected.id} project={selected}
     teams={(selected.teams as unknown as Team[]) || [...teams]} onClose={() => { setSelected(null); void load(); }} onProject={setSelected} />;
 
   return <section className="postproduction-workspace" aria-labelledby="postproduction-title">
     <header className="postproduction-heading">
       <div><p className="production-kicker">Postproducción local</p><h2 id="postproduction-title">Renovar partidos</h2>
-        <p>Añade el layout KPL a un MP4 de la carpeta montada y continúa otro día desde el último checkpoint.</p></div>
+        <p>Trabaja directamente con los MP4 del dispositivo montado, sin copiarlos al almacenamiento interno.</p></div>
       <button type="button" className="production-setup-submit" onClick={() => setCreating(true)}><Sparkles aria-hidden="true" />Nueva renovación</button>
     </header>
     {error ? <div className="production-page-feedback danger" role="alert"><CircleAlert aria-hidden="true" />{error}
@@ -61,8 +66,16 @@ export function PostproductionWorkspace() {
         <dl><div><dt>Fuente</dt><dd>{project.source.name}</dd></div><div><dt>Checkpoint</dt><dd>{duration(project.checkpoint.playheadMs / 1_000)}</dd></div>
           <div><dt>Progreso</dt><dd>{project.render ? `${Math.round(project.render.progress * 100)}%` : 'Sin render'}</dd></div></dl>
         {project.render?.error ? <p className="production-command-feedback danger">{project.render.error}</p> : null}
-        <button type="button" className="refresh-button" onClick={() => setSelected(project)}>
-          {project.status === 'rendering' ? 'Ver progreso' : project.status === 'ready' ? 'Abrir proyecto' : 'Continuar renovación'}</button>
+        {project.status === 'ready' ? <p className="production-command-feedback success">Salida guardada en Dispositivo.</p> : null}
+        <div className="postproduction-project-actions">
+          <button type="button" className="refresh-button" onClick={() => setSelected(project)}>
+            {project.status === 'rendering' ? 'Ver progreso' : project.status === 'ready' ? 'Abrir proyecto' : 'Continuar renovación'}</button>
+          <button type="button" className="refresh-button postproduction-delete-button"
+            disabled={project.status === 'rendering' || deleting !== null}
+            title={project.status === 'rendering' ? 'Cancela el render antes de borrar el proyecto' : undefined}
+            onClick={() => void deleteProject(project)}>
+            <Trash2 aria-hidden="true" />{deleting === project.id ? 'Borrando…' : 'Borrar'}</button>
+        </div>
       </article>)}
     </div>
   </section>;
@@ -114,8 +127,9 @@ function CreateProject({ teams, onCancel, onCreated }: {
     <header><div><p className="production-kicker">Nuevo proyecto</p><h3>Selecciona vídeo y partido</h3></div>
       <button type="button" className="refresh-button" onClick={onCancel} aria-label="Cerrar"><X aria-hidden="true" /></button></header>
     <section className="postproduction-source-picker" aria-label="Vídeos disponibles">
-      <div className="postproduction-source-toolbar"><code>/{listing?.current ?? ''}</code>
+      <div className="postproduction-source-toolbar"><strong><HardDrive aria-hidden="true" />Dispositivo</strong><code>/{listing?.current ?? ''}</code>
         <button type="button" disabled={!listing?.parent} onClick={() => void browse(listing?.parent ?? undefined)}>Subir</button></div>
+      <p>Los originales se leen directamente desde el dispositivo y no se copian al almacenamiento interno.</p>
       <div className="postproduction-source-list">
         {listing?.directories.map((directory) => <button type="button" key={directory.path} onClick={() => void browse(directory.path)}><FolderOpen aria-hidden="true" />{directory.name}</button>)}
         {listing?.files.map((file) => <button type="button" className={sourcePath === file.path ? 'selected' : ''} key={file.path} onClick={() => { setSourcePath(file.path); if (!title) setTitle(file.name.replace(/\.mp4$/i, '')); }}>
@@ -137,7 +151,9 @@ function CreateProject({ teams, onCancel, onCreated }: {
     </div>
     {error ? <p className="production-command-feedback danger" role="alert">{error}</p> : null}
     <footer><button type="button" className="refresh-button" onClick={onCancel}>Cancelar</button>
-      <button type="submit" className="production-setup-submit" disabled={!sourcePath || pending || homeTeamId === awayTeamId}>{pending ? 'Validando MP4…' : 'Crear renovación'}</button></footer>
+      <button type="submit" className="production-setup-submit"
+        disabled={!sourcePath || pending || homeTeamId === awayTeamId}>
+        {pending ? 'Validando MP4…' : 'Crear renovación'}</button></footer>
   </form>;
 }
 
@@ -150,24 +166,25 @@ function PostproductionEditor({ project: initialProject, teams, onClose, onProje
   const [state, setState] = useState(initialProject.checkpoint.state as unknown as MatchState);
   const [playheadMs, setPlayheadMs] = useState(initialProject.checkpoint.playheadMs);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [relinking, setRelinking] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const stageRef = useRef<HTMLElement>(null);
+  const lastReportedPlayheadRef = useRef(-1);
+  const [stageWidth, setStageWidth] = useState(0);
   const lastEventMs = actions.at(-1)?.timestampMs ?? 0;
   const atTip = playheadMs >= lastEventMs;
-  const controlsDisabled = !atTip || pending || project.status === 'rendering';
-  const activeSet = state.sets.find((set) => set.status === 'active') ?? state.sets.at(-1);
 
   useEffect(() => { void adapter.postproductionMediaUrl(project.id).then((result) => {
     if (result.kind === 'success') setMediaUrl(result.value); else setError(result.message);
   }); }, [project.id]);
   useEffect(() => {
-    if (!dirty) return undefined;
-    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
-    window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
+    if (initialProject.revision <= project.revision) return;
+    setProject(initialProject);
+    setActions([...initialProject.checkpoint.actions]);
+    setState(initialProject.checkpoint.state as unknown as MatchState);
+  }, [initialProject, project.revision]);
   useEffect(() => {
     if (project.status !== 'rendering') return undefined;
     const timer = window.setInterval(() => void adapter.postproductionProjects().then((result) => {
@@ -176,34 +193,19 @@ function PostproductionEditor({ project: initialProject, teams, onClose, onProje
     }), 1_000);
     return () => window.clearInterval(timer);
   }, [onProject, project.id, project.status]);
+  useEffect(() => {
+    if (!stageRef.current) return undefined;
+    const observer = new ResizeObserver(([entry]) => setStageWidth(entry?.contentRect.width ?? 0));
+    observer.observe(stageRef.current);
+    return () => observer.disconnect();
+  }, []);
 
-  const persist = async (reason: 'game' | 'manual' | 'recount', nextActions = actions) => {
-    setPending(true); setError(null);
-    const result = await adapter.savePostproductionCheckpoint(project.id, {
-      expectedRevision: project.revision, playheadMs, actions: nextActions, reason,
-    });
-    setPending(false);
-    if (result.kind === 'error') { setError(result.message); return null; }
-    setProject(result.value.project); onProject(result.value.project); setDirty(false); return result.value.project;
-  };
-
-  const command = (kind: PostproductionActionKind, payload: JsonValue) => {
-    if (!atTip || pending || project.status === 'rendering') return;
-    const action: PostproductionAction = { id: crypto.randomUUID(), timestampMs: Math.max(playheadMs, lastEventMs), kind, payload };
-    try {
-      const previousGames = gameCount(state);
-      const nextState = applyMatchAction(state, action);
-      const nextActions = [...actions, action];
-      setState(nextState); setActions(nextActions); setDirty(true);
-      if (gameCount(nextState) > previousGames) void persistWith(nextActions, 'game');
-    } catch (commandError) { setError(commandError instanceof Error ? commandError.message : 'No se pudo aplicar la acción.'); }
-  };
   const persistWith = async (nextActions: PostproductionAction[], reason: 'game' | 'recount', checkpointPlayheadMs = playheadMs) => {
     setPending(true);
     const result = await adapter.savePostproductionCheckpoint(project.id, { expectedRevision: project.revision, playheadMs: checkpointPlayheadMs, actions: nextActions, reason });
     setPending(false);
     if (result.kind === 'error') setError(result.message);
-    else { setProject(result.value.project); onProject(result.value.project); setDirty(false); }
+    else { setProject(result.value.project); onProject(result.value.project); }
   };
   const recount = async (index: number) => {
     const action = actions[index]; if (!action || !window.confirm('Se eliminará esta acción y todas las posteriores. ¿Quieres recontar desde aquí?')) return;
@@ -214,58 +216,85 @@ function PostproductionEditor({ project: initialProject, teams, onClose, onProje
     await persistWith(nextActions, 'recount', action.timestampMs);
   };
   const startRender = async () => {
-    let current = project;
-    if (dirty) { const saved = await persist('manual'); if (!saved) return; current = saved; }
-    setPending(true); const result = await adapter.renderPostproductionProject(current.id); setPending(false);
+    setPending(true); const result = await adapter.renderPostproductionProject(project.id); setPending(false);
     if (result.kind === 'error') setError(result.message); else { setProject(result.value.project); onProject(result.value.project); }
   };
-
-  const leave = () => { if (!dirty || window.confirm('Hay cambios sin guardar. ¿Quieres salir y volver al último checkpoint?')) onClose(); };
+  const updatePlayhead = (nextPlayheadMs: number, force = false) => {
+    setPlayheadMs(nextPlayheadMs);
+    if (!force && Math.abs(nextPlayheadMs - lastReportedPlayheadRef.current) < 200) return;
+    lastReportedPlayheadRef.current = nextPlayheadMs;
+    void adapter.updatePostproductionPlayhead(project.id, { playheadMs: nextPlayheadMs }).then((result) => {
+      if (result.kind === 'error') setError(result.message);
+    });
+  };
+  const enterFullscreen = () => { void stageRef.current?.requestFullscreen().catch(() => setError('El navegador no permitió abrir el vídeo a pantalla completa.')); };
 
   return <section className="postproduction-editor" aria-labelledby="postproduction-editor-title">
-    <header><button type="button" className="refresh-button" onClick={leave}><ArrowLeft aria-hidden="true" />Volver</button>
+    <header><button type="button" className="refresh-button" onClick={onClose}><ArrowLeft aria-hidden="true" />Volver</button>
       <div><p className="production-kicker">Renovación · {project.courtSlug}</p><h2 id="postproduction-editor-title">{project.title}</h2></div>
-      <div className="postproduction-save-status"><span>{dirty ? 'Cambios sin guardar' : `Guardado · ${duration(project.checkpoint.playheadMs / 1_000)}`}</span>
+      <div className="postproduction-save-status"><span>Guardado · {duration(project.checkpoint.playheadMs / 1_000)}</span>
         <button type="button" className="refresh-button" disabled={project.status === 'rendering'} onClick={() => setRelinking((current) => !current)}><FolderOpen aria-hidden="true" />Reenlazar fuente</button>
-        <button type="button" className="refresh-button" disabled={!dirty || pending} onClick={() => void persist('manual').then((saved) => { if (saved) onClose(); })}><Save aria-hidden="true" />Guardar y salir</button></div></header>
+      </div></header>
     {error ? <div className="production-page-feedback danger" role="alert"><CircleAlert aria-hidden="true" />{error}</div> : null}
     {relinking ? <RelinkSource project={project} onCancel={() => setRelinking(false)} onRelinked={(next) => { setRelinking(false); setProject(next); onProject(next); }} /> : null}
     <div className="postproduction-editor-layout">
-      <section className="postproduction-stage" aria-label="Previsualización del vídeo renovado">
+      <section className="postproduction-stage" aria-label="Previsualización del vídeo renovado" ref={stageRef}>
         {mediaUrl ? <video ref={videoRef} src={mediaUrl} controls preload="metadata"
           onLoadedMetadata={(event) => { event.currentTarget.currentTime = project.checkpoint.playheadMs / 1_000; }}
-          onTimeUpdate={(event) => setPlayheadMs(Math.round(event.currentTarget.currentTime * 1_000))} /> : <p>Cargando vídeo…</p>}
-        {state.overlaySettings.visible ? <div className={`postproduction-score-preview ${state.overlaySettings.position}`} data-size={state.overlaySettings.size}>
-          <div className="broadcast-scoreboard-shell overlay-page"><Scoreboard state={state} teams={teams} mode="overlay" /></div></div> : null}
+          onTimeUpdate={(event) => updatePlayhead(Math.round(event.currentTarget.currentTime * 1_000))}
+          onSeeked={(event) => updatePlayhead(Math.round(event.currentTarget.currentTime * 1_000), true)} /> : <p>Cargando vídeo…</p>}
+        <button type="button" className="postproduction-fullscreen" onClick={enterFullscreen}><Maximize2 aria-hidden="true" />Pantalla completa</button>
+        {stageWidth > 0 ? <div className="postproduction-overlay-preview" aria-hidden="true">
+          <div className="postproduction-overlay-canvas" style={{ transform: `scale(${stageWidth / 1920})` }}>
+            <OverlayScene embedded match={{ state, teams, leagueSnapshot: project.leagueSnapshot as unknown as LeagueSnapshot | null }} />
+          </div>
+        </div> : null}
         {!atTip ? <div className="postproduction-past-warning"><Scissors aria-hidden="true" />Estás antes del último evento. Elige “Recontar desde aquí” en el historial para modificar esta zona.</div> : null}
       </section>
-      <aside className="postproduction-controls">
-        <section><h3>Marcador</h3><p className="postproduction-scoreline">{formatPoint(state, 'home')} — {formatPoint(state, 'away')}<small>Juegos {activeSet?.homeGames ?? 0}–{activeSet?.awayGames ?? 0} · Sets {getCompletedSetCount(state, 'home')}–{getCompletedSetCount(state, 'away')}</small></p>
-          <div className="postproduction-point-buttons"><button type="button" disabled={controlsDisabled || state.status === 'finished'} onClick={() => command('add_point', { side: 'home' })}>+ Punto local</button>
-            <button type="button" disabled={controlsDisabled || state.status === 'finished'} onClick={() => command('add_point', { side: 'away' })}>+ Punto visitante</button></div>
-          <div className="postproduction-compact-actions"><button type="button" disabled={controlsDisabled} onClick={() => command('undo', {})}>Deshacer</button><button type="button" disabled={controlsDisabled} onClick={() => command('reset', {})}>Reset</button>
-            <button type="button" disabled={controlsDisabled} onClick={() => command('set_status', { status: 'live' })}><Play aria-hidden="true" />Live</button><button type="button" disabled={controlsDisabled} onClick={() => command('set_status', { status: 'finished' })}><Square aria-hidden="true" />Final</button></div>
-          <ManualCorrection state={state} disabled={controlsDisabled} onApply={(patch) => command('manual_patch', { patch } as unknown as JsonValue)} />
-        </section>
-        <section><h3>Layout</h3><div className="postproduction-form-grid">
-          <label><input type="checkbox" disabled={controlsDisabled} checked={state.overlaySettings.visible} onChange={(event) => command('update_overlay', { patch: { visible: event.currentTarget.checked } })} /> Marcador visible</label>
-          <label>Tamaño<select disabled={controlsDisabled} value={state.overlaySettings.size} onChange={(event) => command('update_overlay', { patch: { size: event.currentTarget.value } })}><option value="compact">Compacto</option><option value="standard">Estándar</option><option value="large">Grande</option></select></label>
-          <label>Posición<select disabled={controlsDisabled} value={state.overlaySettings.position} onChange={(event) => command('update_overlay', { patch: { position: event.currentTarget.value } })}><option value="top-left">Arriba izquierda</option><option value="center">Centro</option><option value="bottom-center">Abajo centro</option></select></label>
-          <label><input type="checkbox" disabled={controlsDisabled} checked={state.overlaySettings.soundEnabled} onChange={(event) => command('update_overlay', { patch: { soundEnabled: event.currentTarget.checked } })} /> Sonido de cartas</label>
-        </div></section>
-        <section><h3>Cartas</h3><div className="postproduction-chip-grid">{(['home', 'away'] as const).flatMap((side) => MATCH_CARDS.map((card) => <button type="button" key={`${side}-${card.id}`} disabled={controlsDisabled || Boolean(state.cards[side])} onClick={() => command('use_card', { side, cardId: card.id, cardName: card.name })}>{side === 'home' ? 'L' : 'V'} · {card.name}</button>))}</div></section>
-        <section><h3>Escenas de datos</h3><div className="postproduction-chip-grid">{(['standings', 'player-ranking', 'team-roster', 'calendar', 'upcoming-matches', 'latest-results'] as const).map((kind) => <button type="button" disabled={controlsDisabled} key={kind} onClick={() => command('trigger_data_scene', { kind, target: kind === 'team-roster' ? { type: 'side', side: 'home' } : { type: 'league' } })}>{kind}</button>)}</div></section>
-        <section><h3>Patrocinadores</h3><div className="postproduction-compact-actions"><button type="button" disabled={controlsDisabled} onClick={() => command('update_sponsor_ticker', { patch: { visible: !state.sponsorAds.ticker.visible, sponsorIds: SPONSORS.map(({ id }) => id) } })}>{state.sponsorAds.ticker.visible ? 'Ocultar ticker' : 'Mostrar ticker'}</button>
-          <button type="button" disabled={controlsDisabled} onClick={() => command('trigger_sponsor_ad', { sponsorIds: SPONSORS.map(({ id }) => id), durationSeconds: 8 })}>Anuncio completo</button></div></section>
-      </aside>
+      <aside className="postproduction-controls"><PostproductionOperatorAccess projectId={project.id} /></aside>
     </div>
     <section className="postproduction-timeline"><header><div><h3>Cronología</h3><p>{actions.length} acciones · playhead {duration(playheadMs / 1_000)}</p></div>
       {project.status === 'rendering' ? <button type="button" className="refresh-button" onClick={() => void adapter.cancelPostproductionRender(project.id)}><Pause aria-hidden="true" />Cancelar render</button>
-        : <button type="button" className="production-setup-submit" disabled={pending || actions.length === 0} onClick={() => void startRender()}><Sparkles aria-hidden="true" />Generar MP4</button>}</header>
+        : <button type="button" className="production-setup-submit" disabled={pending || actions.length === 0} onClick={() => void startRender()}><Sparkles aria-hidden="true" />Generar MP4 en Dispositivo</button>}</header>
       {project.render ? <progress max="1" value={project.render.progress}>{Math.round(project.render.progress * 100)}%</progress> : null}
+      {project.status === 'ready' ? <p className="production-command-feedback success">MP4 guardado en la carpeta de salida del dispositivo.</p> : null}
       <ol>{actions.map((action, index) => <li key={action.id}><button type="button" onClick={() => { setPlayheadMs(action.timestampMs); if (videoRef.current) videoRef.current.currentTime = action.timestampMs / 1_000; }}><time>{duration(action.timestampMs / 1_000)}</time><span>{actionLabel(action.kind)}</span></button>
         <button type="button" className="danger" onClick={() => void recount(index)}>Recontar desde aquí</button></li>)}</ol>
     </section>
+  </section>;
+}
+
+function PostproductionOperatorAccess({ projectId }: { readonly projectId: string }) {
+  const [controlUrl, setControlUrl] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [pending, setPending] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const generate = async () => {
+    setPending(true); setError(null); setCopied(false);
+    const result = await adapter.createPostproductionOperatorAccess(projectId);
+    setPending(false);
+    if (result.kind === 'error') { setError(result.message); return; }
+    setControlUrl(result.value.controlUrl); setExpiresAt(result.value.expiresAt);
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(controlUrl); setCopied(true); }
+    catch { setError('No se pudo copiar. Selecciona el enlace y cópialo manualmente.'); }
+  };
+  return <section className="postproduction-operator-access">
+    <h3>Operador remoto</h3>
+    <p>Abre el mando habitual en el móvil o tablet del operador. Puntos, cambios de lado, cartas y escenas se aplicarán en la posición actual del vídeo.</p>
+    <ol><li>Genera y entrega el enlace al operador.</li><li>Inicia el vídeo y pulsa “Pantalla completa”.</li><li>El operador utiliza el mismo mando que durante un directo.</li></ol>
+    <button type="button" className="production-setup-submit" disabled={pending} onClick={() => void generate()}>
+      {pending ? 'Generando…' : controlUrl ? 'Renovar enlace del operador' : 'Generar enlace del operador'}
+    </button>
+    {controlUrl ? <><label>Enlace del mando<input readOnly value={controlUrl} onFocus={(event) => event.currentTarget.select()} /></label>
+      <div className="postproduction-operator-actions">
+        <button type="button" className="refresh-button" onClick={() => void copy()}><Copy aria-hidden="true" />{copied ? 'Copiado' : 'Copiar'}</button>
+        <a className="refresh-button" href={controlUrl} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />Abrir mando</a>
+      </div>
+      <small>Válido hasta {new Date(expiresAt).toLocaleString('es-ES')}.</small></> : null}
+    {error ? <p className="production-command-feedback danger" role="alert">{error}</p> : null}
   </section>;
 }
 
@@ -293,7 +322,7 @@ function RelinkSource({ project, onCancel, onRelinked }: {
       <h3 id="postproduction-relink-title">Reenlazar vídeo original</h3><p>Solo se aceptará un MP4 con contenido idéntico al original.</p></div>
       <button type="button" className="refresh-button" onClick={onCancel} aria-label="Cerrar"><X aria-hidden="true" /></button></header>
     <div className="postproduction-source-picker">
-      <div className="postproduction-source-toolbar"><code>/{listing?.current ?? ''}</code>
+      <div className="postproduction-source-toolbar"><strong><HardDrive aria-hidden="true" />Dispositivo</strong><code>/{listing?.current ?? ''}</code>
         <button type="button" disabled={!listing?.parent || pending} onClick={() => void browse(listing?.parent ?? undefined)}>Subir</button></div>
       <div className="postproduction-source-list">
         {listing?.directories.map((directory) => <button type="button" disabled={pending} key={directory.path} onClick={() => void browse(directory.path)}><FolderOpen aria-hidden="true" />{directory.name}</button>)}
@@ -306,21 +335,7 @@ function RelinkSource({ project, onCancel, onRelinked }: {
   </section>;
 }
 
-function ManualCorrection({ state, disabled, onApply }: { readonly state: MatchState; readonly disabled: boolean; readonly onApply: (patch: unknown) => void }) {
-  const active = state.sets.find((set) => set.status === 'active') ?? state.sets.at(-1)!;
-  const [homeGames, setHomeGames] = useState(active.homeGames); const [awayGames, setAwayGames] = useState(active.awayGames);
-  const [homePoints, setHomePoints] = useState(state.currentGame.homePoints); const [awayPoints, setAwayPoints] = useState(state.currentGame.awayPoints);
-  return <details><summary>Corrección manual</summary><div className="postproduction-correction">
-    <label>Juegos L<input type="number" min="0" value={homeGames} onChange={(event) => setHomeGames(Number(event.currentTarget.value))} /></label>
-    <label>Juegos V<input type="number" min="0" value={awayGames} onChange={(event) => setAwayGames(Number(event.currentTarget.value))} /></label>
-    <label>Puntos L<input type="number" min="0" value={homePoints} onChange={(event) => setHomePoints(Number(event.currentTarget.value))} /></label>
-    <label>Puntos V<input type="number" min="0" value={awayPoints} onChange={(event) => setAwayPoints(Number(event.currentTarget.value))} /></label>
-    <button type="button" disabled={disabled} onClick={() => onApply({ sets: state.sets.map((set) => set === active ? { ...set, homeGames, awayGames } : set), currentGame: { ...state.currentGame, homePoints, awayPoints } })}>Aplicar corrección</button>
-  </div></details>;
-}
-
 function splitPlayers(value: string): string[] { const values = value.split('/').map((item) => item.trim()); return [values[0] ?? '', values[1] ?? '']; }
-function gameCount(state: MatchState): number { return state.sets.reduce((total, set) => total + set.homeGames + set.awayGames, 0); }
 function projectStatus(project: PostproductionProject): string { return project.status === 'editing' ? 'En edición' : project.status === 'rendering' ? 'Generando MP4' : project.status === 'ready' ? 'MP4 listo' : 'Render fallido'; }
 function actionLabel(kind: PostproductionActionKind): string { return ({ add_point: 'Punto', undo: 'Deshacer', reset: 'Reset', manual_patch: 'Corrección', update_meta: 'Datos del partido', set_status: 'Estado', update_overlay: 'Layout', use_card: 'Carta', trigger_data_scene: 'Escena de datos', update_sponsor_ticker: 'Ticker', trigger_sponsor_ad: 'Anuncio' } as const)[kind]; }
 function duration(seconds: number): string { const safe = Math.max(0, Math.floor(seconds)); return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`; }
