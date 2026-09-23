@@ -26,8 +26,6 @@ export interface ServerConfig {
   host: string;
   port: number;
   dataDir: string;
-  postproductionSourceRoot: string;
-  postproductionOutputRoot?: string;
   webDistDir: string;
   controlPin: string | null;
   rabbitMq?: { url: string; queuePrefix: string } | null;
@@ -43,12 +41,6 @@ export function readConfig(): ServerConfig {
     dataDir: process.env.KPL_DATA_DIR
       ? resolve(process.env.KPL_DATA_DIR)
       : resolve(process.cwd(), '../../data'),
-    postproductionSourceRoot: process.env.KPL_POSTPRODUCTION_SOURCE_ROOT
-      ? resolve(process.env.KPL_POSTPRODUCTION_SOURCE_ROOT)
-      : resolve(process.cwd(), '../../data/imports'),
-    postproductionOutputRoot: process.env.KPL_POSTPRODUCTION_OUTPUT_ROOT
-      ? resolve(process.env.KPL_POSTPRODUCTION_OUTPUT_ROOT)
-      : resolve(process.cwd(), '../../data/exports'),
     webDistDir: process.env.KPL_WEB_DIST
       ? resolve(process.env.KPL_WEB_DIST)
       : resolve(process.cwd(), '../web/dist'),

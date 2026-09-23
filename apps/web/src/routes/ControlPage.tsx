@@ -68,7 +68,6 @@ type MobilePanel = 'cards' | 'data' | 'ads' | 'edit' | 'menu';
 
 export function ControlPage({ eventId }: { eventId: string }) {
   const controlToken = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
-  const isPostproduction = /^postproduction-[a-f0-9-]{36}$/i.test(eventId);
   const match = useMatchSocket(eventId, 'control', controlToken);
   const state = match.state;
   const activeSet = useMemo(
@@ -129,9 +128,9 @@ export function ControlPage({ eventId }: { eventId: string }) {
       return;
     }
 
-    setPhase(isPostproduction ? 'score' : state.status === 'pre_match' ? 'setup' : 'score');
+    setPhase(state.status === 'pre_match' ? 'setup' : 'score');
     setMobilePanel(null);
-  }, [eventId, isPostproduction, state?.status]);
+  }, [eventId, state?.status]);
 
   useEffect(() => {
     if (match.teams.length === 0) {
@@ -364,10 +363,10 @@ export function ControlPage({ eventId }: { eventId: string }) {
           <Save size={18} />
           Guardar
         </button>
-        {!isPostproduction ? <button type="button" onClick={startNewMatch} disabled={!state || match.pending}>
+        <button type="button" onClick={startNewMatch} disabled={!state || match.pending}>
           <Repeat2 size={18} />
           Nueva partida
-        </button> : null}
+        </button>
         <button type="button" className="primary-action" onClick={beginMatch} disabled={!state || match.pending || state.status === 'live'}>
           <Play size={18} />
           Iniciar partido
@@ -505,7 +504,7 @@ export function ControlPage({ eventId }: { eventId: string }) {
           <Flag size={18} />
           Final
         </button>
-        {!isPostproduction ? <button
+        <button
           type="button"
           onClick={() => {
             setMobilePanel(null);
@@ -515,26 +514,20 @@ export function ControlPage({ eventId }: { eventId: string }) {
         >
           <Repeat2 size={18} />
           Siguiente
-        </button> : null}
+        </button>
       </div>
     </section>
   );
 
   return (
     <main className={`control-page ${isSetupPhase ? 'setup-mode' : 'score-mode'}`}>
-      <ProductionNavigation active="visual" role="operator" currentLabel={isPostproduction
-        ? `Renovación · ${state?.title ?? 'partido grabado'}` : `Control visual · ${courtName(eventId)}`}
+      <ProductionNavigation active="visual" role="operator" currentLabel={`Control visual · ${courtName(eventId)}`}
         trailing={<div className={`connection-pill ${match.connectionState}`}>
           {match.connectionState === 'connected' ? <Wifi size={16} /> : <WifiOff size={16} />}
           <span>{connectionLabel(match.connectionState)}</span>
         </div>} />
 
-      {isPostproduction ? (
-        <div className="control-status-strip">
-          <MonitorPlay size={18} />
-          <span>Mando del partido grabado · las acciones se colocan en la posición actual del vídeo.</span>
-        </div>
-      ) : state?.status === 'pre_match' ? (
+      {state?.status === 'pre_match' ? (
         <div className="control-status-strip">
           <Play size={18} />
           <span>Configura equipos, jugadores y saque antes de iniciar.</span>

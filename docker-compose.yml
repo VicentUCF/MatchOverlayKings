@@ -43,8 +43,6 @@ services:
       KPL_DATA_DIR: /app/data
       KPL_WEB_DIST: /app/apps/web/dist
       KPL_PILOT_FFMPEG_PATH: /usr/bin/ffmpeg
-      KPL_POSTPRODUCTION_SOURCE_ROOT: /media/kpl-source
-      KPL_POSTPRODUCTION_OUTPUT_ROOT: /media/kpl-output
       KPL_PILOT_MEDIAMTX_PATH: /usr/local/bin/mediamtx
       KPL_PILOT_ADMIN_HOST: 172.30.0.1
       KPL_RABBITMQ_URL: amqp://${KPL_RABBITMQ_USER:-kpl}:${KPL_RABBITMQ_PASSWORD:-kpl-local}@rabbitmq:5672/${KPL_RABBITMQ_VHOST:-kpl}
@@ -58,8 +56,6 @@ services:
       - "8189:8189/udp"
     volumes:
       - ./data:/app/data
-      - ${KPL_POSTPRODUCTION_HOST_SOURCE_DIR:-./data/imports}:/media/kpl-source:ro
-      - ${KPL_POSTPRODUCTION_HOST_OUTPUT_DIR:-./data/exports}:/media/kpl-output:rw
       # OAuth de YouTube: descomenta si vas a probar emisiones reales.
       # - ./secrets/client_secret.json:/run/secrets/youtube-client.json:ro
     healthcheck:

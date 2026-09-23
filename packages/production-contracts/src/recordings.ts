@@ -27,8 +27,6 @@ export const RecordingAssetSchema = z.strictObject({
   streams: z.array(RecordingStreamSchema).readonly(),
   state: RecordingAssetStateSchema,
   error: z.string().max(500).nullable(),
-  origin: z.enum(['recording', 'renovated']).optional(),
-  sourceProjectId: z.uuid().nullable().optional(),
 }).readonly();
 export const RecordingAssetsSchema = z.array(RecordingAssetSchema).readonly();
 

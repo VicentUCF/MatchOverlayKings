@@ -69,28 +69,6 @@ describe('recording library', () => {
     await library.shutdown();
   });
 
-  it('registers a rendered asset directly from its configured external output root', async () => {
-    const fixture = await createFixture();
-    const outputRoot = join(dirname(fixture.indexPath), 'device-output');
-    const outputPath = join(outputRoot, 'renovado.mp4');
-    await mkdir(outputRoot);
-    await writeFile(outputPath, Buffer.alloc(16, 1));
-    const library = new RecordingLibrary(fixture.indexPath, '/bin/false', fakeGateway().value);
-    await library.initialize();
-
-    await expect(library.registerDerivedAsset({
-      projectId: '11111111-1111-4111-8111-111111111111', courtSlug: 'pista-1',
-      title: 'Partido renovado', seasonLabel: 'T2', matchdayNumber: 1,
-      path: outputPath, storageRoot: outputRoot,
-    })).resolves.toMatchObject({ path: outputPath, origin: 'renovated' });
-
-    await expect(library.registerDerivedAsset({
-      projectId: '33333333-3333-4333-8333-333333333333', courtSlug: 'pista-1',
-      title: 'Fuera de raíz', seasonLabel: 'T2', matchdayNumber: 1, path: outputPath,
-    })).rejects.toThrow('fuera de la carpeta configurada');
-    await library.shutdown();
-  });
-
   it('persists one resumable upload, reconciles it after restart and schedules publication', async () => {
     const fixture = await createFixture();
     const gateway = fakeGateway();

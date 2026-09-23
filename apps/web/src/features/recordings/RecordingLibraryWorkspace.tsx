@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { CalendarClock, CircleAlert, ExternalLink, Film, HardDrive, Pause, Play, RefreshCw, Trash2, Upload } from 'lucide-react';
 import type { PublicationJob, RecordingAsset } from '@kpl/production-contracts';
 import { createProductionPilotAdapter } from '../production/production-pilot-adapter.js';
-import { PostproductionWorkspace } from '../postproduction/PostproductionWorkspace.js';
 
 const adapter = createProductionPilotAdapter();
 
@@ -105,7 +104,7 @@ export function RecordingLibraryWorkspace() {
   const courts = [...new Set(state.assets.map(({ courtSlug }) => courtSlug))].sort();
   const matchdays = [...new Set(state.assets.map(({ matchdayNumber }) => matchdayNumber))].sort((a, b) => a - b);
 
-  return <><PostproductionWorkspace /><section className="recording-library" aria-labelledby="recording-library-title">
+  return <section className="recording-library" aria-labelledby="recording-library-title">
     <header className="production-pilot-intro">
       <div><p className="production-kicker">Archivo y publicación</p><h1 id="recording-library-title">Grabaciones</h1>
         <p>Valida los MP4 del programa final, súbelos como privados y programa cuándo se harán públicos.</p></div>
@@ -139,7 +138,7 @@ export function RecordingLibraryWorkspace() {
           return mutate(recording.id, () => adapter.deleteRecording(recording.id));
         }} />)}
     </div>
-  </section></>;
+  </section>;
 }
 
 export function recordingPollDelay(state: LibraryState): number | null {
@@ -169,7 +168,7 @@ function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onRet
   return <article className="recording-card" aria-labelledby={`recording-${asset.id}`}>
     <header><div><span className="production-court-card__slug">{asset.courtSlug}</span><h2 id={`recording-${asset.id}`}>{asset.title}</h2></div>
       <div className="recording-card__header-actions">
-        <span className={`production-status ${asset.state === 'ready' ? 'success' : asset.state === 'invalid' ? 'danger' : 'info'}`}>{assetLabel(asset)}{asset.origin === 'renovated' ? ' · Renovado' : ''}</span>
+        <span className={`production-status ${asset.state === 'ready' ? 'success' : asset.state === 'invalid' ? 'danger' : 'info'}`}>{assetLabel(asset)}</span>
         <button type="button" className="refresh-button recording-delete-button"
           disabled={asset.state === 'recording' || pending !== null}
           title={asset.state === 'recording' ? 'Detén la grabación antes de borrarla' : undefined}

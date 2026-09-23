@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase.js';
 
-export type ProductionEventScope = 'runtime' | 'configurations' | 'recordings' | 'postproduction';
+export type ProductionEventScope = 'runtime' | 'configurations' | 'recordings';
 export type ProductionInvalidation = {
   readonly scope: ProductionEventScope;
   readonly version: number;
@@ -91,7 +91,7 @@ export function parseProductionEventBlock(block: string): ProductionInvalidation
   if (data === undefined) return null;
   try {
     const event = JSON.parse(data) as Record<string, unknown>;
-    return ['runtime', 'configurations', 'recordings', 'postproduction'].includes(String(event.scope))
+    return ['runtime', 'configurations', 'recordings'].includes(String(event.scope))
       && Number.isInteger(event.version) && Number(event.version) >= 0
       && typeof event.occurredAt === 'string'
       ? event as ProductionInvalidation

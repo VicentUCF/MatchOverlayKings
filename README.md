@@ -135,17 +135,6 @@ Desde **Grabaciones** el administrador inicia una subida reanudable y privada a 
 YouTube termina de procesarla puede programar `publishAt`. La publicación posterior depende de
 YouTube y no exige que el PC de producción permanezca encendido.
 
-**Grabaciones** también permite renovar partidos antiguos. Configura
-`KPL_POSTPRODUCTION_HOST_SOURCE_DIR` con una carpeta del PC que contenga los MP4; Compose la monta
-en `/media/kpl-source` como solo lectura. Configura `KPL_POSTPRODUCTION_HOST_OUTPUT_DIR` con la carpeta
-de salida del dispositivo; Compose la monta en `/media/kpl-output` con escritura. Los MP4 originales
-se leen directamente, los renovados se escriben directamente en el dispositivo y solo la cronología
-y los checkpoints ocupan espacio en `data/postproduction`. La generación fiel se ejecuta en tiempo
-real y se bloquea mientras exista una emisión o grabación activa. Durante el conteo, el reproductor
-puede permanecer a pantalla completa en el PC y un operador usa desde otro dispositivo el mismo mando
-de `/control/...` empleado en directo. Las acciones se guardan con la posición actual del vídeo sin
-recargar el archivo y el enlace temporal del operador caduca a las 18 horas.
-
 La instalación soportada usa Docker Compose:
 
 ```bash

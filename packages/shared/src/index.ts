@@ -1,4 +1,3 @@
 export * from './score-engine.js';
-export * from './score-command.js';
 export * from './types.js';
 export * from './validation.js';
