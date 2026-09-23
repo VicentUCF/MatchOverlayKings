@@ -1,0 +1,85 @@
+{
+  "name": "@kpl/editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/electron/main.js",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5174",
+    "build": "tsc -p tsconfig.json && vite build && tsc -p tsconfig.electron.json && esbuild electron/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/electron/preload.cjs",
+    "start": "electron .",
+    "package:linux": "npm run build:editor --prefix ../.. && npm run prepare:binaries && electron-builder --linux AppImage deb --x64",
+    "package:win": "npm run build:editor --prefix ../.. && npm run prepare:binaries && electron-builder --win nsis --x64",
+    "prepare:binaries": "node scripts/prepare-binaries.mjs"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@kpl/design-system": "https://github.com/VicentUCF/KPL-Design-System/archive/74871a429cbca165dc3c7070e1d8c4195b8c6b2a.tar.gz",
+    "@kpl/editor-core": "0.1.0",
+    "@kpl/match-data": "0.1.0",
+    "@kpl/match-presentation": "0.1.0",
+    "@kpl/production-assets": "0.1.0",
+    "@kpl/shared": "0.1.0",
+    "@supabase/supabase-js": "^2.117.1",
+    "lucide-react": "^0.561.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "zod": "4.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "electron": "41.10.7",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.25.12",
+    "vite": "^8.1.3"
+  },
+  "build": {
+    "appId": "es.kingspadelleague.editor",
+    "productName": "KPL Editor",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo",
+      "syncDesktopName": true,
+      "artifactName": "kpl-editor-${version}-${arch}.${ext}"
+    },
+    "executableName": "kpl-editor",
+    "icon": "../web/public/logos/kpl.png",
+    "deb": {
+      "packageName": "kpl-editor",
+      "artifactName": "kpl-editor-${version}-${arch}.${ext}"
+    }
+  },
+  "description": "Editor local de partidos de KingsPadelLeague",
+  "homepage": "https://github.com/VicentUCF/MatchOverlayKings",
+  "author": {
+    "name": "VicentUCF",
+    "email": "vicentciscar17@gmail.com"
+  },
+  "desktopName": "kpl-editor"
+}

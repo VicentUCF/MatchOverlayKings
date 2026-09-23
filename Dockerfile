@@ -9,8 +9,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY apps/editor/package.json apps/editor/package.json
 COPY apps/production-agent/package.json apps/production-agent/package.json
 COPY packages/shared/package.json packages/shared/package.json
+COPY packages/editor-core/package.json packages/editor-core/package.json
+COPY packages/match-data/package.json packages/match-data/package.json
+COPY packages/match-presentation/package.json packages/match-presentation/package.json
 COPY packages/production-assets/package.json packages/production-assets/package.json
 COPY packages/production-contracts/package.json packages/production-contracts/package.json
 RUN npm install --global npm@11.6.2 --no-audit --no-fund

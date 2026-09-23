@@ -5,6 +5,9 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      'apps/editor/dist-electron/**',
+      'apps/editor/release/**',
+      'apps/editor/vendor/**',
       '**/node_modules/**',
       'data/**',
       'apps/web/public/**',

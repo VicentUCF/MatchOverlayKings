@@ -61,8 +61,11 @@ export class ScoreEngineError extends Error {
   }
 }
 
-export function createInitialMatchState(event: Omit<EventDefinition, 'state'>): MatchState {
-  const now = new Date().toISOString();
+export type ScoreClock = () => string;
+const systemClock: ScoreClock = () => new Date().toISOString();
+
+export function createInitialMatchState(event: Omit<EventDefinition, 'state'>, clock: ScoreClock = systemClock): MatchState {
+  const now = clock();
 
   return {
     id: event.id,
@@ -91,7 +94,7 @@ export function ensureMatchState(event: EventDefinition): MatchState {
   return normalizeMatchState(event.state ?? createInitialMatchState(event), event);
 }
 
-export function addPoint(state: MatchState, side: Side, commandId: string): MatchState {
+export function addPoint(state: MatchState, side: Side, commandId: string, clock: ScoreClock = systemClock): MatchState {
   if (state.status === 'finished' || state.winner) {
     throw new ScoreEngineError('MATCH_FINISHED', 'El partido ya esta finalizado.');
   }
@@ -112,24 +115,24 @@ export function addPoint(state: MatchState, side: Side, commandId: string): Matc
     if (isGameComplete(draft.currentGame, draft.config)) {
       awardGame(draft, side);
     }
-  });
+  }, clock);
 }
 
-export function undoLastScoringCommand(state: MatchState, commandId: string): MatchState {
+export function undoLastScoringCommand(state: MatchState, commandId: string, clock: ScoreClock = systemClock): MatchState {
   const lastUndoable = [...state.history]
     .reverse()
     .find((entry) => ['add_point', 'manual_patch', 'reset'].includes(entry.type));
 
   if (!lastUndoable) {
-    return mutateWithHistory(state, commandId, 'undo', null, 'Undo sin cambios', () => undefined);
+    return mutateWithHistory(state, commandId, 'undo', null, 'Undo sin cambios', () => undefined, clock);
   }
 
   return mutateWithHistory(state, commandId, 'undo', lastUndoable.side, 'Deshacer ultima accion', (draft) => {
     applySnapshot(draft, lastUndoable.before);
-  });
+  }, clock);
 }
 
-export function resetMatch(state: MatchState, commandId: string): MatchState {
+export function resetMatch(state: MatchState, commandId: string, clock: ScoreClock = systemClock): MatchState {
   return mutateWithHistory(state, commandId, 'reset', null, 'Reiniciar marcador', (draft) => {
     draft.status = 'pre_match';
     draft.sets = [createActiveSet()];
@@ -138,13 +141,14 @@ export function resetMatch(state: MatchState, commandId: string): MatchState {
     draft.cards = cloneMatchCards(DEFAULT_MATCH_CARDS);
     draft.dataScene = null;
     draft.sponsorAds = clearSponsorFullscreen(draft.sponsorAds);
-  });
+  }, clock);
 }
 
 export function startNewMatch(
   state: MatchState,
   setup: NewMatchSetup,
   commandId: string,
+  clock: ScoreClock = systemClock,
 ): MatchState {
   const before = getScoreSnapshot(state);
   const draft = cloneState(state);
@@ -159,7 +163,7 @@ export function startNewMatch(
   draft.sponsorAds = clearSponsorFullscreen(draft.sponsorAds);
 
   const after = getScoreSnapshot(draft);
-  const now = new Date().toISOString();
+  const now = clock();
   const entry: MatchHistoryEntry = {
     id: `${draft.id}-${draft.version + 1}-new_match`,
     commandId,
@@ -183,6 +187,7 @@ export function applyManualPatch(
   state: MatchState,
   patch: ManualScorePatch,
   commandId: string,
+  clock: ScoreClock = systemClock,
 ): MatchState {
   return mutateWithHistory(state, commandId, 'manual_patch', null, 'Correccion manual', (draft) => {
     if (patch.status) {
@@ -202,30 +207,32 @@ export function applyManualPatch(
     }
 
     validateMatchShape(draft);
-  });
+  }, clock);
 }
 
 export function updateMatchMeta(
   state: MatchState,
   patch: MatchMetaPatch,
   commandId: string,
+  clock: ScoreClock = systemClock,
 ): MatchState {
   return mutateWithHistory(state, commandId, 'update_meta', null, 'Actualizar partido', (draft) => {
     applyMetaPatch(draft, patch);
-  });
+  }, clock);
 }
 
 export function updateOverlaySettings(
   state: MatchState,
   patch: OverlaySettingsPatch,
   commandId: string,
+  clock: ScoreClock = systemClock,
 ): MatchState {
   return mutateWithHistory(state, commandId, 'update_overlay', null, 'Actualizar OBS', (draft) => {
     draft.overlaySettings = normalizeOverlaySettings({
       ...draft.overlaySettings,
       ...patch,
     });
-  });
+  }, clock);
 }
 
 export function useMatchCard(
@@ -234,6 +241,7 @@ export function useMatchCard(
   cardId: MatchCardId,
   cardName: string,
   commandId: string,
+  clock: ScoreClock = systemClock,
 ): MatchState {
   if (state.status !== 'live') {
     throw new ScoreEngineError('VALIDATION_ERROR', 'Las cartas solo se pueden lanzar con el partido en directo.');
@@ -248,7 +256,7 @@ export function useMatchCard(
   }
 
   return mutateWithHistory(state, commandId, 'use_card', side, `Carta ${sideLabel(side)}`, (draft) => {
-    const usedAt = new Date().toISOString();
+    const usedAt = clock();
     const use: MatchCardUse = {
       side,
       teamId: side === 'home' ? draft.homeTeamId : draft.awayTeamId,
@@ -265,7 +273,7 @@ export function useMatchCard(
         id: commandId,
       },
     };
-  });
+  }, clock);
 }
 
 export function triggerOverlayDataScene(
@@ -273,6 +281,7 @@ export function triggerOverlayDataScene(
   kind: OverlayDataSceneKind,
   target: OverlayDataSceneTarget,
   commandId: string,
+  clock: ScoreClock = systemClock,
 ): MatchState {
   if (!isOverlayDataSceneKind(kind)) {
     throw new ScoreEngineError('VALIDATION_ERROR', 'Escena de datos no valida.');
@@ -283,15 +292,16 @@ export function triggerOverlayDataScene(
       id: commandId,
       kind,
       target: normalizeDataSceneTarget(target),
-      triggeredAt: new Date().toISOString(),
+      triggeredAt: clock(),
     };
-  });
+  }, clock);
 }
 
 export function updateSponsorTicker(
   state: MatchState,
   patch: SponsorTickerPatch,
   commandId: string,
+  clock: ScoreClock = systemClock,
 ): MatchState {
   return mutateWithHistory(state, commandId, 'update_sponsor_ticker', null, 'Actualizar sponsors', (draft) => {
     const current = normalizeSponsorAds(draft.sponsorAds);
@@ -303,7 +313,7 @@ export function updateSponsorTicker(
         ...patch,
       }),
     };
-  });
+  }, clock);
 }
 
 export function triggerSponsorFullscreen(
@@ -311,6 +321,7 @@ export function triggerSponsorFullscreen(
   sponsorIds: string[] | null,
   durationSeconds: number | undefined,
   commandId: string,
+  clock: ScoreClock = systemClock,
 ): MatchState {
   const normalizedSponsorIds = normalizeSponsorIds(sponsorIds);
 
@@ -327,18 +338,19 @@ export function triggerSponsorFullscreen(
         ? {
             id: commandId,
             sponsorIds: normalizedSponsorIds,
-            triggeredAt: new Date().toISOString(),
+            triggeredAt: clock(),
             durationSeconds: normalizeSponsorDuration(durationSeconds),
           }
         : null,
     };
-  });
+  }, clock);
 }
 
 export function setMatchStatus(
   state: MatchState,
   status: MatchStatus,
   commandId: string,
+  clock: ScoreClock = systemClock,
 ): MatchState {
   return mutateWithHistory(state, commandId, 'set_status', null, `Estado ${status}`, (draft) => {
     draft.status = status;
@@ -346,7 +358,7 @@ export function setMatchStatus(
     if (status !== 'finished') {
       draft.winner = null;
     }
-  });
+  }, clock);
 }
 
 export function formatPoint(state: MatchState, side: Side): string {
@@ -420,6 +432,7 @@ function mutateWithHistory(
   side: Side | null,
   label: string,
   mutate: (draft: MatchState) => void,
+  clock: ScoreClock = systemClock,
 ): MatchState {
   const before = getScoreSnapshot(state);
   const draft = cloneState(state);
@@ -427,7 +440,7 @@ function mutateWithHistory(
   mutate(draft);
 
   const after = getScoreSnapshot(draft);
-  const now = new Date().toISOString();
+  const now = clock();
   const entry: MatchHistoryEntry = {
     id: `${draft.id}-${draft.version + 1}-${type}`,
     commandId,

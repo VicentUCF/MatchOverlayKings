@@ -1,11 +1,3 @@
-import { Resvg } from '@resvg/resvg-js';
-import { fileURLToPath } from 'node:url';
-
-const FONT_FILES = [
-  fileURLToPath(import.meta.resolve('@expo-google-fonts/space-grotesk/700Bold/SpaceGrotesk_700Bold.ttf')),
-  fileURLToPath(import.meta.resolve('@expo-google-fonts/manrope/700Bold/Manrope_700Bold.ttf')),
-] as const;
-
 export interface LiveScoreboardFrameInput {
   readonly width: number;
   readonly height: number;
@@ -21,30 +13,7 @@ export interface LiveScoreboardFrameInput {
   readonly awayPoint: string;
   readonly servingSide: 'home' | 'away';
   readonly visible: boolean;
-}
-
-export function renderLiveScoreboardPng(input: LiveScoreboardFrameInput): Uint8Array {
-  return renderLiveScoreboard(input).asPng();
-}
-
-export function renderLiveScoreboardRgba(input: LiveScoreboardFrameInput): Uint8Array {
-  return renderLiveScoreboard(input).pixels;
-}
-
-function renderLiveScoreboard(input: LiveScoreboardFrameInput) {
-  const svg = buildLiveScoreboardSvg(input);
-  return new Resvg(svg, {
-    fitTo: { mode: 'original' },
-    font: {
-      fontFiles: [...FONT_FILES],
-      loadSystemFonts: false,
-      defaultFontFamily: 'Manrope',
-    },
-    imageRendering: 0,
-    shapeRendering: 2,
-    textRendering: 2,
-    logLevel: 'off',
-  }).render();
+  readonly statusLabel?: string;
 }
 
 export function buildLiveScoreboardSvg(input: LiveScoreboardFrameInput): string {
@@ -63,7 +32,7 @@ export function buildLiveScoreboardSvg(input: LiveScoreboardFrameInput): string 
   const court = fit(input.courtName || 'Pista', 24);
 
   if (!input.visible) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}"/>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 1920 1080"></svg>`;
   }
 
   const setHeaders = Array.from({ length: setCount }, (_, index) =>
@@ -92,7 +61,7 @@ export function buildLiveScoreboardSvg(input: LiveScoreboardFrameInput): string 
     <text x="${boardX + 96}" y="${boardY + 31}" class="heading" font-size="20" fill="#fff">${xml(title)}</text>
     <text x="${boardX + 96}" y="${boardY + 50}" class="body" font-size="12" fill="#9da8b8">${xml(court)}</text>
     <circle cx="${boardX + boardWidth - 96}" cy="${boardY + 34}" r="5" fill="#ff3b4f"/>
-    <text x="${boardX + boardWidth - 82}" y="${boardY + 39}" class="body" font-size="14" fill="#fff" letter-spacing="1">DIRECTO</text>
+    <text x="${boardX + boardWidth - 82}" y="${boardY + 39}" class="body" font-size="14" fill="#fff" letter-spacing="1">${xml(input.statusLabel ?? 'DIRECTO')}</text>
     <line x1="${boardX}" y1="${boardY + 66}" x2="${boardX + boardWidth}" y2="${boardY + 66}" stroke="#c9a227" stroke-width="3"/>
     ${setHeaders}
     <text x="${pointsX + 44}" y="94" class="label" text-anchor="middle">PTS</text>

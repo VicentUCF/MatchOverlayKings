@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./scoreboard-svg": {
+      "types": "./dist/live-scoreboard.d.ts",
+      "default": "./dist/live-scoreboard.js"
     }
   },
   "scripts": {

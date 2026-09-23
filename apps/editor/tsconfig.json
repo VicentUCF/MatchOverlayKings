@@ -1,0 +1,1 @@
+{"extends":"../../tsconfig.base.json","compilerOptions":{"jsx":"react-jsx","noEmit":true,"types":["vite/client"],"paths":{"@kpl/shared":["../../packages/shared/src/index.ts"],"@kpl/editor-core":["../../packages/editor-core/src/index.ts"],"@kpl/match-presentation":["../../packages/match-presentation/src/index.ts"]}},"include":["src/**/*.ts","src/**/*.tsx","vite.config.ts"]}

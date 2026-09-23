@@ -470,3 +470,33 @@ Revisa el espacio disponible antes de grabar partidos largos; la grabación term
 La reconciliación posterior con YouTube se ejecuta mediante RabbitMQ y no desde
 las consultas del navegador. La topología, despliegue, observabilidad y rollback
 están documentados en [la migración de publicaciones](docs/rabbitmq-publication-migration.md).
+
+## Editor de partidos (aplicación de escritorio)
+
+El editor se instala en Windows 11 o Linux x64 y procesa los vídeos en el propio PC, sin
+arrancar el servidor de emisiones. Crea un proyecto `.kpl-edit`, importa clips desde una
+carpeta o arrástralos desde el USB, prepara equipos y reglas, anota puntos y escenas en el
+vídeo, recorta tramos y elige la carpeta del MP4 y la miniatura PNG. Los originales no se
+modifican. El marcador se recalcula al mover o borrar acciones; los puntos de un tramo
+cortado siguen contando. Si el USB cambia de ruta, usa **Buscar clips**. Los proyectos
+incluyen copia de recursos y catálogo para reabrirlos sin Internet.
+
+```bash
+npm ci
+npm run build:editor
+npm run start -w @kpl/editor
+```
+
+Para crear instaladores en su sistema de destino:
+
+```bash
+npm run package:win -w @kpl/editor      # Windows: NSIS
+npm run package:linux -w @kpl/editor    # Linux: AppImage y .deb
+```
+
+Los paquetes se guardan en `apps/editor/release`. FFmpeg y ffprobe se incluyen en cada
+instalador. La sincronización de equipos usa las variables públicas de
+`apps/web/.env` cuando están configuradas; también pueden introducirse en la app.
+La exportación acepta vídeo SDR, conserva resolución y FPS del clip de referencia y
+requiere seleccionar uno si el material mezcla formatos. La calidad MP4 usa H.264 CRF 16
+y audio AAC. Se puede cancelar una exportación y repetirla a partir del proyecto guardado.

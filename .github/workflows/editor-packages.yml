@@ -1,0 +1,42 @@
+name: Editor desktop packages
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'apps/editor/**'
+      - 'packages/shared/**'
+      - 'packages/editor-core/**'
+      - 'packages/match-data/**'
+      - 'packages/match-presentation/**'
+      - 'packages/production-assets/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/editor-packages.yml'
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            command: package:linux
+            artifact: kpl-editor-linux
+          - os: windows-2025
+            command: package:win
+            artifact: kpl-editor-windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm install --global npm@11.6.2
+      - run: npm ci
+      - run: npm run build:editor
+      - run: npm run ${{ matrix.command }} -w @kpl/editor
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: apps/editor/release/*
+          if-no-files-found: error

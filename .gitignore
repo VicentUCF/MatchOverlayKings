@@ -17,3 +17,6 @@ data/youtube-oauth.json
 .omo
 .playwright-mcp
 data/recordings/
+apps/editor/release/
+apps/editor/vendor/
+apps/editor/dist-electron/

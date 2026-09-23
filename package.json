@@ -9,15 +9,15 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run dev -w @kpl/web",
+    "dev": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/match-data && npm run build -w @kpl/production-assets && npm run build -w @kpl/editor-core && npm run build -w @kpl/match-presentation && npm run dev -w @kpl/web",
     "preview": "npm run build:web && npm run preview -w @kpl/web -- --host 0.0.0.0 --port 4300",
     "runtime:start": "npm run build && npm run start:production -w @kpl/server",
     "docker:check": "./scripts/local-production.sh check",
     "docker:up": "./scripts/local-production.sh up",
     "docker:down": "./scripts/local-production.sh down",
     "docker:logs": "./scripts/local-production.sh logs",
-    "build": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/production-assets && npm run build -w @kpl/server && npm run build -w @kpl/web",
-    "build:web": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/web",
+    "build": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/production-assets && npm run build -w @kpl/match-data && npm run build -w @kpl/editor-core && npm run build -w @kpl/match-presentation && npm run build -w @kpl/server && npm run build -w @kpl/web",
+    "build:web": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/match-data && npm run build -w @kpl/production-assets && npm run build -w @kpl/editor-core && npm run build -w @kpl/match-presentation && npm run build -w @kpl/web",
     "lint": "eslint .",
     "test": "vitest run packages apps/server apps/web --maxWorkers=1",
     "test:e2e": "playwright test",
@@ -27,7 +27,8 @@
     "supabase:deploy": "node scripts/apply-supabase-migrations.mjs",
     "supabase:check": "node scripts/check-supabase.mjs",
     "archived-agent:verify": "npm run build -w @kpl/production-agent && npm run test -w @kpl/production-agent && npm run typecheck:test -w @kpl/production-agent",
-    "verify": "npm run check:architecture && npm run lint && npm run test && npm run build"
+    "verify": "npm run check:architecture && npm run lint && npm run test && npm run build && npm run build:editor",
+    "build:editor": "npm run build -w @kpl/shared && npm run build -w @kpl/production-assets && npm run build -w @kpl/match-data && npm run build -w @kpl/editor-core && npm run build -w @kpl/match-presentation && npm run build -w @kpl/editor"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

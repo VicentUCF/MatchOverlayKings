@@ -5,6 +5,8 @@ export type ProductionAssetInput = z.infer<typeof ProductionAssetInputSchema>;
 
 export type ProductionAssetOptions = {
   readonly localAssets?: Readonly<Record<string, Uint8Array>>;
+  readonly statusLabel?: string;
+  readonly fontFiles?: readonly string[];
 };
 
 export type ProductionAssets = {

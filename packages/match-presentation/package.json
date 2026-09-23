@@ -1,0 +1,36 @@
+{
+  "name": "@kpl/match-presentation",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "default": "./dist/node.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@kpl/shared": "0.1.0",
+    "@kpl/editor-core": "0.1.0",
+    "@kpl/production-assets": "0.1.0",
+    "@kpl/match-data": "0.1.0",
+    "react": "^19.2.3",
+    "lucide-react": "^0.561.0",
+    "animejs": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7"
+  }
+}

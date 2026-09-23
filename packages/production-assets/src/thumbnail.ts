@@ -44,7 +44,7 @@ export function buildThumbnailSvg(input: ProductionAssetInput, options: Producti
   <g font-family="${token.typography.family.heading}" font-weight="700" fill="#f5f5f5">
     <text x="640" y="94" text-anchor="middle" font-size="54"${day.length > 12 ? ' textLength="470" lengthAdjust="spacingAndGlyphs"' : ''}>${xml(day)}</text>
     <circle cx="1020" cy="77" r="10" fill="#ff1834"/>
-    <text x="1043" y="85" font-family="Manrope" font-size="23">EN DIRECTO</text>
+    <text x="1043" y="85" font-family="Manrope" font-size="23">${xml(options.statusLabel ?? 'EN DIRECTO')}</text>
     ${team('home', 326)}
     ${team('away', 954)}
     <text x="640" y="408" text-anchor="middle" font-size="116" fill="url(#gold)" stroke="#b99a57" stroke-width="1">VS</text>
@@ -52,11 +52,11 @@ export function buildThumbnailSvg(input: ProductionAssetInput, options: Producti
   </svg>`;
 }
 
-export function renderThumbnailPng(svg: string): Uint8Array {
+export function renderThumbnailPng(svg: string, fontFiles: readonly string[] = FONT_FILES): Uint8Array {
   return new Resvg(svg, {
     fitTo: { mode: 'original' },
     font: {
-      fontFiles: [...FONT_FILES],
+      fontFiles: [...fontFiles],
       loadSystemFonts: false,
       defaultFontFamily: 'Manrope',
     },
