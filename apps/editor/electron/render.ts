@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { BrowserWindow } from 'electron';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { once } from 'node:events';
 import { access, mkdir, rename, rm, statfs, writeFile } from 'node:fs/promises';
@@ -10,7 +11,6 @@ import type { Team } from '@kpl/shared';
 import { orderedActions, outputDuration, replay, sourceToOutput } from '@kpl/editor-core';
 import type { Project } from '@kpl/editor-core';
 import { sceneBoundarySeconds, isOverlayAnimated } from '@kpl/match-presentation';
-import { renderEditorOverlayPng } from '@kpl/match-presentation/node';
 import type { ExportProgress } from '../src/bridge.js';
 import { binary, inspect, runProbe } from './media.js';
 
@@ -19,7 +19,7 @@ export function cancelExport(){cancelled=true;processRunning?.kill('SIGTERM');}
 function command(exe:string,args:string[],onProgress?:(seconds:number)=>void):Promise<void>{return new Promise((resolvePromise,reject)=>{const child=spawn(exe,args,{stdio:['ignore','ignore','pipe'],windowsHide:true,shell:false});processRunning=child;let message='';child.stderr?.on('data',(chunk:Buffer)=>{message=(message+chunk.toString()).slice(-2000);const match=message.match(/out_time_us=(\d+)/g)?.at(-1);if(match)onProgress?.(Number(match.slice(12))/1_000_000);});child.once('error',reject);child.once('close',(code)=>{processRunning=null;if(code===0&&!cancelled)resolvePromise();else reject(new Error(cancelled?'Exportación cancelada':message||`FFmpeg salió con código ${code}`));});});}
 export async function exportProject(folder:string,project:Project,output:string,report:(p:ExportProgress)=>void):Promise<void>{
   if(busy)throw new Error('Ya hay una exportación en curso');busy=true;cancelled=false;
-  let audioStream:ReturnType<typeof createWriteStream>|null=null;
+  let audioStream:ReturnType<typeof createWriteStream>|null=null;let surface:BrowserWindow|null=null;
   const temp=join(dirname(output),`.kpl-export-${randomUUID()}`);const tempOutput=join(temp,'video.mp4');const audioOutput=join(temp,'audio.pcm');const mixedOutput=join(temp,'audio-mixed.pcm');const finalOutput=join(temp,'resultado.mp4');
   try{
     if(outputDuration(project)<=0)throw new Error('No quedan tramos de vídeo para exportar');
@@ -31,6 +31,21 @@ export async function exportProject(folder:string,project:Project,output:string,
     if(mixed&&!project.outputReferenceClipId)throw new Error('Selecciona un clip de referencia para combinar formatos distintos');
     const free=await statfs(dirname(output));if(free.bavail*free.bsize<Math.max(512*1024*1024,outputDuration(project)*(reference.width*reference.height>=3840*2160?12_000_000:4_000_000)))throw new Error('Espacio insuficiente en el destino');
     await mkdir(temp);report({phase:'preparing',fraction:0,message:'Preparando segmentos'});
+    surface=new BrowserWindow({width:1920,height:1080,show:false,transparent:true,frame:false,paintWhenInitiallyHidden:true,webPreferences:{offscreen:true,backgroundThrottling:false,nodeIntegration:false,contextIsolation:true,sandbox:true}});
+    surface.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+    await surface.loadFile(join(import.meta.dirname,'../../dist/render.html'));
+    await surface.webContents.debugger.attach('1.3');
+    await surface.webContents.debugger.sendCommand('Emulation.setDeviceMetricsOverride',{width:1920,height:1080,deviceScaleFactor:1,mobile:false});
+    await surface.webContents.debugger.sendCommand('Emulation.setDefaultBackgroundColorOverride',{color:{r:0,g:0,b:0,a:0}});
+    await surface.webContents.executeJavaScript(`window.setRenderProject(${JSON.stringify(project)})`);
+    async function capture(clipId:string,at:number):Promise<Uint8Array>{
+      if(!surface)throw new Error('Renderizador de gráficos no disponible');
+      await surface.webContents.executeJavaScript(`window.renderAt(${JSON.stringify(clipId)},${JSON.stringify(at)})`);
+      const screenshot=await surface.webContents.debugger.sendCommand('Page.captureScreenshot',{format:'png',fromSurface:true,captureBeyondViewport:true,clip:{x:0,y:0,width:1920,height:1080,scale:1}}) as {data:string};
+      const png=Buffer.from(screenshot.data,'base64');
+      if(!png.length)throw new Error('No se pudo capturar el gráfico del partido');
+      return png;
+    }
     const fontFiles=[join(folder,'assets','fonts','SpaceGrotesk_700Bold.ttf'),join(folder,'assets','fonts','Manrope_700Bold.ttf')];
     for(const font of fontFiles)await access(font);
     const fps=`${reference.fpsNum}/${reference.fpsDen}`;const segments:string[]=[];audioStream=createWriteStream(audioOutput);audioStream.on('error',()=>undefined);
@@ -43,13 +58,13 @@ export async function exportProject(folder:string,project:Project,output:string,
         const start=boundaries[k]!,end=boundaries[k+1]!;if(end-start<0.001)continue;
         const n=segments.length;const overlay=join(temp,`${n}.png`),segment=join(temp,`${n}.mp4`);
         const animated=isOverlayAnimated(project,clip.id,start+0.0001);
-        if(!animated)await writeFile(overlay,renderEditorOverlayPng(project,clip.id,start+0.0001,reference.width,reference.height,fontFiles));
+        if(!animated)await writeFile(overlay,await capture(clip.id,start+0.0001));
         const frameCount=Math.max(1,Math.round((end-start)*reference.fpsNum/reference.fpsDen));
         const audioSamples=Math.round(frameCount*reference.fpsDen/reference.fpsNum*48000);
-        const filter=`[0:v]fps=${fps},scale=${reference.width}:${reference.height}:force_original_aspect_ratio=decrease,pad=${reference.width}:${reference.height}:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p[v];[v][1:v]overlay=0:0:shortest=1:format=auto,format=yuv420p[out]`;
+        const filter=`[0:v]fps=${fps},scale=${reference.width}:${reference.height}:force_original_aspect_ratio=decrease,pad=${reference.width}:${reference.height}:(ow-iw)/2:(oh-ih)/2:color=black,format=yuv420p[v];[1:v]scale=${reference.width}:${reference.height}:flags=lanczos[ov];[v][ov]overlay=0:0:shortest=1:format=auto,format=yuv420p[out]`;
         const args=['-hide_banner','-loglevel','error','-progress','pipe:2','-ss',String(start),'-i',clip.path,...(animated?['-f','image2pipe','-vcodec','png']:['-loop','1']),'-framerate',fps,'-i',animated?'pipe:0':overlay,'-filter_complex',filter,'-map','[out]','-frames:v',String(frameCount),'-an','-c:v','libx264','-crf','16','-preset','medium','-r',fps,'-movflags','+faststart','-y',segment];
         const progressAt=(seconds:number)=>report({phase:'encoding',fraction:Math.min(0.93,(completedSeconds+seconds)/outputDuration(project)),message:`Codificando ${clip.name}`});
-        if(animated)await commandFrames(args,frameCount,i=>renderEditorOverlayPng(project,clip.id,start+i*reference.fpsDen/reference.fpsNum,reference.width,reference.height,fontFiles),progressAt);else await command(binary('ffmpeg'),args,progressAt);
+        if(animated)await commandFrames(args,frameCount,i=>capture(clip.id,start+i*reference.fpsDen/reference.fpsNum),progressAt);else await command(binary('ffmpeg'),args,progressAt);
         await appendAudio(audioStream,clip.hasAudio?clip.path:null,start,end-start,audioSamples);
         segments.push(segment);completedSeconds+=end-start;if(cancelled)throw new Error('Exportación cancelada');
         report({phase:'encoding',fraction:Math.min(0.94,completedSeconds/outputDuration(project)),message:`Segmento ${segments.length}`});
@@ -75,7 +90,7 @@ export async function exportProject(folder:string,project:Project,output:string,
     const thumbOutput=output.replace(/\.mp4$/i,'.png');try{await access(thumbOutput);throw new Error('La miniatura de salida ya existe');}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
     await rename(finalOutput,output);try{await rename(image,thumbOutput);}catch(error){await rm(output,{force:true});throw error;}report({phase:'done',fraction:1,message:'Exportación terminada',output});
   }catch(error){report({phase:cancelled?'cancelled':'error',fraction:0,message:error instanceof Error?error.message:String(error)});throw error;
-  }finally{audioStream?.destroy();processRunning=null;busy=false;await rm(temp,{recursive:true,force:true}).catch(()=>undefined);}
+  }finally{audioStream?.destroy();surface?.destroy();processRunning=null;busy=false;await rm(temp,{recursive:true,force:true}).catch(()=>undefined);}
 }
 
 async function appendAudio(out:ReturnType<typeof createWriteStream>,source:string|null,start:number,duration:number,samples:number){
@@ -99,10 +114,10 @@ async function mixCardAudio(input:string,output:string,project:Project){
 }
 async function decodeEffect(path:string):Promise<Buffer>{return new Promise((resolve,reject)=>{const child=spawn(binary('ffmpeg'),['-hide_banner','-loglevel','error','-i',path,'-f','s16le','-ar','48000','-ac','2','pipe:1'],{stdio:['ignore','pipe','pipe']});const chunks:Buffer[]=[];child.stdout?.on('data',b=>chunks.push(b));child.once('error',reject);child.once('close',code=>{if(code===0)resolve(Buffer.concat(chunks));else reject(new Error('Efecto de audio no disponible'));});});}
 
-async function commandFrames(args:string[],frames:number,render:(index:number)=>Uint8Array,onProgress?:(seconds:number)=>void):Promise<void>{
+async function commandFrames(args:string[],frames:number,render:(index:number)=>Promise<Uint8Array>|Uint8Array,onProgress?:(seconds:number)=>void):Promise<void>{
   const child=spawn(binary('ffmpeg'),args,{stdio:['pipe','ignore','pipe'],windowsHide:true,shell:false});processRunning=child;let message='';child.stderr?.on('data',b=>{message=(message+b.toString()).slice(-1800);const match=message.match(/out_time_us=(\d+)/g)?.at(-1);if(match)onProgress?.(Number(match.slice(12))/1_000_000);});child.stdin?.on('error',()=>undefined);
   const completed=new Promise<void>((resolvePromise,reject)=>{child.once('error',reject);child.once('close',code=>{processRunning=null;if(code===0&&!cancelled)resolvePromise();else reject(new Error(cancelled?'Exportación cancelada':message||`FFmpeg salió con código ${code}`));});});
-  try{for(let i=0;i<frames;i++){if(cancelled)break;const png=Buffer.from(render(i));if(!child.stdin!.write(png))await Promise.race([once(child.stdin!,'drain'),completed]);}child.stdin!.end();await completed;}catch(error){child.kill('SIGTERM');await completed.catch(()=>undefined);throw error;}
+  try{for(let i=0;i<frames;i++){if(cancelled)break;const png=Buffer.from(await render(i));if(!child.stdin!.write(png))await Promise.race([once(child.stdin!,'drain'),completed]);}child.stdin!.end();await completed;}catch(error){child.kill('SIGTERM');await completed.catch(()=>undefined);throw error;}
 }
 
 function thumbnailTeam(team:Team):ProductionAssetInput['home']{

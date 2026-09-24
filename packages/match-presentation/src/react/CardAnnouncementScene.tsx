@@ -12,10 +12,14 @@ export function CardAnnouncementScene({
   announcement,
   teams,
   onDone,
+  playbackTimeMs,
+  resolveAssetUrl = url => url,
 }: {
   announcement: MatchCardAnnouncement;
   teams: Team[];
   onDone: () => void;
+  playbackTimeMs?: number;
+  resolveAssetUrl?: (url:string) => string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const viewportStyle = useVisualViewportStyle();
@@ -26,9 +30,11 @@ export function CardAnnouncementScene({
     ...viewportStyle,
     '--team-color': team?.primaryColor ?? '#e0bb45',
     '--team-accent': team?.secondaryColor ?? '#34d8ff',
+    ...(playbackTimeMs===undefined?{}:{opacity:Math.max(0,Math.min(1,playbackTimeMs/180,(CARD_SCENE_DURATION_MS-playbackTimeMs)/CARD_SCENE_EXIT_MS))}),
   } as CSSProperties;
 
   useEffect(() => {
+    if (playbackTimeMs!==undefined) return undefined;
     if (!card) {
       onDone();
       return undefined;
@@ -135,7 +141,7 @@ export function CardAnnouncementScene({
       window.clearTimeout(exitTimer);
       animations.forEach((animation) => animation?.revert());
     };
-  }, [card, onDone]);
+  }, [card, onDone, playbackTimeMs]);
 
   if (!card) {
     return null;
@@ -159,7 +165,7 @@ export function CardAnnouncementScene({
       <span className="card-scene-spark d" aria-hidden="true" />
 
       <div className="card-scene-brand">
-        <img src="/logos/kpl-wordmark.png" alt="" />
+        <img src={resolveAssetUrl("/logos/kpl-wordmark.png")} alt="" />
         <span>Broadcast KPL</span>
       </div>
 
@@ -171,12 +177,12 @@ export function CardAnnouncementScene({
         </div>
 
         <div className="card-scene-card-frame">
-          <img className="card-scene-card-image" src={card.imageUrl} alt="" />
+          <img className="card-scene-card-image" src={resolveAssetUrl(card.imageUrl)} alt="" />
         </div>
 
         <div className="card-scene-team-badge">
           <span>
-            {team?.logoUrl ? <img src={team.logoUrl} alt="" /> : teamLabel.slice(0, 3)}
+            {team?.logoUrl ? <img src={resolveAssetUrl(team.logoUrl)} alt="" /> : teamLabel.slice(0, 3)}
           </span>
           <strong>{teamLabel}</strong>
           <small>utiliza {announcement.cardName}</small>

@@ -8,15 +8,21 @@ export function SponsorAdScene({
   ticker,
   fullscreen,
   onFullscreenDone,
+  playbackTimeMs,
+  brandLogoUrl = "/logos/kpl-wordmark.png",
+  resolveAssetUrl = (url: string) => url,
 }: {
   ticker: SponsorTickerState;
   fullscreen: SponsorFullscreenState | null;
   onFullscreenDone: () => void;
+  playbackTimeMs?: number | undefined;
+  brandLogoUrl?: string;
+  resolveAssetUrl?: (url: string) => string;
 }) {
   return (
     <>
-      {!fullscreen ? <SponsorTicker ticker={ticker} /> : null}
-      {fullscreen ? <SponsorFullscreenAd ad={fullscreen} onDone={onFullscreenDone} /> : null}
+      {!fullscreen ? <SponsorTicker ticker={ticker} playbackTimeMs={playbackTimeMs} resolveAssetUrl={resolveAssetUrl} /> : null}
+      {fullscreen ? <SponsorFullscreenAd ad={fullscreen} onDone={onFullscreenDone} playbackTimeMs={playbackTimeMs} brandLogoUrl={brandLogoUrl} resolveAssetUrl={resolveAssetUrl} /> : null}
     </>
   );
 }
@@ -25,7 +31,7 @@ export function hasSponsorTicker(ticker: SponsorTickerState | null | undefined):
   return Boolean(ticker?.visible && ticker.sponsorIds.length > 0);
 }
 
-function SponsorTicker({ ticker }: { ticker: SponsorTickerState }) {
+function SponsorTicker({ ticker, playbackTimeMs, resolveAssetUrl }: { ticker: SponsorTickerState; playbackTimeMs?: number | undefined; resolveAssetUrl: (url: string) => string }) {
   const sponsors = useMemo(() => resolveSponsors(ticker.sponsorIds), [ticker.sponsorIds]);
 
   if (!ticker.visible || sponsors.length === 0) {
@@ -42,9 +48,9 @@ function SponsorTicker({ ticker }: { ticker: SponsorTickerState }) {
         <span>{ticker.label}</span>
       </div>
       <div className="sponsor-ticker-viewport">
-        <div className="sponsor-ticker-track">
-          <SponsorTickerGroup sponsors={sponsors} />
-          <SponsorTickerGroup sponsors={sponsors} ariaHidden />
+        <div className="sponsor-ticker-track" style={playbackTimeMs === undefined ? undefined : { animationDelay: `${-(playbackTimeMs / 1000) % ticker.speedSeconds}s`, animationPlayState: "paused" }}>
+          <SponsorTickerGroup sponsors={sponsors} resolveAssetUrl={resolveAssetUrl} />
+          <SponsorTickerGroup sponsors={sponsors} ariaHidden resolveAssetUrl={resolveAssetUrl} />
         </div>
       </div>
     </aside>
@@ -54,9 +60,11 @@ function SponsorTicker({ ticker }: { ticker: SponsorTickerState }) {
 function SponsorTickerGroup({
   sponsors,
   ariaHidden,
+  resolveAssetUrl,
 }: {
   sponsors: SponsorDefinition[];
   ariaHidden?: boolean;
+  resolveAssetUrl: (url: string) => string;
 }) {
   return (
     <div className="sponsor-ticker-group" aria-hidden={ariaHidden}>
@@ -66,7 +74,7 @@ function SponsorTickerGroup({
           key={`${sponsor.id}-${ariaHidden ? 'copy' : 'main'}`}
           style={{ '--sponsor-color': sponsor.accentColor } as CSSProperties}
         >
-          <SponsorLogo sponsor={sponsor} />
+          <SponsorLogo sponsor={sponsor} resolveAssetUrl={resolveAssetUrl} />
           <strong>{sponsor.name}</strong>
         </article>
       ))}
@@ -77,9 +85,15 @@ function SponsorTickerGroup({
 function SponsorFullscreenAd({
   ad,
   onDone,
+  playbackTimeMs,
+  brandLogoUrl,
+  resolveAssetUrl,
 }: {
   ad: SponsorFullscreenState;
   onDone: () => void;
+  playbackTimeMs?: number | undefined;
+  brandLogoUrl: string;
+  resolveAssetUrl: (url: string) => string;
 }) {
   const ref = useRef<HTMLElement>(null);
   const sponsors = useMemo(() => resolveSponsors(ad.sponsorIds), [ad.sponsorIds]);
@@ -88,6 +102,7 @@ function SponsorFullscreenAd({
   } as CSSProperties;
 
   useEffect(() => {
+    if (playbackTimeMs !== undefined) return undefined;
     const timeoutId = window.setTimeout(onDone, ad.durationSeconds * 1_000);
 
     if (!ref.current || prefersReducedMotion()) {
@@ -121,7 +136,7 @@ function SponsorFullscreenAd({
       window.clearTimeout(timeoutId);
       animations.forEach((animation) => animation.revert());
     };
-  }, [ad.durationSeconds, ad.id, onDone]);
+  }, [ad.durationSeconds, ad.id, onDone, playbackTimeMs !== undefined]);
 
   return (
     <section
@@ -141,7 +156,7 @@ function SponsorFullscreenAd({
               key={sponsor.id}
               style={{ '--sponsor-color': sponsor.accentColor } as CSSProperties}
             >
-              <SponsorLogo sponsor={sponsor} />
+              <SponsorLogo sponsor={sponsor} resolveAssetUrl={resolveAssetUrl} />
               <strong>{sponsor.name}</strong>
             </article>
           ))}
@@ -149,19 +164,19 @@ function SponsorFullscreenAd({
       </div>
 
       <div className="sponsor-fullscreen-footer">
-        <img src="/logos/kpl-wordmark.png" alt="" />
+        <img src={brandLogoUrl} alt="" />
         <span>kingspadelleague.es</span>
       </div>
     </section>
   );
 }
 
-function SponsorLogo({ sponsor }: { sponsor: SponsorDefinition }) {
+function SponsorLogo({ sponsor, resolveAssetUrl }: { sponsor: SponsorDefinition; resolveAssetUrl: (url: string) => string }) {
   if (!sponsor.logoUrl) {
     return <span className="sponsor-logo-fallback">{sponsorInitials(sponsor.name)}</span>;
   }
 
-  return <img src={sponsor.logoUrl} alt="" />;
+  return <img src={resolveAssetUrl(sponsor.logoUrl)} alt="" />;
 }
 
 function sponsorInitials(value: string): string {

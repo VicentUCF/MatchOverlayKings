@@ -16,7 +16,20 @@
     "./react": {
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
-    }
+    },
+    "./styles/scoreboard-base.css": "./styles/scoreboard-base.css",
+    "./styles/scoreboard-overlay.css": "./styles/scoreboard-overlay.css",
+    "./styles/operator-actions.css": "./styles/operator-actions.css",
+    "./styles/editor-overlay.css": "./styles/editor-overlay.css",
+    "./styles/match-cards.css": "./styles/match-cards.css",
+    "./styles/sponsor-ads.css": "./styles/sponsor-ads.css",
+    "./styles/segmented-controls.css": "./styles/segmented-controls.css",
+    "./styles/panels.css": "./styles/panels.css",
+    "./styles/card-announcement-scene.css": "./styles/card-announcement-scene.css",
+    "./styles/prematch-scene.css": "./styles/prematch-scene.css",
+    "./styles/side-change-scene.css": "./styles/side-change-scene.css",
+    "./styles/data-scene.css": "./styles/data-scene.css",
+    "./styles/sponsor-ad-overlay.css": "./styles/sponsor-ad-overlay.css"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"

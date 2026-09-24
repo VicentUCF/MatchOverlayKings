@@ -18,11 +18,15 @@ export function SideChangeScene({
   state,
   teams,
   onDone,
+  playbackTimeMs,
+  brandLogoUrl = "/logos/kpl-wordmark.png",
 }: {
   signal: SideChangeSceneSignal;
   state: MatchState;
   teams: Team[];
   onDone: () => void;
+  playbackTimeMs?: number;
+  brandLogoUrl?: string;
 }) {
   const ref = useRef<HTMLElement>(null);
   const homeTeam = teams.find((team) => team.id === state.homeTeamId);
@@ -33,7 +37,7 @@ export function SideChangeScene({
   } as CSSProperties;
 
   useEffect(() => {
-    if (!ref.current) {
+    if (playbackTimeMs !== undefined || !ref.current) {
       return undefined;
     }
 
@@ -122,7 +126,7 @@ export function SideChangeScene({
       window.clearTimeout(exitTimer);
       animations.forEach((animation) => animation?.revert());
     };
-  }, [onDone]);
+  }, [onDone, playbackTimeMs !== undefined]);
 
   return (
     <section
@@ -138,7 +142,7 @@ export function SideChangeScene({
       <span className="side-change-track center" aria-hidden="true" />
 
       <div className="side-change-brand">
-        <img src="/logos/kpl-wordmark.png" alt="" />
+        <img src={brandLogoUrl} alt="" />
         <span>Broadcast KPL</span>
       </div>
 

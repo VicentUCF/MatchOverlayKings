@@ -1,0 +1,6 @@
+.editor-overlay-frame.overlay-page{position:relative;width:1920px;height:1080px;min-height:0;background:transparent;overflow:hidden}
+.editor-overlay-scenes{position:absolute;inset:0;width:1920px;height:1080px;pointer-events:none}
+
+.editor-overlay-frame .card-announcement-scene{position:absolute;inset:0;width:1920px;height:1080px}
+
+.editor-overlay-frame .editor-time-scene{position:absolute;inset:0;pointer-events:none}

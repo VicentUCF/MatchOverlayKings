@@ -4,3 +4,7 @@ export * from './react/SideChangeScene.js';
 export * from './react/CardAnnouncementScene.js';
 export * from './react/OverlayDataScene.js';
 export * from './react/SponsorAdScene.js';
+export * from './react/MatchScoreControls.js';
+export * from './react/EditorOverlayFrame.js';
+export * from './react/MatchOperatorPanels.js';
+export * from './react/MatchCorrectionPanel.js';

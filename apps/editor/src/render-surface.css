@@ -1,0 +1,13 @@
+@import '@kpl/design-system/source/tokens.css';
+@import '@kpl/match-presentation/styles/scoreboard-base.css';
+@import '@kpl/match-presentation/styles/scoreboard-overlay.css';
+@import '@kpl/match-presentation/styles/editor-overlay.css';
+@import '@kpl/match-presentation/styles/card-announcement-scene.css';
+@import '@kpl/match-presentation/styles/prematch-scene.css';
+@import '@kpl/match-presentation/styles/side-change-scene.css';
+@import '@kpl/match-presentation/styles/data-scene.css';
+@import '@kpl/match-presentation/styles/sponsor-ad-overlay.css';
+@font-face{font-family:Manrope;src:url('../../web/public/fonts/Manrope_700Bold.ttf') format('truetype');font-weight:700;font-display:block}
+@font-face{font-family:'Space Grotesk';src:url('../../web/public/fonts/SpaceGrotesk_700Bold.ttf') format('truetype');font-weight:700;font-display:block}
+:root,html,body,#root{width:1920px;height:1080px;margin:0;padding:0;overflow:hidden;background:transparent;color:white;font-family:Manrope,Arial,sans-serif}
+*{box-sizing:border-box}

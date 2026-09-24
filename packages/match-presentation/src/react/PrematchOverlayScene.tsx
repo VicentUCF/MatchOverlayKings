@@ -8,11 +8,15 @@ export function PrematchOverlayScene({
   teams,
   exiting,
   onExitComplete,
+  playbackTimeMs,
+  brandLogoUrl = "/logos/kpl-wordmark.png",
 }: {
   state: MatchState;
   teams: Team[];
   exiting: boolean;
   onExitComplete: () => void;
+  playbackTimeMs?: number;
+  brandLogoUrl?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const homeTeam = teams.find((team) => team.id === state.homeTeamId);
@@ -23,7 +27,7 @@ export function PrematchOverlayScene({
   } as CSSProperties;
 
   useEffect(() => {
-    if (!ref.current || prefersReducedMotion()) {
+    if (playbackTimeMs !== undefined || !ref.current || prefersReducedMotion()) {
       return undefined;
     }
 
@@ -77,10 +81,10 @@ export function PrematchOverlayScene({
     return () => {
       animations.forEach((animation) => animation?.revert());
     };
-  }, [state.id]);
+  }, [state.id, playbackTimeMs !== undefined]);
 
   useEffect(() => {
-    if (!exiting) {
+    if (playbackTimeMs !== undefined || !exiting) {
       return undefined;
     }
 
@@ -103,7 +107,7 @@ export function PrematchOverlayScene({
     return () => {
       animation.revert();
     };
-  }, [exiting, onExitComplete]);
+  }, [exiting, onExitComplete, playbackTimeMs !== undefined]);
 
   return (
     <section
@@ -119,7 +123,7 @@ export function PrematchOverlayScene({
       <span className="prematch-beam center" aria-hidden="true" />
 
       <div className="prematch-brand">
-        <img src="/logos/kpl-wordmark.png" alt="" />
+        <img src={brandLogoUrl} alt="" />
         <span>Previa del partido</span>
       </div>
 

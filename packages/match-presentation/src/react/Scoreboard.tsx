@@ -14,9 +14,12 @@ interface ScoreboardProps {
   state: MatchState;
   teams: Team[];
   mode: "control" | "overlay";
+  brandLogoUrl?: string;
+  liveLabel?: string;
+  animateChanges?: boolean;
 }
 
-export function Scoreboard({ state, teams, mode }: ScoreboardProps) {
+export function Scoreboard({ state, teams, mode, brandLogoUrl = "/logos/kpl-wordmark.png", liveLabel = "En directo", animateChanges = true }: ScoreboardProps) {
   const boardRef = useRef<HTMLElement>(null);
   const previousScoreValuesRef = useRef<Record<string, string> | null>(null);
   const home = teams.find((team) => team.id === state.homeTeamId);
@@ -46,7 +49,7 @@ export function Scoreboard({ state, teams, mode }: ScoreboardProps) {
         };
 
   useEffect(() => {
-    if (!boardRef.current || prefersReducedMotion()) {
+    if (!boardRef.current || !animateChanges || prefersReducedMotion()) {
       previousScoreValuesRef.current = scoreValues;
       return;
     }
@@ -93,7 +96,7 @@ export function Scoreboard({ state, teams, mode }: ScoreboardProps) {
       <header className="scoreboard-header">
         <div className="scoreboard-title">
           <span className="scoreboard-league-mark">
-            <img src="/logos/kpl-wordmark.png" alt="" />
+            <img src={brandLogoUrl} alt="" />
           </span>
           <strong>{state.title}</strong>
           <span className="court-label">
@@ -101,7 +104,7 @@ export function Scoreboard({ state, teams, mode }: ScoreboardProps) {
             {state.courtName || "Pista"}
           </span>
         </div>
-        <StatusBadge state={state} pointContext={pointContext} />
+        <StatusBadge state={state} pointContext={pointContext} liveLabel={liveLabel} />
       </header>
 
       <div
@@ -281,9 +284,11 @@ function getSetGames(set: MatchState["sets"][number], side: Side): number {
 function StatusBadge({
   state,
   pointContext,
+  liveLabel,
 }: {
   state: MatchState;
   pointContext: { side: Side; type: "set_point" | "match_point" } | null;
+  liveLabel: string;
 }) {
   if (state.status === "finished") {
     return <span className="status-badge finished">Final</span>;
@@ -306,7 +311,7 @@ function StatusBadge({
 
   return (
     <span className={className}>
-      {state.status === "live" ? "En directo" : "Prepartido"}
+      {state.status === "live" ? liveLabel : "Prepartido"}
     </span>
   );
 }

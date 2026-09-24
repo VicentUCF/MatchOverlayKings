@@ -14,11 +14,17 @@ export function OverlayDataScene({
   state,
   teams,
   onDone,
+  snapshotOverride,
+  playbackTimeMs,
+  brandLogoUrl = "/logos/kpl-wordmark.png",
 }: {
   scene: OverlayDataSceneState;
   state: MatchState;
   teams: Team[];
   onDone: () => void;
+  snapshotOverride?: LeagueSnapshot | null;
+  playbackTimeMs?: number;
+  brandLogoUrl?: string;
 }) {
   const ref = useRef<HTMLElement>(null);
   const [snapshot, setSnapshot] = useState<LeagueSnapshot | null>(null);
@@ -31,6 +37,11 @@ export function OverlayDataScene({
   useEffect(() => {
     let cancelled = false;
 
+    if (snapshotOverride !== undefined) {
+      setSnapshot(snapshotOverride);
+      setError(snapshotOverride ? null : "Faltan datos de liga. Sincroniza el catálogo antes de utilizar esta escena.");
+      return undefined;
+    }
     setSnapshot(null);
     setError(null);
 
@@ -49,10 +60,10 @@ export function OverlayDataScene({
     return () => {
       cancelled = true;
     };
-  }, [scene.id, teams]);
+  }, [scene.id, teams, snapshotOverride]);
 
   useEffect(() => {
-    if (!snapshot && !error) {
+    if (playbackTimeMs !== undefined || (!snapshot && !error)) {
       return undefined;
     }
 
@@ -97,7 +108,7 @@ export function OverlayDataScene({
       window.clearTimeout(timeoutId);
       animations.forEach((animation) => animation.revert());
     };
-  }, [error, onDone, snapshot]);
+  }, [error, onDone, snapshot, playbackTimeMs !== undefined]);
 
   return (
     <section
@@ -114,7 +125,7 @@ export function OverlayDataScene({
       <span className="data-scene-sweep three" aria-hidden="true" />
 
       <div className="data-scene-brand">
-        <img src="/logos/kpl-wordmark.png" alt="" />
+        <img src={brandLogoUrl} alt="" />
         <span>Datos oficiales</span>
       </div>
 

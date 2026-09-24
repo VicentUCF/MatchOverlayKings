@@ -10,29 +10,21 @@ import {
   type SetStateAction,
 } from 'react';
 import {
-  BarChart3,
-  CalendarDays,
   CreditCard,
   Eye,
   EyeOff,
   Flag,
-  ListRestart,
-  Maximize2,
   Megaphone,
   Menu,
   MonitorPlay,
   Move,
-  PanelBottom,
   Pencil,
   Repeat2,
   Play,
   Plus,
   RotateCcw,
   Save,
-  ShieldAlert,
   Square,
-  Trophy,
-  UsersRound,
   Volume2,
   VolumeX,
   Wifi,
@@ -52,16 +44,14 @@ import type {
   OverlayPosition,
   OverlaySettingsPatch,
   Side,
-  SponsorAdsState,
   SponsorTickerPatch,
   Team,
 } from '@kpl/shared';
 import { Scoreboard } from '../features/match-display/Scoreboard.js';
+import { MatchScoreControls, MatchCorrectionPanel, DataScenesPanel, MatchCardsPanel, SponsorAdsPanel, SegmentedControl } from '@kpl/match-presentation/react';
 import { ProductionNavigation } from '../components/ProductionNavigation.js';
 import { useMatchSocket } from '../hooks/useMatchSocket.js';
 import { fetchLeagueSnapshot, type LeaguePlayer, type LeagueSnapshot } from '../lib/league-data.js';
-import { MATCH_CARDS, type MatchCardDefinition } from '../lib/match-cards.js';
-import { SPONSORS } from '../lib/sponsors.js';
 
 type ControlPhase = 'setup' | 'score';
 type MobilePanel = 'cards' | 'data' | 'ads' | 'edit' | 'menu';
@@ -263,8 +253,6 @@ export function ControlPage({ eventId }: { eventId: string }) {
 
   const overlaySettings = state?.overlaySettings ?? DEFAULT_OVERLAY_SETTINGS;
   const isSetupPhase = phase === 'setup';
-  const homeTeam = state ? match.teams.find((team) => team.id === state.homeTeamId) : undefined;
-  const awayTeam = state ? match.teams.find((team) => team.id === state.awayTeamId) : undefined;
 
   const eventPanel = (
     <section className="operator-panel">
@@ -468,25 +456,13 @@ export function ControlPage({ eventId }: { eventId: string }) {
     />
   ) : null;
 
-  const correctionPanel = (
-    <section className="operator-panel danger-zone">
-      <h2>Correccion</h2>
-      <div className="manual-grid">
-        <NumberField label="Juegos L" value={manualHomeGames} onChange={setManualHomeGames} />
-        <NumberField label="Juegos V" value={manualAwayGames} onChange={setManualAwayGames} />
-        <NumberField label="Puntos L" value={manualHomePoints} onChange={setManualHomePoints} />
-        <NumberField label="Puntos V" value={manualAwayPoints} onChange={setManualAwayPoints} />
-      </div>
-      <button type="button" onClick={applyManualPatch} disabled={!state || match.pending}>
-        <ShieldAlert size={18} />
-        Aplicar
-      </button>
-      <button type="button" onClick={() => match.resetMatch()} disabled={!state || match.pending}>
-        <ListRestart size={18} />
-        Reset
-      </button>
-    </section>
-  );
+  const correctionPanel = <MatchCorrectionPanel
+    values={{ homeGames:manualHomeGames, awayGames:manualAwayGames, homePoints:manualHomePoints, awayPoints:manualAwayPoints }}
+    onChange={(key,value)=>({homeGames:setManualHomeGames,awayGames:setManualAwayGames,homePoints:setManualHomePoints,awayPoints:setManualAwayPoints})[key](value)}
+    onApply={()=>void applyManualPatch()}
+    onReset={()=>void match.resetMatch()}
+    disabled={!state || match.pending}
+  />;
 
   const matchMenuPanel = (
     <section className="operator-panel mobile-menu-panel">
@@ -582,51 +558,14 @@ export function ControlPage({ eventId }: { eventId: string }) {
               <div className="loading-panel">Cargando marcador</div>
             )}
 
-            <div className="point-controls">
-              <PointButton
-                side="home"
-                state={state}
-                label={homeTeam?.shortName ?? 'Local'}
-                team={homeTeam}
-                onClick={() => void match.addPoint('home')}
-                pending={match.pending}
-              />
-              <PointButton
-                side="away"
-                state={state}
-                label={awayTeam?.shortName ?? 'Visitante'}
-                team={awayTeam}
-                onClick={() => void match.addPoint('away')}
-                pending={match.pending}
-              />
-            </div>
-
-            <nav className="control-action-bar" aria-label="Acciones del marcador">
-              <button type="button" className="danger" onClick={() => void match.undo()} disabled={!state || match.pending}>
-                <RotateCcw size={18} />
-                <span>Deshacer</span>
-              </button>
-              <button type="button" onClick={() => setMobilePanel('cards')} disabled={!state}>
-                <CreditCard size={18} />
-                <span>Carta especial</span>
-              </button>
-              <button type="button" onClick={() => setMobilePanel('data')} disabled={!state}>
-                <BarChart3 size={18} />
-                <span>OBS datos</span>
-              </button>
-              <button type="button" onClick={() => setMobilePanel('ads')} disabled={!state}>
-                <Megaphone size={18} />
-                <span>Anuncios</span>
-              </button>
-              <button type="button" onClick={() => setMobilePanel('edit')} disabled={!state}>
-                <Pencil size={18} />
-                <span>Editar marcador</span>
-              </button>
-              <button type="button" onClick={() => setMobilePanel('menu')} disabled={!state}>
-                <Menu size={18} />
-                <span>Menu</span>
-              </button>
-            </nav>
+            <MatchScoreControls
+              state={state}
+              teams={match.teams}
+              pending={match.pending}
+              onAddPoint={(side) => void match.addPoint(side)}
+              onUndo={() => void match.undo()}
+              onOpenPanel={setMobilePanel}
+            />
           </section>
         </section>
       )}
@@ -838,340 +777,6 @@ function MobileControlModal({
   );
 }
 
-function DataScenesPanel({
-  state,
-  teams,
-  pending,
-  onTrigger,
-}: {
-  state: MatchState;
-  teams: Team[];
-  pending: boolean;
-  onTrigger: (kind: OverlayDataSceneKind, target: OverlayDataSceneTarget) => void;
-}) {
-  const homeTeam = teams.find((team) => team.id === state.homeTeamId);
-  const awayTeam = teams.find((team) => team.id === state.awayTeamId);
-  const actions: Array<{
-    kind: OverlayDataSceneKind;
-    target: OverlayDataSceneTarget;
-    label: string;
-    detail: string;
-    icon: ReactNode;
-  }> = [
-    {
-      kind: 'standings',
-      target: { type: 'league' },
-      label: 'Clasificacion',
-      detail: 'Tabla completa',
-      icon: <Trophy size={18} />,
-    },
-    {
-      kind: 'player-ranking',
-      target: { type: 'league' },
-      label: 'Ranking jugadores',
-      detail: 'Top 10 por puntos',
-      icon: <BarChart3 size={18} />,
-    },
-    {
-      kind: 'team-roster',
-      target: { type: 'side', side: 'home' },
-      label: `Plantilla ${homeTeam?.shortName ?? 'local'}`,
-      detail: 'Equipo local',
-      icon: <UsersRound size={18} />,
-    },
-    {
-      kind: 'team-roster',
-      target: { type: 'side', side: 'away' },
-      label: `Plantilla ${awayTeam?.shortName ?? 'visitante'}`,
-      detail: 'Equipo visitante',
-      icon: <UsersRound size={18} />,
-    },
-    {
-      kind: 'calendar',
-      target: { type: 'league' },
-      label: 'Calendario',
-      detail: 'Jornadas y horarios',
-      icon: <CalendarDays size={18} />,
-    },
-    {
-      kind: 'upcoming-matches',
-      target: { type: 'league' },
-      label: 'Proximos partidos',
-      detail: 'Lo siguiente',
-      icon: <CalendarDays size={18} />,
-    },
-    {
-      kind: 'latest-results',
-      target: { type: 'league' },
-      label: 'Ultimos resultados',
-      detail: 'Marcadores recientes',
-      icon: <BarChart3 size={18} />,
-    },
-  ];
-
-  return (
-    <section className="operator-panel data-scenes-panel">
-      <h2>OBS datos</h2>
-      <div className="data-scene-grid">
-        {actions.map((action) => (
-          <button
-            key={`${action.kind}-${targetKey(action.target)}`}
-            type="button"
-            onClick={() => onTrigger(action.kind, action.target)}
-            disabled={pending}
-          >
-            {action.icon}
-            <span>
-              <strong>{action.label}</strong>
-              <small>{action.detail}</small>
-            </span>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function MatchCardsPanel({
-  state,
-  teams,
-  pending,
-  onUse,
-}: {
-  state: MatchState;
-  teams: Team[];
-  pending: boolean;
-  onUse: (side: Side, card: MatchCardDefinition) => void;
-}) {
-  const [selectedSide, setSelectedSide] = useState<Side>('home');
-  const selectedTeam = teams.find((item) => item.id === (selectedSide === 'home' ? state.homeTeamId : state.awayTeamId));
-  const usedCard = state.cards?.[selectedSide] ?? null;
-
-  return (
-    <section className="operator-panel match-cards-panel">
-      <h2>Cartas banquillo</h2>
-      <div className="card-team-switch" role="group" aria-label="Equipo que usa la carta">
-        {(['home', 'away'] as const).map((side) => {
-          const team = teams.find((item) => item.id === (side === 'home' ? state.homeTeamId : state.awayTeamId));
-          const sideUsedCard = state.cards?.[side] ?? null;
-
-          return (
-            <button
-              key={side}
-              type="button"
-              className={selectedSide === side ? 'active' : ''}
-              onClick={() => setSelectedSide(side)}
-            >
-              <strong>{team?.shortName ?? sideLabel(side)}</strong>
-              <span>{sideUsedCard ? `Usada: ${sideUsedCard.cardName}` : 'Disponible'}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="card-side-heading">
-        <strong>{selectedTeam?.shortName ?? sideLabel(selectedSide)}</strong>
-        <span>{usedCard ? `Ya uso ${usedCard.cardName}` : 'Elige carta'}</span>
-      </div>
-
-      <div className="card-action-grid">
-        {MATCH_CARDS.map((card) => (
-          <button
-            key={card.id}
-            type="button"
-            className={usedCard?.cardId === card.id ? 'used' : ''}
-            onClick={() => onUse(selectedSide, card)}
-            disabled={pending || state.status !== 'live' || Boolean(usedCard)}
-            aria-label={`${selectedTeam?.shortName ?? sideLabel(selectedSide)} utiliza ${card.name}`}
-          >
-            <img src={card.imageUrl} alt="" />
-            <span>{card.name}</span>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-type SponsorTickerSpeed = 'fast' | 'normal' | 'slow';
-
-const SPONSOR_TICKER_SPEEDS: Record<SponsorTickerSpeed, number> = {
-  fast: 18,
-  normal: 28,
-  slow: 42,
-};
-
-function SponsorAdsPanel({
-  sponsorAds,
-  pending,
-  onUpdateTicker,
-  onTriggerFullscreen,
-}: {
-  sponsorAds: SponsorAdsState;
-  pending: boolean;
-  onUpdateTicker: (patch: SponsorTickerPatch) => void;
-  onTriggerFullscreen: (sponsorIds: string[] | null) => void;
-}) {
-  const ads = sponsorAds ?? DEFAULT_SPONSOR_ADS;
-  const ticker = ads.ticker ?? DEFAULT_SPONSOR_ADS.ticker;
-  const selectedSet = new Set(ticker.sponsorIds);
-  const fullscreenSponsorIds = ticker.sponsorIds.length > 0 ? ticker.sponsorIds : SPONSORS.map((sponsor) => sponsor.id);
-  const activeSponsorCount = ads.fullscreen?.sponsorIds.length ?? 0;
-
-  function toggleSponsor(sponsorId: string) {
-    const nextIds = selectedSet.has(sponsorId)
-      ? ticker.sponsorIds.filter((id) => id !== sponsorId)
-      : [...ticker.sponsorIds, sponsorId];
-
-    onUpdateTicker({
-      sponsorIds: nextIds,
-      visible: nextIds.length > 0 ? ticker.visible : false,
-    });
-  }
-
-  return (
-    <section className="operator-panel sponsor-ads-panel">
-      <h2>Anuncios</h2>
-
-      <div className="sponsor-panel-heading">
-        <PanelBottom size={18} />
-        <strong>Barra inferior</strong>
-        <span>{ticker.sponsorIds.length} logos</span>
-      </div>
-
-      <button
-        type="button"
-        className={`switch-button ${ticker.visible ? 'on' : ''}`}
-        onClick={() => onUpdateTicker({ visible: !ticker.visible })}
-        disabled={pending || ticker.sponsorIds.length === 0}
-      >
-        {ticker.visible ? <Eye size={18} /> : <EyeOff size={18} />}
-        <span>{ticker.visible ? 'Barra activa' : 'Barra apagada'}</span>
-      </button>
-
-      <SegmentedControl<SponsorTickerSpeed>
-        label="Ritmo"
-        value={speedPreset(ticker.speedSeconds)}
-        disabled={pending}
-        options={[
-          { value: 'fast', label: 'Rapido', icon: <PanelBottom size={16} /> },
-          { value: 'normal', label: 'Medio', icon: <PanelBottom size={16} /> },
-          { value: 'slow', label: 'Lento', icon: <PanelBottom size={16} /> },
-        ]}
-        onChange={(speed) => onUpdateTicker({ speedSeconds: SPONSOR_TICKER_SPEEDS[speed] })}
-      />
-
-      <div className="sponsor-picker-grid">
-        {SPONSORS.map((sponsor) => {
-          const selected = selectedSet.has(sponsor.id);
-
-          return (
-            <button
-              key={sponsor.id}
-              type="button"
-              className={selected ? 'active' : ''}
-              onClick={() => toggleSponsor(sponsor.id)}
-              disabled={pending}
-            >
-              <span className="sponsor-panel-logo">
-                {sponsor.logoUrl ? <img src={sponsor.logoUrl} alt="" /> : sponsorInitials(sponsor.name)}
-              </span>
-              <span>
-                <strong>{sponsor.name}</strong>
-                <small>{selected ? 'En barra' : 'Agregar'}</small>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="sponsor-panel-heading">
-        <Maximize2 size={18} />
-        <strong>Pantalla grande</strong>
-        <span>{activeSponsorCount > 0 ? `${activeSponsorCount} logos` : 'Lista'}</span>
-      </div>
-
-      <button
-        type="button"
-        className="sponsor-fullscreen-all-button"
-        onClick={() => onTriggerFullscreen(fullscreenSponsorIds)}
-        disabled={pending || fullscreenSponsorIds.length === 0}
-      >
-        <Maximize2 size={18} />
-        <span>
-          <strong>Mostrar todos</strong>
-          <small>{ticker.sponsorIds.length > 0 ? 'Sponsors de la barra' : 'Catalogo completo'}</small>
-        </span>
-      </button>
-
-      {ads.fullscreen ? (
-        <button type="button" className="sponsor-clear-button" onClick={() => onTriggerFullscreen(null)} disabled={pending}>
-          <X size={18} />
-          Limpiar pantalla
-        </button>
-      ) : null}
-    </section>
-  );
-}
-
-function speedPreset(speedSeconds: number): SponsorTickerSpeed {
-  if (speedSeconds <= 20) {
-    return 'fast';
-  }
-
-  if (speedSeconds >= 36) {
-    return 'slow';
-  }
-
-  return 'normal';
-}
-
-function targetKey(target: OverlayDataSceneTarget): string {
-  if (target.type === 'side') {
-    return target.side;
-  }
-
-  if (target.type === 'team') {
-    return target.teamId;
-  }
-
-  return 'league';
-}
-
-function SegmentedControl<TValue extends string>({
-  label,
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  value: TValue;
-  options: Array<{ value: TValue; label: string; icon: ReactNode }>;
-  disabled: boolean;
-  onChange: (value: TValue) => void;
-}) {
-  return (
-    <div className="segmented-field">
-      <span>{label}</span>
-      <div className="segmented-control" role="group" aria-label={label}>
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            className={option.value === value ? 'active' : ''}
-            onClick={() => onChange(option.value)}
-            disabled={disabled}
-          >
-            {option.icon}
-            <span>{option.label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const CUSTOM_PLAYER_OPTION = '__custom__';
 
 function LineupFields({
@@ -1310,35 +915,6 @@ function createEmptyLineups(): MatchLineups {
   };
 }
 
-function PointButton({
-  side,
-  state,
-  label,
-  team,
-  onClick,
-  pending,
-}: {
-  side: Side;
-  state: ReturnType<typeof useMatchSocket>['state'];
-  label: string;
-  team: Team | undefined;
-  onClick: () => void;
-  pending: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      className={`point-button ${side}`}
-      style={teamPointButtonStyle(team)}
-      onClick={onClick}
-      disabled={!state || pending || state.status === 'finished'}
-    >
-      <Plus size={28} />
-      <strong>{label}</strong>
-    </button>
-  );
-}
-
 function teamPointButtonStyle(team: Team | undefined): CSSProperties {
   return {
     '--point-team-color': team?.primaryColor ?? '#c9a227',
@@ -1354,29 +930,6 @@ function mobileScoreTeamStyle(home: Team | undefined, away: Team | undefined, se
     '--mobile-away-secondary': away?.secondaryColor ?? '#0d1016',
     '--mobile-serve-color': servingTeam?.primaryColor ?? '#c9a227',
   } as CSSProperties;
-}
-
-function NumberField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label>
-      <span>{label}</span>
-      <input
-        type="number"
-        min="0"
-        step="1"
-        value={value}
-        onChange={(event) => onChange(Math.max(0, Number(event.target.value) || 0))}
-      />
-    </label>
-  );
 }
 
 function connectionLabel(state: string): string {
@@ -1414,9 +967,6 @@ function teamInitials(value: string): string {
     .join('');
 }
 
-function sponsorInitials(value: string): string {
-  return teamInitials(value);
-}
 
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
