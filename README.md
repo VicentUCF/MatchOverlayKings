@@ -477,6 +477,9 @@ configuración pública de Supabase. Si el PC tiene varias redes, define
 la aplicación. Windows Firewall debe permitir la aplicación y MediaMTX en la red
 privada. La cámara móvil conserva su enlace HTTPS y entrega vídeo al PC por la LAN.
 
+La versión provisional `1.0.0-beta.1` y su suma SHA-256 están documentadas en
+[`apps/production-desktop/BETA-1.0.md`](apps/production-desktop/BETA-1.0.md).
+
 En **Producción**, elige la webcam GoPro u otra cámara de Windows, o prepara una
 cámara móvil. Selecciona los micrófonos y su volumen; para el móvil puedes añadir
 también su audio. Cada micrófono físico pertenece a una sola pista activa. Ejecuta

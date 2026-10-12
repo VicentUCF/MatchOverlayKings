@@ -8,12 +8,23 @@ import ffmpeg from '@ffmpeg-installer/ffmpeg';
 import ffprobe from '@ffprobe-installer/ffprobe';
 import { chromium } from 'playwright';
 
-if (process.platform !== 'win32') throw new Error('El instalador de producción se construye en Windows x64.');
+const crossBuild = process.platform !== 'win32' && process.env.KPL_CROSS_BUILD_WIN === '1';
+if (process.platform !== 'win32' && !crossBuild) throw new Error('Compila en Windows x64 o define KPL_CROSS_BUILD_WIN=1 para una compilación cruzada.');
+if (crossBuild && process.env.PLAYWRIGHT_HOST_PLATFORM_OVERRIDE !== 'win64')
+  throw new Error('La compilación cruzada requiere PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=win64.');
 const root = resolve(import.meta.dirname, '..');
 const vendor = join(root, 'vendor');
 await mkdir(vendor, { recursive: true });
-await copyFile(ffmpeg.path, join(vendor, 'ffmpeg.exe'));
-await copyFile(ffprobe.path, join(vendor, 'ffprobe.exe'));
+const binaryDirectory = crossBuild ? process.env.KPL_WIN_BINARIES_DIR : null;
+if (crossBuild && !binaryDirectory) throw new Error('Define KPL_WIN_BINARIES_DIR con los paquetes Windows de FFmpeg y FFprobe.');
+await copyFile(binaryDirectory ? join(binaryDirectory, '@ffmpeg-installer/win32-x64/ffmpeg.exe') : ffmpeg.path,
+  join(vendor, 'ffmpeg.exe'));
+await copyFile(binaryDirectory ? join(binaryDirectory, '@ffprobe-installer/win32-x64/ffprobe.exe') : ffprobe.path,
+  join(vendor, 'ffprobe.exe'));
+if (binaryDirectory) {
+  const nativeTarget = resolve(root, '../../node_modules/@resvg/resvg-js-win32-x64-msvc');
+  await cp(join(binaryDirectory, '@resvg/resvg-js-win32-x64-msvc'), nativeTarget, { recursive: true });
+}
 
 const browserExe = chromium.executablePath();
 if (!existsSync(browserExe)) throw new Error('Falta Chromium: ejecuta npx playwright install chromium en Windows.');
@@ -37,7 +48,9 @@ const zipPath = join(tmpdir(), `kpl-${filename}`);
 await writeFile(zipPath, archive);
 const extracted = join(tmpdir(), `kpl-mediamtx-${process.pid}`);
 await mkdir(extracted, { recursive: true });
-const tar = spawnSync('tar.exe', ['-xf', zipPath, '-C', extracted], { encoding: 'utf8' });
+const tar = spawnSync(process.platform === 'win32' ? 'tar.exe' : 'unzip',
+  process.platform === 'win32' ? ['-xf', zipPath, '-C', extracted] : ['-q', zipPath, '-d', extracted],
+  { encoding: 'utf8' });
 if (tar.status !== 0) throw new Error(`No se pudo extraer MediaMTX: ${tar.stderr}`);
 await copyFile(join(extracted, 'mediamtx.exe'), join(vendor, 'mediamtx.exe'));
 

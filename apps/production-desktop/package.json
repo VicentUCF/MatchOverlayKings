@@ -1,6 +1,6 @@
 {
   "name": "@kpl/production-desktop",
-  "version": "0.1.0",
+  "version": "1.0.0-beta.1",
   "private": true,
   "description": "Grabación local de partidos de Kings Padel League para Windows",
   "author": "Kings Padel League",
