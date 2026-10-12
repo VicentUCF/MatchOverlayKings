@@ -55,6 +55,7 @@ export function ProductionDashboardView({
   }, [selectedCourt]);
   const enabled = courts.filter(({ productionEnabled }) => productionEnabled);
   const ready = state.kind === 'ready' ? state : null;
+  const recordingOnly = ready?.readiness.recordingOnly === true;
   const configurations = ready?.configurations ?? [];
   const sessions = ready?.sessions ?? [];
   const stale = state.kind === 'error' || Boolean(ready?.error)
@@ -71,9 +72,9 @@ export function ProductionDashboardView({
 
   const feedback = <>
     {stale ? <div className="production-page-feedback danger" role="alert">
-      <strong>Datos de emisión sin confirmar</strong>
+      <strong>{recordingOnly ? 'Datos de grabación sin confirmar' : 'Datos de emisión sin confirmar'}</strong>
       <span>{state.kind === 'error' ? state.message : ready?.error ?? 'No se han recibido datos recientes del PC de emisión.'}
-        {' '}Los valores conservados no confirman que el directo siga activo.</span>
+        {' '}{recordingOnly ? 'Los valores conservados no confirman que la grabación siga activa.' : 'Los valores conservados no confirman que el directo siga activo.'}</span>
       <button type="button" className="refresh-button" onClick={() => void refresh()}>Reintentar conexión</button>
       {localAdminUrl ? <a className="refresh-button" href={localAdminUrl}>Abrir panel local</a> : null}
     </div> : null}
@@ -108,18 +109,20 @@ export function ProductionDashboardView({
             <h2>Salida y audio</h2>
             <dl className="production-dashboard-health">
               <div><dt>Destino</dt><dd>{session?.mode === 'youtube' ? 'YouTube' : (session?.mode ?? configuration?.mode) === 'recording' ? 'Grabación local' : configuration?.mode === 'simulation' ? 'Simulación' : 'Sin preparar'}</dd></div>
-              <div><dt>En emisión</dt><dd>{duration(session, now)}</dd></div>
-              <div><dt>Audio de cámara</dt><dd>{session?.continuity?.active ? 'Silenciado en continuidad'
+              <div><dt>{recordingOnly ? 'Grabando' : 'En emisión'}</dt><dd>{duration(session, now)}</dd></div>
+              <div><dt>Audio del programa</dt><dd>{session?.continuity?.active ? 'Silenciado en continuidad'
                 : mobileCamera?.applied ? mobileCamera.applied.audioEnabled ? 'Activado' : 'Desactivado'
                   : session?.signal ? session.signal.audioExpected ? 'Se espera audio' : 'Sin micrófono' : 'Sin confirmar'}</dd></div>
             </dl>
-            <p>Salud de YouTube: <strong>{stale ? 'Sin confirmar' : session?.youtubeStreamStatus ?? 'Sin datos del destino'}</strong></p>
+            {!recordingOnly ? <><p>Salud de YouTube: <strong>{stale ? 'Sin confirmar' : session?.youtubeStreamStatus ?? 'Sin datos del destino'}</strong></p>
             {configuration ? <p>Visibilidad configurada: <strong>{privacyLabel(configuration.privacyStatus)}</strong></p> : null}
             {watchUrl ? <a className="production-setup-submit" href={watchUrl} target="_blank" rel="noreferrer">
               <ExternalLink aria-hidden="true" />Comprobar salida en YouTube</a> : <p>El enlace al directo aparecerá cuando la sesión permita comprobarlo.</p>}
-            <p className="production-monitor-note">YouTube tiene retardo. Comprueba allí el vídeo final, el marcador y el audio que recibe el público.</p>
+            <p className="production-monitor-note">YouTube tiene retardo. Comprueba allí el vídeo final, el marcador y el audio que recibe el público.</p></>
+              : <p className="production-monitor-note">La grabación se guarda en este PC. Comprueba el MP4 desde Grabaciones al detenerla.</p>}
           </section>
           {ready && pilot ? <PilotControlPanel key={court.slug} court={court} configuration={configuration} session={session}
+            recordingOnly={ready.readiness.recordingOnly === true}
             pending={ready.pendingCourts.includes(court.slug)} error={ready.courtErrors[court.slug] ?? null}
             mobileCamera={mobileCamera} showMobileMonitor={false} showVisualLink={false} idPrefix="detail-control"
             onPrepare={(input) => void pilot.prepare(input)} onStart={(value) => void pilot.start(value)}
@@ -133,11 +136,11 @@ export function ProductionDashboardView({
     </> : <>
       <header className="production-dashboard-heading">
         <div><p className="production-kicker">Realización · Vista global</p><h1 id="production-dashboard-title">Todas las pistas, en un solo sitio</h1>
-          <p>Supervisa la señal y los marcadores de los anotadores. Abre una pista para controlar su emisión.</p></div>
+          <p>Supervisa la señal y los marcadores de los anotadores. Abre una pista para controlar su {recordingOnly ? 'grabación' : 'emisión'}.</p></div>
         <dl className="production-dashboard-summary">
-          <div><dt>Emitiendo</dt><dd>{stale || !ready ? '—' : `${liveCount}/${enabled.length}`}</dd></div>
+          <div><dt>{recordingOnly ? 'Grabando' : 'Emitiendo'}</dt><dd>{stale || !ready ? '—' : `${liveCount}/${enabled.length}`}</dd></div>
           <div><dt>Con incidencias</dt><dd>{stale || !ready ? '—' : incidentCount}</dd></div>
-          <div><dt>PC de emisión</dt><dd>{stale ? 'Sin confirmar' : ready ? 'Conectado' : 'Comprobando'}</dd></div>
+          <div><dt>{recordingOnly ? 'PC de grabación' : 'PC de emisión'}</dt><dd>{stale ? 'Sin confirmar' : ready ? 'Conectado' : 'Comprobando'}</dd></div>
         </dl>
       </header>
       {feedback}
@@ -164,7 +167,7 @@ export function ProductionDashboardView({
             <div className="production-dashboard-court__body">
               {monitoringActive ? <CourtScoreMonitor key={item.slug} courtSlug={item.slug} configuration={config} now={now} /> : null}
               {!item.productionEnabled ? <p>Producción desactivada. El marcador sigue disponible.</p>
-                : !config ? <div className="production-dashboard-empty"><strong>{state.kind === 'ready' ? 'Emisión sin configurar' : 'Configuración sin confirmar'}</strong></div>
+                : !config ? <div className="production-dashboard-empty"><strong>{state.kind === 'ready' ? recordingOnly ? 'Grabación sin configurar' : 'Emisión sin configurar' : 'Configuración sin confirmar'}</strong></div>
                   : <div className="production-dashboard-match"><span>{config.mode === 'youtube' ? 'YouTube' : config.mode === 'recording' ? 'Grabación local' : 'Simulación'}{config.mode === 'youtube' ? ` · ${privacyLabel(config.privacyStatus)}` : ''}</span>
                     <p>Jornada {config.matchdayNumber} · {duration(current, now)}</p></div>}
               {current?.encoder && current.status !== 'stopped' ? <dl className="production-dashboard-health" aria-label={stale ? 'Últimas métricas conocidas' : 'Métricas de emisión'}>

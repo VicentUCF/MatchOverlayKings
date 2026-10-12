@@ -452,6 +452,48 @@ KPL_SMOKE_REQUIRE_YOUTUBE=true KPL_SMOKE_REQUIRE_MOBILE=true npm run smoke
 
 ## Grabación local para falso directo
 
+### KPL Producción en Windows 11
+
+`@kpl/production-desktop` instala el servidor, la interfaz, FFmpeg, FFprobe,
+MediaMTX y Chromium en un instalador NSIS de 64 bits. Funciona directamente en
+Windows, sin Docker ni WSL. Guarda configuración y credenciales en la carpeta de
+usuario de la aplicación, y los MP4 en `Documentos/KPL Grabaciones/<pista>/<sesión>/`
+por defecto. Puedes elegir otra carpeta al preparar las pistas.
+
+Para generar el instalador en un **PC Windows 11 x64**:
+
+```powershell
+npm ci
+npx playwright install chromium
+$env:VITE_SUPABASE_URL = "https://TU-PROYECTO.supabase.co"
+$env:VITE_SUPABASE_PUBLISHABLE_KEY = "TU-CLAVE-PUBLICA"
+npm run package:production-win
+```
+
+El instalador resultante queda en `apps/production-desktop/release/`. El empaquetado
+descarga la versión fijada de MediaMTX y comprueba su SHA-256. Integra solo la
+configuración pública de Supabase. Si el PC tiene varias redes, define
+`KPL_PILOT_LAN_HOST` con la IP del adaptador que usan los móviles antes de abrir
+la aplicación. Windows Firewall debe permitir la aplicación y MediaMTX en la red
+privada. La cámara móvil conserva su enlace HTTPS y entrega vídeo al PC por la LAN.
+
+En **Producción**, elige la webcam GoPro u otra cámara de Windows, o prepara una
+cámara móvil. Selecciona los micrófonos y su volumen; para el móvil puedes añadir
+también su audio. Cada micrófono físico pertenece a una sola pista activa. Ejecuta
+**Comprobar programa** y reproduce la vista previa de diez segundos antes de
+**Grabar**. Los mandos del marcador siguen usando sus enlaces web y necesitan
+Internet; el vídeo se guarda en el PC.
+
+En **Grabaciones** puedes abrir la carpeta, exportar el MP4 o subirlo a YouTube
+después. Para la subida, importa desde esa pantalla un JSON de cliente OAuth web
+de Google, reinicia la aplicación y conecta la cuenta. El URI de redirección del
+cliente debe incluir `http://localhost:4310/api/pilot/youtube/auth/callback`.
+
+Antes de una jornada, valida el instalador en Windows real con GoPro USB y
+micrófono, y repite con cámara móvil. Comprueba dos pistas simultáneas, el
+marcador desde otro móvil, pérdida de cámara o audio, reinicio, MP4 reproducibles
+y publicación diferida. Esta prueba de hardware requiere el equipo Windows.
+
 En la configuración de la pista, selecciona **Grabación local**, guarda y pulsa
 **Preparar grabación** → **Grabar** en Mandos. Se guarda el programa completo
 (cámara, audio y marcador) en MP4 H.264/AAC sin preparar ni enviar vídeo a YouTube.

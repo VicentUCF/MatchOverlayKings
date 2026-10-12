@@ -6,6 +6,7 @@ import {
 import {
   PILOT_MOBILE_SOURCE_ID,
   type PilotConfiguration,
+  type PilotAudioSelection,
   type PilotCourtSlug,
   type PilotMobileCameraSession,
   type PilotPrivacy,
@@ -18,6 +19,7 @@ import type { ProductionCourtSlot } from '../features/production/production-over
 import { PilotMobileCameraPanel, MobileCameraPreview } from './PilotMobileCameraPanel.js';
 import { ScorerAccess } from './ProductionCourtMonitor.js';
 import { RecordingDirectoryPicker } from './RecordingDirectoryPicker.js';
+import { RecordingAudioSelector } from './RecordingAudioSelector.js';
 
 type ProductionKind = 'recording' | 'youtube';
 type CourtStep = 'match' | 'camera' | 'view' | 'operator';
@@ -215,13 +217,16 @@ function CourtWizard({ court, kind, ready, pilot, seasonLabel, matchdayNumber, r
   const mobileCamera = ready.mobileCameras.find(({ courtSlug, state }) => courtSlug === court.slug && state !== 'revoked') ?? null;
   const initialSource = configuration?.sourceId
     ?? (mobileCamera && ready.readiness.sources.some(({ id }) => id === PILOT_MOBILE_SOURCE_ID)
-      ? PILOT_MOBILE_SOURCE_ID : ready.readiness.sources[0]?.id ?? 'synthetic');
+      ? PILOT_MOBILE_SOURCE_ID : ready.readiness.sources.find(({ kind: sourceKind }) => sourceKind === 'dshow')?.id
+        ?? ready.readiness.sources[0]?.id ?? 'synthetic');
   const [homeTeam, setHomeTeam] = useState(configuration?.homeTeam ?? teamName(ready.teams, court.assignment?.score?.homeTeamId, 0));
   const [awayTeam, setAwayTeam] = useState(configuration?.awayTeam ?? teamName(ready.teams, court.assignment?.score?.awayTeamId, 1));
   const [scheduledAt, setScheduledAt] = useState(() => toLocalDateTime(configuration?.scheduledAt));
   const [privacyStatus, setPrivacyStatus] = useState<PilotPrivacy>(configuration?.privacyStatus ?? 'private');
   const [description, setDescription] = useState(configuration?.description ?? 'Sigue la jornada de Kings Padel League.');
   const [sourceId, setSourceId] = useState(initialSource);
+  const [audioInputs, setAudioInputs] = useState<PilotAudioSelection[]>([...(configuration?.audioInputs ?? [])]);
+  const [includeSourceAudio, setIncludeSourceAudio] = useState(configuration?.includeSourceAudio !== false);
   const [saving, setSaving] = useState(false);
   const active = ready.sessions.some((session) => session.courtSlug === court.slug && session.status !== 'stopped');
   const pending = ready.pendingCourts.includes(court.slug) || saving;
@@ -229,7 +234,9 @@ function CourtWizard({ court, kind, ready, pilot, seasonLabel, matchdayNumber, r
   const stepIndex = STEPS.findIndex(({ id }) => id === step);
   const connectUrl = mobileCamera ? ready.mobileConnectUrls[mobileCamera.id] ?? null : null;
   const draftConfiguration = configurationFromDraft({ court, kind, sourceId, homeTeam, awayTeam, matchdayNumber,
-    seasonLabel, scheduledAt, privacyStatus, description, recordingDirectory });
+    seasonLabel, scheduledAt, privacyStatus, description, recordingDirectory, audioInputs, includeSourceAudio });
+  const unavailableAudio = ready.sessions.filter((session) => session.courtSlug !== court.slug && session.status !== 'stopped')
+    .flatMap((session) => ready.configurations.find(({ courtSlug }) => courtSlug === session.courtSlug)?.audioInputs?.map(({ id }) => id) ?? []);
 
   const saveConfiguration = async () => {
     if (pending || active || homeTeam === awayTeam) return false;
@@ -255,6 +262,8 @@ function CourtWizard({ court, kind, ready, pilot, seasonLabel, matchdayNumber, r
       onDescription={setDescription}
       onBack={onBackToSelection} onContinue={() => setStep('camera')} /> : null}
     {step === 'camera' ? <CameraStep court={court} ready={ready} sourceId={sourceId} setSourceId={setSourceId}
+      audioInputs={audioInputs} setAudioInputs={setAudioInputs} includeSourceAudio={includeSourceAudio}
+      setIncludeSourceAudio={setIncludeSourceAudio} unavailableAudio={unavailableAudio}
       mobileCamera={mobileCamera} connectUrl={connectUrl} active={active} pending={pending}
       onCreate={() => pilot.createMobileCamera(court.slug)} onUpdate={pilot.updateMobileCamera} onRevoke={pilot.revokeMobileCamera}
       onBack={() => setStep('match')} onContinue={async () => { if (await saveConfiguration()) setStep('view'); }} error={error} /> : null}
@@ -305,19 +314,27 @@ function MatchStep({ court, kind, teams, active, homeTeam, awayTeam, scheduledAt
   </form>;
 }
 
-function CameraStep({ court, ready, sourceId, setSourceId, mobileCamera, connectUrl, active, pending,
+function CameraStep({ court, ready, sourceId, setSourceId, audioInputs, setAudioInputs, includeSourceAudio,
+  setIncludeSourceAudio, unavailableAudio, mobileCamera, connectUrl, active, pending,
   onCreate, onUpdate, onRevoke, onBack, onContinue, error }: {
   readonly court: ProductionCourtSlot; readonly ready: ReadyPilotState; readonly sourceId: string;
   readonly setSourceId: (value: string) => void; readonly mobileCamera: PilotMobileCameraSession | null;
+  readonly audioInputs: readonly PilotAudioSelection[]; readonly setAudioInputs: (value: PilotAudioSelection[]) => void;
+  readonly includeSourceAudio: boolean; readonly setIncludeSourceAudio: (value: boolean) => void;
+  readonly unavailableAudio: readonly string[];
   readonly connectUrl: string | null; readonly active: boolean; readonly pending: boolean;
   readonly onCreate: () => Promise<unknown>; readonly onUpdate: ProductionPilotController['updateMobileCamera'];
   readonly onRevoke: ProductionPilotController['revokeMobileCamera']; readonly onBack: () => void;
   readonly onContinue: () => Promise<void>; readonly error: string | null;
 }) {
   const mobileAvailable = ready.readiness.sources.some(({ id }) => id === PILOT_MOBILE_SOURCE_ID);
-  const localSources = ready.readiness.sources.filter(({ id }) => id !== PILOT_MOBILE_SOURCE_ID);
+  const localSources = ready.readiness.sources.filter(({ id, kind }) => id !== PILOT_MOBILE_SOURCE_ID
+    && (!ready.readiness.recordingOnly || kind === 'dshow'));
   const mobileSelected = sourceId === PILOT_MOBILE_SOURCE_ID;
-  const cameraReady = !mobileSelected || mobileCamera?.state === 'ready' || mobileCamera?.state === 'degraded';
+  const cameraReady = mobileSelected ? mobileCamera?.state === 'ready' || mobileCamera?.state === 'degraded'
+    : localSources.some(({ id }) => id === sourceId);
+  const audioReady = !ready.readiness.recordingOnly || audioInputs.length > 0
+    || (mobileSelected && includeSourceAudio && mobileCamera?.capabilities?.audioAvailable === true && mobileCamera.desired.audioEnabled);
   return <section className="production-wizard__step">
     <div className="production-wizard__step-heading"><span><Camera aria-hidden="true" /></span>
       <div><h4>¿Cómo recibirás la imagen?</h4><p>Elige la opción más sencilla para esta pista. Comprobaremos la señal antes de continuar.</p></div></div>
@@ -335,8 +352,11 @@ function CameraStep({ court, ready, sourceId, setSourceId, mobileCamera, connect
         onChange={(event) => setSourceId(event.currentTarget.value)}>
         {localSources.map((source) => <option key={source.id} value={source.id}>{source.label}</option>)}</select></label>
         <p><Check aria-hidden="true" />La imagen y el audio se comprobarán antes de iniciar la grabación.</p></div>}
+    {ready.readiness.recordingOnly ? <RecordingAudioSelector readiness={ready.readiness} sourceId={sourceId}
+      selections={audioInputs} includeSourceAudio={includeSourceAudio} onSelections={setAudioInputs}
+      onIncludeSourceAudio={setIncludeSourceAudio} unavailable={unavailableAudio} disabled={active || pending} /> : null}
     {error ? <p className="production-command-feedback danger" role="alert">{error}</p> : null}
-    <WizardFooter onBack={onBack}><button className="production-setup-submit" type="button" disabled={!cameraReady || pending || active}
+    <WizardFooter onBack={onBack}><button className="production-setup-submit" type="button" disabled={!cameraReady || !audioReady || pending || active}
       onClick={() => void onContinue()}>{pending ? 'Guardando…' : 'Continuar a Vista'}<ArrowRight aria-hidden="true" /></button></WizardFooter>
   </section>;
 }
@@ -435,6 +455,7 @@ function configurationFromDraft(values: {
   readonly court: ProductionCourtSlot; readonly kind: ProductionKind; readonly sourceId: string;
   readonly homeTeam: string; readonly awayTeam: string; readonly matchdayNumber: number; readonly seasonLabel: string;
   readonly scheduledAt: string; readonly privacyStatus: PilotPrivacy; readonly description: string; readonly recordingDirectory: string;
+  readonly audioInputs: readonly PilotAudioSelection[]; readonly includeSourceAudio: boolean;
 }): PilotConfiguration {
   const parsedSchedule = new Date(values.scheduledAt);
   const scheduledAt = Number.isNaN(parsedSchedule.getTime()) ? new Date().toISOString() : parsedSchedule.toISOString();
@@ -445,6 +466,7 @@ function configurationFromDraft(values: {
     privacyStatus: values.kind === 'recording' ? 'private' : values.privacyStatus,
     ...(values.kind === 'youtube' ? { description: values.description } : {}),
     ...(values.recordingDirectory.trim() ? { recordingDirectory: values.recordingDirectory.trim() } : {}),
+    audioInputs: [...values.audioInputs], includeSourceAudio: values.includeSourceAudio,
     updatedAt: new Date().toISOString(),
   };
 }

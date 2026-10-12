@@ -84,6 +84,7 @@ export async function buildApp(
     undefined,
     dependencies.pilotPreflight,
     (scope) => productionEvents.publish(scope),
+    { recordingOnly: config.pilot.recordingOnly === true, defaultRecordingDirectory: config.pilot.defaultRecordingDirectory },
   );
   const productionAccess = dependencies.productionAccessGuard
     ?? new SupabaseProductionAccessGuard(config.pilot.supabase);
@@ -97,7 +98,7 @@ export async function buildApp(
   await pilot.initialize();
   const recordings = new RecordingLibrary(
     resolve(config.dataDir, 'recording-library.json'),
-    join(dirname(config.pilot.ffmpegPath), 'ffprobe'),
+    join(dirname(config.pilot.ffmpegPath), process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'),
     youtube,
     publicationTasks,
     () => productionEvents.publish('recordings'),
@@ -112,6 +113,22 @@ export async function buildApp(
     productionEvents.close();
     throw error;
   }
+  const finalizedRecordings = new Set(pilot.snapshot()
+    .filter((session) => session.mode === 'recording' && session.status === 'stopped')
+    .map((session) => session.id));
+  const finalizingRecordings = new Set<string>();
+  productionEvents.subscribe(({ scope }) => {
+    if (scope !== 'runtime') return;
+    for (const session of pilot.snapshot()) {
+      if (session.mode !== 'recording' || session.status !== 'stopped'
+        || finalizedRecordings.has(session.id) || finalizingRecordings.has(session.id)) continue;
+      finalizingRecordings.add(session.id);
+      void recordings.reconcileSession(session, pilot.configurations())
+        .then(() => { finalizedRecordings.add(session.id); })
+        .catch((error: unknown) => { app.log.error({ error }, 'Recording validation failed after encoder close'); })
+        .finally(() => { finalizingRecordings.delete(session.id); });
+    }
+  });
   const io: KplSocketServer = new SocketServer<
     ClientToServerEvents,
     ServerToClientEvents,
@@ -259,6 +276,7 @@ export async function buildApp(
 
   registerRecordingRoutes(app, {
     dataDirectory: config.dataDir,
+    defaultRecordingDirectory: config.pilot.defaultRecordingDirectory,
     recordings,
     productionAccess,
     requireLocal: requireLocalPilot,
@@ -365,7 +383,7 @@ export async function buildApp(
     }
   });
 
-  return { app, io, store };
+  return { app, io, store, recordings };
 }
 
 function chromiumExecutablePath(): string | undefined {

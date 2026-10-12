@@ -78,6 +78,8 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
     typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('pista'));
   const [newProduction, setNewProduction] = useState<'recording' | 'youtube' | null>(null);
   const [newProductionOpen, setNewProductionOpen] = useState(false);
+  const recordingOnly = pilot.state.kind === 'ready' && pilot.state.readiness.recordingOnly === true;
+  const effectiveProduction = recordingOnly ? 'recording' : newProduction;
 
   useEffect(() => {
     const syncFromHistory = () => {
@@ -98,7 +100,7 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
     window.history.pushState({}, '', slug ? `/admin?pista=${encodeURIComponent(slug)}` : '/admin');
     setSelectedCourt(slug);
   };
-  const beginNewProduction = () => { setNewProduction(null); setNewProductionOpen(true); };
+  const beginNewProduction = () => { setNewProduction(recordingOnly ? 'recording' : null); setNewProductionOpen(true); };
   const closeNewProduction = () => { setNewProduction(null); setNewProductionOpen(false); };
 
   return <main className="home-page production-overview-page production-tabbed-workspace">
@@ -110,13 +112,13 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
       aria-labelledby="production-tab-production" hidden={activeArea !== 'production'} tabIndex={0}>
       {!newProductionOpen ? <><div className="production-workspace-toolbar">
         <div><p className="production-kicker">Administración y realización</p><h1>Producción</h1>
-          <p>Configura una salida y contrólala desde el detalle de su pista.</p></div>
+          <p>{recordingOnly ? 'Prepara grabaciones locales y contrólalas desde cada pista.' : 'Configura una salida y contrólala desde el detalle de su pista.'}</p></div>
         <button className="production-setup-submit" type="button" onClick={beginNewProduction}><Plus aria-hidden="true" />Nueva producción</button>
       </div>
       <ProductionDashboardView state={pilot.state} pilot={pilot} refresh={pilot.refresh} localAdminUrl={pilot.localAdminUrl} embedded
         selectedCourt={selectedCourt} onSelectCourt={selectCourt} monitoringActive={activeArea === 'production'}
         courts={courts} onOpenConfiguration={beginNewProduction} onOpenControls={() => undefined} /></> : null}
-      {newProductionOpen && newProduction === null ? <section className="production-new-flow" aria-labelledby="new-production-title">
+      {newProductionOpen && effectiveProduction === null ? <section className="production-new-flow" aria-labelledby="new-production-title">
         <header><div><p className="production-kicker">Nueva producción</p><h2 id="new-production-title">Elige primero el destino</h2></div>
           <button type="button" className="refresh-button" onClick={closeNewProduction} aria-label="Cerrar configuración"><X aria-hidden="true" /></button></header>
         <div className="production-new-flow__choices" role="radiogroup" aria-label="Tipo de producción">
@@ -126,8 +128,8 @@ export function ProductionTabbedWorkspace({ initialArea, pilot, signOut, courts,
             <Radio aria-hidden="true" /><strong>Emitir en directo</strong><span>Salida excepcional a YouTube Live.</span></button>
         </div>
       </section> : null}
-      {newProductionOpen && newProduction !== null ? <ProductionSetupWizard pilot={pilot} courts={courts} kind={newProduction}
-        onBack={() => setNewProduction(null)} onComplete={closeNewProduction} /> : null}
+      {newProductionOpen && effectiveProduction !== null ? <ProductionSetupWizard pilot={pilot} courts={courts} kind={effectiveProduction}
+        onBack={() => recordingOnly ? closeNewProduction() : setNewProduction(null)} onComplete={closeNewProduction} /> : null}
     </section>
     <section id="production-panel-recordings" className="production-workspace-panel" role="tabpanel"
       aria-labelledby="production-tab-recordings" hidden={activeArea !== 'recordings'} tabIndex={0}>

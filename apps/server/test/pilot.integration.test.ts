@@ -30,6 +30,24 @@ afterEach(async () => {
 });
 
 describe('production pilot', () => {
+  it('rejects direct live requests and unverified audio in recording-only mode', async () => {
+    const app = await createPilotApp('/missing/ffmpeg', '', allowProductionAccess, true);
+    const payload = {
+      courtSlug: 'pista-1', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
+      matchdayNumber: 1, seasonLabel: 'T2', scheduledAt: new Date().toISOString(), privacyStatus: 'private',
+    };
+    const live = await app.inject({ method: 'POST', url: '/api/pilot/sessions', payload: { ...payload, mode: 'youtube' } });
+    expect(live.statusCode).toBe(400);
+    expect(live.json().error.message).toContain('grabaciones locales');
+    const silent = await app.inject({ method: 'PUT', url: '/api/pilot/configurations/pista-1', payload: { ...payload, mode: 'recording' } });
+    expect(silent.statusCode).toBe(409);
+    expect(silent.json().error.message).toContain('micrófono');
+    const unknownMicrophone = await app.inject({ method: 'PUT', url: '/api/pilot/configurations/pista-1', payload: {
+      ...payload, mode: 'recording', audioInputs: [{ id: `dshow-audio:${'a'.repeat(64)}`, gain: 1 }],
+    } });
+    expect(unknownMicrophone.statusCode).toBe(409);
+  });
+
   it('lets only the local production administrator browse real recording folders', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'kpl-directory-api-'));
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
@@ -53,11 +71,13 @@ describe('production pilot', () => {
     const recordingDirectory = join(directory, 'custom-recordings');
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
     const app = await createPilotApp('/bin/ffmpeg', directory);
-    const response = await app.inject({ method: 'POST', url: '/api/pilot/sessions', payload: {
+    const recordingPayload = {
       courtSlug: 'pista-1', mode: 'recording', sourceId: 'synthetic', homeTeam: 'Kings', awayTeam: 'Lions',
       matchdayNumber: 1, seasonLabel: 'T2', recordingDirectory,
       scheduledAt: new Date().toISOString(), privacyStatus: 'private',
-    } });
+    };
+    expect((await app.inject({ method: 'PUT', url: '/api/pilot/configurations/pista-1', payload: recordingPayload })).statusCode).toBe(200);
+    const response = await app.inject({ method: 'POST', url: '/api/pilot/sessions', payload: recordingPayload });
     expect(response.statusCode).toBe(201);
     const { id } = response.json().session;
     const start = await app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/start` });
@@ -69,6 +89,16 @@ describe('production pilot', () => {
     expect(live.recordingFiles).toHaveLength(1);
     await app.inject({ method: 'POST', url: `/api/pilot/sessions/${id}/stop` });
     await waitForSession(app, id, (session) => session.status === 'stopped', 'recording stopped');
+    let readyAsset = false;
+    let observedAssets: unknown = null;
+    for (const deadline = Date.now() + 5_000; Date.now() < deadline && !readyAsset;) {
+      const library = await app.inject({ method: 'GET', url: '/api/pilot/recordings' });
+      observedAssets = library.json().assets;
+      readyAsset = (observedAssets as Array<{ sessionId: string; state: string }>)
+        .some((asset) => asset.sessionId === id && asset.state === 'ready');
+      if (!readyAsset) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(readyAsset, JSON.stringify(observedAssets)).toBe(true);
     const path = live.recordingFiles![0]!;
     expect(path).toContain(join(recordingDirectory, 'pista-1', id));
     const probe = spawnSync('/bin/ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', path], { encoding: 'utf8' });
@@ -712,7 +742,8 @@ exec /bin/ffmpeg "$@"
   });
 });
 
-async function createPilotApp(ffmpegPath = '/bin/ffmpeg', dataDir = '', access: ProductionAccessGuard = allowProductionAccess) {
+async function createPilotApp(ffmpegPath = '/bin/ffmpeg', dataDir = '', access: ProductionAccessGuard = allowProductionAccess,
+  recordingOnly = false) {
   if (!dataDir) dataDir = await mkdtemp(join(tmpdir(), 'kpl-pilot-'));
   await writeFile(join(dataDir, 'teams.json'), JSON.stringify([{
     id: 'kings-of-favar',
@@ -726,6 +757,7 @@ async function createPilotApp(ffmpegPath = '/bin/ffmpeg', dataDir = '', access: 
     host: '127.0.0.1', port: 0, dataDir, webDistDir: join(dataDir, 'missing-web'), controlPin: null,
     pilot: {
       ffmpegPath,
+      recordingOnly,
       controlOrigins: ['https://live.kingspadelleague.es'],
       youtube: { clientId: null, clientSecret: null, redirectUri: null, tokenPath: null },
     },

@@ -15,6 +15,8 @@ export type ProgramFeedOptions = {
   readonly source: PilotSource;
   readonly mobileRtspUrl: string | null;
   readonly mobileAudioAvailable: boolean;
+  readonly includeSourceAudio?: boolean | undefined;
+  readonly audioInputs?: readonly { readonly deviceName: string; readonly gain: number }[];
   readonly resolveMobileSource?: () => { url: string; audioAvailable: boolean } | null;
   readonly sourceReady: () => boolean;
   readonly fps: 30 | 60;
@@ -247,13 +249,30 @@ export function captureArguments(options: ProgramFeedOptions): string[] {
   const { source, fps } = options;
   const input = source.kind === 'synthetic' ? ['-re', '-f', 'lavfi', '-i', `testsrc2=size=${options.width ?? 1920}x${options.height ?? 1080}:rate=${fps}`]
     : source.kind === 'v4l2' ? ['-thread_queue_size', '8', '-f', 'v4l2', '-framerate', '30', '-video_size', '1920x1080', '-i', source.devicePath]
+      : source.kind === 'dshow' ? ['-thread_queue_size', '8', '-f', 'dshow', '-framerate', '30', '-video_size', '1920x1080', '-i', `video=${source.deviceName}`]
       : ['-rtsp_transport', 'tcp', '-timeout', '5000000', '-thread_queue_size', '8', '-i', options.mobileRtspUrl!];
-  const hasAudio = source.kind === 'mobile' && options.mobileAudioAvailable;
-  return ['-nostdin', '-hide_banner', '-loglevel', 'error', ...input,
-    ...(!hasAudio ? ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'] : []),
+  const hasSourceAudio = source.kind === 'mobile' && options.mobileAudioAvailable && options.includeSourceAudio !== false;
+  const selected = options.audioInputs ?? [];
+  if (selected.length === 0) return ['-nostdin', '-hide_banner', '-loglevel', 'error', ...input,
+    ...(!hasSourceAudio ? ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'] : []),
     '-map', '0:v:0', '-vf', `scale=${options.width ?? 1920}:${options.height ?? 1080}:out_color_matrix=bt709:out_range=tv,fps=${fps},format=yuv420p`,
     '-c:v', 'rawvideo', '-threads', '1', '-f', 'rawvideo', 'pipe:1',
-    '-map', hasAudio ? '0:a:0' : '1:a:0', '-af', 'aresample=async=1000:first_pts=0',
+    '-map', hasSourceAudio ? '0:a:0' : '1:a:0', '-af', 'aresample=async=1000:first_pts=0',
+    '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', '-f', 's16le', 'pipe:3'];
+  const audioDevices = selected.flatMap(({ deviceName }) => ['-thread_queue_size', '8', '-f', 'dshow', '-i', `audio=${deviceName}`]);
+  const streams = [
+    ...(hasSourceAudio ? [{ index: 0, gain: 1 }] : []),
+    ...selected.map(({ gain }, index) => ({ index: index + 1, gain })),
+  ];
+  const filters = streams.map(({ index, gain }, number) =>
+    `[${index}:a:0]aresample=async=1000:first_pts=0,volume=${gain}[a${number}]`);
+  const mix = streams.length === 1 ? `[a0]anull[mix]`
+    : `${streams.map((_, index) => `[a${index}]`).join('')}amix=inputs=${streams.length}:duration=longest:normalize=0,alimiter=limit=0.95[mix]`;
+  return ['-nostdin', '-hide_banner', '-loglevel', 'error', ...input,
+    ...audioDevices,
+    '-map', '0:v:0', '-vf', `scale=${options.width ?? 1920}:${options.height ?? 1080}:out_color_matrix=bt709:out_range=tv,fps=${fps},format=yuv420p`,
+    '-c:v', 'rawvideo', '-threads', '1', '-f', 'rawvideo', 'pipe:1',
+    '-filter_complex', `${filters.join(';')};${mix}`, '-map', '[mix]',
     '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', '-f', 's16le', 'pipe:3'];
 }
 

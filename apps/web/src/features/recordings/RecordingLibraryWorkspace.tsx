@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { CalendarClock, CircleAlert, ExternalLink, Film, HardDrive, Pause, Play, RefreshCw, Trash2, Upload } from 'lucide-react';
+import { CalendarClock, CircleAlert, Download, ExternalLink, Film, FolderOpen, HardDrive, Pause, Play, RefreshCw, Trash2, Upload } from 'lucide-react';
 import type { PublicationJob, RecordingAsset } from '@kpl/production-contracts';
 import { createProductionPilotAdapter } from '../production/production-pilot-adapter.js';
 
 const adapter = createProductionPilotAdapter();
+type DesktopBridge = {
+  openRecording(id: string): Promise<boolean>;
+  exportRecording(id: string): Promise<boolean>;
+  importYouTubeCredentials(): Promise<boolean>;
+};
+const desktop = typeof window === 'undefined' ? undefined : (window as Window & { kplDesktop?: DesktopBridge }).kplDesktop;
 
 export type LibraryState =
   | { readonly kind: 'loading' }
@@ -12,6 +18,8 @@ export type LibraryState =
 
 export function RecordingLibraryWorkspace() {
   const [state, setState] = useState<LibraryState>({ kind: 'loading' });
+  const [youtube, setYoutube] = useState<{ configured: boolean; authorized: boolean; authorizationUrl: string | null } | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [courtFilter, setCourtFilter] = useState('all');
   const [matchdayFilter, setMatchdayFilter] = useState('all');
@@ -20,12 +28,18 @@ export function RecordingLibraryWorkspace() {
   const eventRefreshQueued = useRef(false);
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setState((current) => current.kind === 'ready' ? current : { kind: 'loading' });
-    const result = await adapter.recordings();
+    const [result, readiness] = await Promise.all([adapter.recordings(), adapter.readiness()]);
+    if (readiness.kind === 'success') setYoutube(readiness.value.youtube);
     setState(result.kind === 'success'
       ? { kind: 'ready', assets: result.value.assets, jobs: result.value.jobs }
       : { kind: 'error', message: result.message });
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const refreshOnFocus = () => { void load(true); };
+    window.addEventListener('focus', refreshOnFocus);
+    return () => window.removeEventListener('focus', refreshOnFocus);
+  }, [load]);
   const refreshFromEvent = useCallback(() => {
     if (eventRefreshActive.current) {
       eventRefreshQueued.current = true;
@@ -90,6 +104,11 @@ export function RecordingLibraryWorkspace() {
     if (result.kind === 'error') setState({ kind: 'error', message: result.message });
     else await load(true);
   };
+  const desktopAction = async (action: () => Promise<unknown>) => {
+    setLocalError(null);
+    try { await action(); }
+    catch (error) { setLocalError(error instanceof Error ? error.message : 'No se pudo completar la acción.'); }
+  };
 
   if (state.kind === 'loading') return <p className="production-pilot-loading">Cargando grabaciones…</p>;
   if (state.kind === 'error') return <div className="production-page-feedback danger" role="alert">
@@ -110,6 +129,15 @@ export function RecordingLibraryWorkspace() {
         <p>Valida los MP4 del programa final, súbelos como privados y programa cuándo se harán públicos.</p></div>
       <button type="button" className="refresh-button" onClick={() => void load()}><RefreshCw aria-hidden="true" />Actualizar</button>
     </header>
+    {localError ? <p className="production-command-feedback danger" role="alert">{localError}</p> : null}
+    {desktop && youtube && !youtube.configured ? <div className="production-page-feedback">
+      Para subir después del partido, importa las credenciales de YouTube.
+      <button type="button" className="refresh-button" onClick={() => void desktopAction(() => desktop.importYouTubeCredentials())}>Importar credenciales</button>
+    </div> : null}
+    {youtube?.configured && !youtube.authorized && youtube.authorizationUrl ? <div className="production-page-feedback">
+      Conecta YouTube cuando quieras publicar las grabaciones.
+      <a className="refresh-button" href={youtube.authorizationUrl} target="_blank" rel="noreferrer">Conectar YouTube</a>
+    </div> : null}
     <div className="recording-library__filters" aria-label="Filtros de grabaciones">
       <label>Pista<select value={courtFilter} onChange={(event) => setCourtFilter(event.currentTarget.value)}>
         <option value="all">Todas</option>{courts.map((court) => <option key={court} value={court}>{court}</option>)}</select></label>
@@ -128,6 +156,8 @@ export function RecordingLibraryWorkspace() {
     <div className="recording-library__grid">
       {assets.map((asset) => <RecordingCard key={asset.id} asset={asset}
         job={state.jobs.find(({ assetId }) => assetId === asset.id) ?? null} pending={pending}
+        desktop={desktop} youtubeReady={youtube?.authorized ?? false}
+        onDesktopAction={desktopAction}
         onCreate={(input) => mutate(asset.id, () => adapter.createPublication(asset.id, input))}
         onPause={(job) => mutate(job.id, () => adapter.pausePublication(job.id))}
         onResume={(job) => mutate(job.id, () => adapter.resumePublication(job.id))}
@@ -147,10 +177,13 @@ export function recordingPollDelay(state: LibraryState): number | null {
   return null;
 }
 
-function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onRetry, onSchedule, onDelete }: {
+function RecordingCard({ asset, job, pending, desktop, youtubeReady, onDesktopAction, onCreate, onPause, onResume, onRetry, onSchedule, onDelete }: {
   readonly asset: RecordingAsset;
   readonly job: PublicationJob | null;
   readonly pending: string | null;
+  readonly desktop: DesktopBridge | undefined;
+  readonly youtubeReady: boolean;
+  readonly onDesktopAction: (action: () => Promise<unknown>) => Promise<void>;
   readonly onCreate: (input: { readonly title: string; readonly description: string }) => Promise<void>;
   readonly onPause: (job: PublicationJob) => Promise<void>;
   readonly onResume: (job: PublicationJob) => Promise<void>;
@@ -181,11 +214,18 @@ function RecordingCard({ asset, job, pending, onCreate, onPause, onResume, onRet
       <div><dt>Formato</dt><dd>{media || 'Pendiente'}</dd></div>
     </dl>
     <p className="recording-card__path"><HardDrive aria-hidden="true" /><code>{asset.path}</code></p>
+    {desktop ? <div className="recording-publication__actions">
+      <button type="button" className="refresh-button" onClick={() => void onDesktopAction(() => desktop.openRecording(asset.id))}>
+        <FolderOpen aria-hidden="true" />Abrir carpeta</button>
+      <button type="button" className="refresh-button" disabled={asset.state !== 'ready'}
+        onClick={() => void onDesktopAction(() => desktop.exportRecording(asset.id))}>
+        <Download aria-hidden="true" />Exportar MP4</button>
+    </div> : null}
     {asset.error ? <p className="production-command-feedback danger" role="alert">{asset.error}</p> : null}
     {!job ? <form className="recording-card__form" onSubmit={submitUpload}>
       <label>Título en YouTube<input required maxLength={100} value={title} onChange={(event) => setTitle(event.currentTarget.value)} /></label>
       <label>Descripción<textarea required maxLength={5_000} value={description} onChange={(event) => setDescription(event.currentTarget.value)} /></label>
-      <button className="production-setup-submit" type="submit" disabled={asset.state !== 'ready' || pending === asset.id}>
+      <button className="production-setup-submit" type="submit" disabled={asset.state !== 'ready' || pending === asset.id || (desktop !== undefined && !youtubeReady)}>
         <Upload aria-hidden="true" />{pending === asset.id ? 'Preparando…' : 'Subir como privado'}</button>
     </form> : <section className="recording-publication" aria-label="Publicación en YouTube">
       <div className="recording-publication__status"><strong>{publicationLabel(job)}</strong><span>{progress}% subido</span></div>

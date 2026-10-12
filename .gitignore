@@ -20,3 +20,7 @@ data/recordings/
 apps/editor/release/
 apps/editor/vendor/
 apps/editor/dist-electron/
+apps/production-desktop/release/
+apps/production-desktop/vendor/
+apps/production-desktop/dist-electron/
+apps/production-desktop/assets/

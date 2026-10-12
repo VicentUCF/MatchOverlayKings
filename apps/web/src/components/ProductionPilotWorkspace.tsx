@@ -12,6 +12,7 @@ import {
   type PilotMobileCameraSession,
   type UpdatePilotMobileCameraDesiredInput,
   type PilotConfiguration,
+  type PilotAudioSelection,
   type PilotCourtSlug,
   type PilotMode,
   type PilotPrivacy,
@@ -26,6 +27,7 @@ import type { ProductionCourtSlot } from '../features/production/production-over
 import { ProductionNavigation, type ProductionNavigationRole } from './ProductionNavigation.js';
 import { PilotMobileCameraMonitor, PilotMobileCameraPanel } from './PilotMobileCameraPanel.js';
 import { RecordingDirectoryPicker } from './RecordingDirectoryPicker.js';
+import { RecordingAudioSelector } from './RecordingAudioSelector.js';
 
 const DEFAULT_BROADCAST_DESCRIPTION = 'Sigue en directo la jornada de Kings Padel League.';
 
@@ -102,7 +104,7 @@ export function ProductionPilotWorkspaceView({
     || (session.status === 'failed' && (session.continuity?.active || session.overlayHealth?.status === 'failed')))).length;
   const configuredCount = enabledCourts.filter(({ slug }) => ready.configurations.some((item) => item.courtSlug === slug)).length;
   const unavailableSources = new Set(ready.sessions
-    .filter((session) => session.source.kind === 'v4l2' && session.status !== 'stopped')
+    .filter((session) => ['v4l2', 'dshow'].includes(session.source.kind) && session.status !== 'stopped')
     .map((session) => session.source.id));
 
   return shell(<>
@@ -147,6 +149,7 @@ export function ProductionPilotWorkspaceView({
     </> : <>
       <section className="production-pilot-courts production-pilot-courts--controls" aria-label="Control técnico por pista">
         {courts.map((court) => <PilotControlPanel key={court.slug} court={court}
+          recordingOnly={ready.readiness.recordingOnly === true}
           showMobileMonitor={monitoringActive}
           configuration={configurationFor(ready.configurations, court.slug)}
           session={latestSession(ready.sessions, court.slug)} pending={ready.pendingCourts.includes(court.slug)}
@@ -217,7 +220,7 @@ function PilotConfigurationPanel({
   readonly onRevokeMobile: (id: string) => Promise<boolean>;
   readonly onSave: (input: PreparePilotSessionInput) => Promise<boolean>;
 }) {
-  const [mode, setMode] = useState<PilotMode>(preferredMode ?? selectablePilotMode(configuration?.mode));
+  const [mode, setMode] = useState<PilotMode>(readiness.recordingOnly ? 'recording' : preferredMode ?? selectablePilotMode(configuration?.mode));
   const [homeTeam, setHomeTeam] = useState(configuration?.homeTeam
     ?? teamName(teams, court.assignment?.score?.homeTeamId, 0));
   const [awayTeam, setAwayTeam] = useState(configuration?.awayTeam
@@ -226,7 +229,11 @@ function PilotConfigurationPanel({
   const [matchdayNumber, setMatchdayNumber] = useState(configuration?.matchdayNumber ?? 1);
   const [scheduledAt, setScheduledAt] = useState(() => toLocalDateTime(configuration?.scheduledAt));
   const [privacyStatus, setPrivacyStatus] = useState<PilotPrivacy>(configuration?.privacyStatus ?? 'private');
-  const [sourceId, setSourceId] = useState(configuration?.sourceId ?? 'synthetic');
+  const [sourceId, setSourceId] = useState(configuration?.sourceId
+    ?? (readiness.recordingOnly ? readiness.sources.find(({ kind }) => kind === 'dshow' || kind === 'mobile')?.id : undefined)
+    ?? 'synthetic');
+  const [audioInputs, setAudioInputs] = useState<PilotAudioSelection[]>([...(configuration?.audioInputs ?? [])]);
+  const [includeSourceAudio, setIncludeSourceAudio] = useState(configuration?.includeSourceAudio !== false);
   const [saved, setSaved] = useState(false);
   const configurationRef = useRef(configuration);
   configurationRef.current = configuration;
@@ -235,7 +242,7 @@ function PilotConfigurationPanel({
   useEffect(() => {
     const savedConfiguration = configurationRef.current;
     if (savedConfiguration === null) return;
-    setMode(selectablePilotMode(savedConfiguration.mode));
+    setMode(readiness.recordingOnly ? 'recording' : selectablePilotMode(savedConfiguration.mode));
     setHomeTeam(savedConfiguration.homeTeam);
     setAwayTeam(savedConfiguration.awayTeam);
     setSeasonLabel(savedConfiguration.seasonLabel);
@@ -243,20 +250,27 @@ function PilotConfigurationPanel({
     setScheduledAt(toLocalDateTime(savedConfiguration.scheduledAt));
     setPrivacyStatus(savedConfiguration.privacyStatus);
     setSourceId(savedConfiguration.sourceId);
+    setAudioInputs([...(savedConfiguration.audioInputs ?? [])]);
+    setIncludeSourceAudio(savedConfiguration.includeSourceAudio !== false);
   }, [configurationRevision]);
 
   useEffect(() => {
-    if (preferredMode) setMode(preferredMode);
-  }, [preferredMode]);
+    if (preferredMode && !readiness.recordingOnly) setMode(preferredMode);
+  }, [preferredMode, readiness.recordingOnly]);
 
   const youtubeUnavailable = mode === 'youtube' && !readiness.youtube.authorized;
   const active = session !== null && session.status !== 'stopped';
+  const selectedSource = readiness.sources.find(({ id }) => id === sourceId);
+  const audioReady = !readiness.recordingOnly || audioInputs.length > 0
+    || (selectedSource?.kind === 'mobile' && includeSourceAudio && mobileCamera?.capabilities?.audioAvailable === true
+      && mobileCamera.desired.audioEnabled);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (youtubeUnavailable || pending) return;
     const didSave = await onSave({
       courtSlug: court.slug, mode, sourceId, homeTeam, awayTeam, matchdayNumber, seasonLabel, description,
       ...(recordingDirectory.trim() ? { recordingDirectory: recordingDirectory.trim() } : {}),
+      audioInputs, includeSourceAudio,
       scheduledAt: new Date(scheduledAt).toISOString(), privacyStatus,
     });
     setSaved(didSave);
@@ -276,20 +290,24 @@ function PilotConfigurationPanel({
         <div className="production-pilot-mode">
           <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'recording'} onChange={() => setMode('recording')} />
             <span><MonitorPlay aria-hidden="true" /><strong>Grabación local</strong><small>MP4 con audio y marcador para emitir después.</small></span></label>
-          <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'youtube'} onChange={() => setMode('youtube')} />
+          {!readiness.recordingOnly ? <label><input type="radio" name={`pilot-mode-${court.slug}`} checked={mode === 'youtube'} onChange={() => setMode('youtube')} />
             <span><Radio aria-hidden="true" /><strong>Directo en YouTube</strong><small>Emisión real excepcional.</small></span></label>
+            : null}
         </div>
         {youtubeUnavailable ? <p className="production-command-feedback danger">Conecta YouTube antes de guardar este modo.</p> : null}
         <div className="production-pilot-fields">
           <label htmlFor={`pilot-source-${court.slug}`}>Fuente</label>
           <select id={`pilot-source-${court.slug}`} value={sourceId} onChange={(event) => setSourceId(event.currentTarget.value)}>
-            {readiness.sources.map((source) => {
-              const inUse = source.kind === 'v4l2' && unavailableSources.has(source.id) && session?.source.id !== source.id;
+            {readiness.sources.filter(({ kind }) => !readiness.recordingOnly || kind !== 'synthetic').map((source) => {
+              const inUse = ['v4l2', 'dshow'].includes(source.kind) && unavailableSources.has(source.id) && session?.source.id !== source.id;
               return <option value={source.id} key={source.id} disabled={inUse}>
                 {source.label}{inUse ? ' · en uso' : ''}
               </option>;
             })}
           </select>
+          {readiness.recordingOnly ? <RecordingAudioSelector readiness={readiness} sourceId={sourceId}
+            selections={audioInputs} includeSourceAudio={includeSourceAudio} onSelections={setAudioInputs}
+            onIncludeSourceAudio={setIncludeSourceAudio} disabled={pending || active} /> : null}
           <label htmlFor={`pilot-home-${court.slug}`}>Local</label>
           <select id={`pilot-home-${court.slug}`} required value={homeTeam} onChange={(event) => setHomeTeam(event.currentTarget.value)}>
             {teams.map((team) => <option key={team.id} value={team.name}>{team.name}</option>)}
@@ -316,7 +334,7 @@ function PilotConfigurationPanel({
           <small>{mode === 'youtube' ? 'Esta portada se subirá a YouTube al preparar la emisión. Se usará la descripción general.' : 'Se usará la descripción general del partido.'}</small></div>
         <PilotThumbnailPreview homeTeam={homeTeam} awayTeam={awayTeam} matchdayNumber={matchdayNumber} />
         {active ? <p className="production-command-feedback">Hay una sesión en curso. Esta configuración se usará en la siguiente.</p> : null}
-        <button className="production-setup-submit" type="submit" disabled={youtubeUnavailable || pending || !court.productionEnabled}>
+        <button className="production-setup-submit" type="submit" disabled={youtubeUnavailable || !audioReady || pending || !court.productionEnabled}>
           {pending ? 'Guardando…' : saved ? 'Configuración guardada' : configuration ? 'Guardar cambios' : 'Guardar configuración'}
         </button>
       </fieldset>
@@ -335,9 +353,11 @@ function selectablePilotMode(mode: PilotMode | undefined): PilotMode {
 
 export function PilotControlPanel({
   court, configuration, session, pending, error, mobileCamera, onPrepare, onStart, onRecover, onStop, onElapsed, preflight,
+  recordingOnly = false,
   showMobileMonitor = true, showVisualLink = true, idPrefix = 'pilot-control',
 }: {
   readonly showMobileMonitor?: boolean;
+  readonly recordingOnly?: boolean;
   readonly showVisualLink?: boolean;
   readonly idPrefix?: string;
   readonly court: ProductionCourtSlot;
@@ -414,11 +434,12 @@ export function PilotControlPanel({
           ? <PilotMobileCameraMonitor mobileCamera={mobileCamera} /> : null}
         {session?.recordingFiles?.length ? <div className="production-command-feedback production-pilot-recordings">
           <strong>{session.status === 'stopped' ? 'Grabaciones guardadas' : 'Archivos de grabación'}</strong>
-          <p>En el PC del runtime. Pulsa Detener antes de utilizarlos para el falso directo.</p>
+          <p>{recordingOnly ? 'En este PC. Pulsa Detener para cerrar y validar cada MP4.' : 'En el PC del runtime. Pulsa Detener antes de utilizarlos para el falso directo.'}</p>
           <ul>{session.recordingFiles.map((path) => <li key={path}><code>{path}</code></li>)}</ul>
         </div> : null}
         {session !== null && session.status !== 'stopped'
           ? <PilotSessionCard session={session} pending={pending} elapsedSeconds={elapsedSeconds}
+            recordingOnly={recordingOnly}
             preflight={preflight}
             onStart={start} onRecover={recover} onStop={stop} />
           : <div className="production-pilot-ready-action"><p>Configuración lista para preparar.</p>
@@ -457,9 +478,10 @@ function CourtStatus({ session, enabled }: { readonly session: PilotSession | nu
   </span>;
 }
 
-function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover, onStop, preflight }: {
+function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover, onStop, preflight, recordingOnly }: {
   readonly session: PilotSession;
   readonly pending: boolean;
+  readonly recordingOnly: boolean;
   readonly elapsedSeconds: number | null;
   readonly onStart: () => void;
   readonly preflight: Pick<ProductionPilotController, 'preflight' | 'cancelPreflight' | 'preview'>;
@@ -500,10 +522,13 @@ function PilotSessionCard({ session, pending, elapsedSeconds, onStart, onRecover
       {elapsedSeconds !== null ? <p>Preparación hasta señal: <strong>{elapsedSeconds} s</strong></p> : null}
       {session.error ? <p className="production-command-feedback danger" role="alert">{session.error}</p> : null}
       <div className="production-pilot-actions">
-        {session.status === 'prepared' ? <button className="production-setup-submit" type="button" disabled={pending || session.preflight?.status === 'running'} onClick={onStart}>{session.mode === 'recording' ? 'Grabar' : 'Emitir'}</button> : null}
+        {session.status === 'prepared' ? <button className="production-setup-submit" type="button"
+          disabled={pending || session.preflight?.status === 'running' || (recordingOnly && (!['ready', 'warning'].includes(session.preflight?.status ?? '')
+            || ['camera', 'audio', 'encoder', 'overlay'].some((id) => session.preflight?.checks.find((check) => check.id === id)?.status !== 'pass')))}
+          onClick={onStart}>{session.mode === 'recording' ? 'Grabar' : 'Emitir'}</button> : null}
         {session.status === 'interrupted' || session.status === 'failed'
           ? <button className="production-setup-submit" type="button" disabled={pending} onClick={onRecover}>
-            {session.preparationPending ? 'Recuperar preparación' : 'Recuperar emisión'}
+            {session.preparationPending ? 'Recuperar preparación' : session.mode === 'recording' ? 'Recuperar grabación' : 'Recuperar emisión'}
           </button> : null}
         {active || ['preparing', 'prepared', 'interrupted', 'failed'].includes(session.status)
           ? <button className="refresh-button danger" type="button" disabled={pending && session.status !== 'preparing'} onClick={onStop}>

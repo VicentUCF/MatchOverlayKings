@@ -48,6 +48,7 @@ import type { PilotMobileCameraService } from './pilot-mobile-camera.js';
 import type { PilotMobileRuntimeEvent } from './pilot-mobile-events.js';
 import type { PilotOverlayOptions, PilotOverlayRenderer } from './pilot-overlay.js';
 import { PilotServiceError } from './pilot-service-error.js';
+import { discoverWindowsDevices, type WindowsDevices } from './pilot-windows-devices.js';
 import {
   CPU_ENCODER, detectVideoEncoders, encoderKey,
   ffmpegEnvironment, isHardwareEncoderFailure, selectVideoEncoder,
@@ -118,7 +119,7 @@ type InternalPilotSession = {
   fallbackFrame: Uint8Array | null;
 };
 
-type PilotChildProcess = ChildProcessByStdio<null, Readable, Readable>;
+type PilotChildProcess = ChildProcessByStdio<Writable | null, Readable, Readable>;
 
 export type PilotPreflightDependencies = {
   readonly media?: typeof probePilotMedia;
@@ -134,6 +135,7 @@ export class PilotService {
   private readonly configurationByCourt = new Map<PilotCourtSlug, PilotConfiguration>();
   private readonly changingCourts = new Set<string>();
   private readonly preparingSources = new Set<string>();
+  private readonly preparingAudioIds = new Set<string>();
   private readonly courtCompletions = new Map<string, Promise<void>>();
   private readonly preparingSessions = new Map<string, { controller: AbortController; task: Promise<PilotSession> }>();
   private ffmpegVersion: string | null = null;
@@ -153,6 +155,8 @@ export class PilotService {
   private readonly checkedContexts = new Map<string, string>();
   private readonly previewProcesses = new Map<string, { encoder: number | undefined; capture: number | undefined }>();
   private readonly uploadCheck: PilotUploadCheck;
+  private windowsDevices: WindowsDevices = { cameras: [], audioInputs: [] };
+  private windowsDevicesAt = 0;
 
   public constructor(
     private readonly ffmpegPath: string,
@@ -165,6 +169,7 @@ export class PilotService {
     private readonly programFactory: (options: ProgramFeedOptions) => ProgramFeed = (options) => new PilotProgramFeed(options),
     private readonly preflightDependencies: PilotPreflightDependencies = {},
     private readonly onChange: (scope: 'runtime' | 'configurations') => void = () => undefined,
+    private readonly desktop: { readonly recordingOnly?: boolean; readonly defaultRecordingDirectory?: string | undefined } = {},
   ) {
     this.operations = new PilotOperationJournal(`${configurationPath}.operations`);
     this.uploadCheck = new PilotUploadCheck(preflightDependencies.upload);
@@ -238,10 +243,12 @@ export class PilotService {
       throw new PilotServiceError(400, 'INVALID_INPUT', 'Revisa la configuración de la pista.');
     }
     assertRecordingDirectory(input.data);
+    this.assertRecordingMode(input.data);
     const source = this.readiness().sources.find(({ id }) => id === input.data.sourceId);
     if (source === undefined) {
       throw new PilotServiceError(409, 'NOT_READY', 'La fuente seleccionada ya no está disponible.');
     }
+    this.assertRecordingAudio(input.data, source);
     const configuration = PilotConfigurationSchema.parse({
       ...input.data,
       updatedAt: new Date().toISOString(),
@@ -265,17 +272,24 @@ export class PilotService {
   }
 
   public readiness(): PilotReadiness {
+    if (process.platform === 'win32' && Date.now() - this.windowsDevicesAt > 5_000) {
+      this.windowsDevices = discoverWindowsDevices(this.ffmpegPath);
+      this.windowsDevicesAt = Date.now();
+    }
     const mobileSource = this.mobileCamera?.source() ?? null;
-    const sources = [...discoverSources(), ...(mobileSource === null ? [] : [mobileSource])];
+    const sources = [...discoverSources(), ...this.windowsDevices.cameras, ...(mobileSource === null ? [] : [mobileSource])];
     const limitations: string[] = [];
     if (this.persistenceError !== null) limitations.push(this.persistenceError);
-    if (sources.every(({ kind }) => kind !== 'v4l2')) limitations.push('No se detectan cámaras V4L2. Puedes validar con la señal sintética.');
-    if (!this.youtube.configured) limitations.push('Faltan las credenciales OAuth de Google para probar YouTube.');
-    else if (!this.youtube.isAuthorized) limitations.push('La cuenta de YouTube todavía no está conectada.');
+    if (sources.every(({ kind }) => kind !== 'v4l2' && kind !== 'dshow' && kind !== 'mobile'))
+      limitations.push('No se detecta ninguna cámara real.');
+    if (!this.desktop.recordingOnly) {
+      if (!this.youtube.configured) limitations.push('Faltan las credenciales OAuth de Google para probar YouTube.');
+      else if (!this.youtube.isAuthorized) limitations.push('La cuenta de YouTube todavía no está conectada.');
+    }
     const mobileLimitation = this.mobileCamera?.limitation() ?? 'La cámara móvil no está configurada.';
     if (mobileLimitation !== null) limitations.push(mobileLimitation);
     if (this.ffmpegVersion !== null && !this.videoEncoders.some(({ hardware }) => hardware)) {
-      limitations.push('Codificación por CPU: ninguna GPU ha superado la prueba. Comprueba los controladores y el acceso a la GPU desde Docker.');
+      limitations.push('Codificación por CPU: ninguna GPU ha superado la prueba. Comprueba los controladores y la carga del equipo.');
     }
     return PilotReadinessSchema.parse({
       ffmpeg: { available: this.ffmpegVersion !== null, version: this.ffmpegVersion, encoders: this.videoEncoders },
@@ -285,6 +299,8 @@ export class PilotService {
         authorizationUrl: this.youtube.configured ? '/api/pilot/youtube/auth/start' : null,
       },
       sources,
+      audioInputs: this.windowsDevices.audioInputs,
+      recordingOnly: this.desktop.recordingOnly === true,
       limitations,
     });
   }
@@ -326,13 +342,21 @@ export class PilotService {
       kind: 'prepare', courtSlug: parsed.data.courtSlug, sessionId: null,
       matchdayNumber: parsed.data.matchdayNumber, seasonLabel: parsed.data.seasonLabel,
     }, parsed.data, () => this.changeCourt(parsed.data.courtSlug, async () => {
-      const exclusiveSource = parsed.data.sourceId.startsWith('v4l2:');
+      const exclusiveSource = parsed.data.sourceId.startsWith('v4l2:') || parsed.data.sourceId.startsWith('dshow:');
+      const audioIds = parsed.data.audioInputs?.map(({ id }) => id) ?? [];
       if (exclusiveSource && this.preparingSources.has(parsed.data.sourceId)) {
         throw new PilotServiceError(409, 'CONFLICT', 'Otra pista está preparando esta cámara. Espera o selecciona otra fuente.');
       }
+      if (audioIds.some((id) => this.preparingAudioIds.has(id))) {
+        throw new PilotServiceError(409, 'CONFLICT', 'Otra pista está preparando este micrófono.');
+      }
       if (exclusiveSource) this.preparingSources.add(parsed.data.sourceId);
+      for (const id of audioIds) this.preparingAudioIds.add(id);
       try { return await this.prepareCourt(parsed.data, authorization, preparationOperationId); }
-      finally { if (exclusiveSource) this.preparingSources.delete(parsed.data.sourceId); }
+      finally {
+        if (exclusiveSource) this.preparingSources.delete(parsed.data.sourceId);
+        for (const id of audioIds) this.preparingAudioIds.delete(id);
+      }
     }));
     return this.get(result.id).public;
   }
@@ -342,10 +366,12 @@ export class PilotService {
     if (!parsed.success) throw new PilotServiceError(400, 'INVALID_INPUT', 'Revisa los datos del directo.');
     const input = parsed.data;
     assertRecordingDirectory(input);
+    this.assertRecordingMode(input);
     this.operations.assertNoUnresolvedPreparation(input.courtSlug);
     if (this.ffmpegVersion === null) throw new PilotServiceError(503, 'NOT_READY', 'FFmpeg no está disponible.');
     const source = this.readiness().sources.find(({ id }) => id === input.sourceId);
     if (source === undefined) throw new PilotServiceError(409, 'NOT_READY', 'La fuente seleccionada ya no está disponible.');
+    this.assertRecordingAudio(input, source);
     if (input.mode === 'youtube' && Date.parse(input.scheduledAt) <= Date.now()) {
       throw new PilotServiceError(
         409,
@@ -356,7 +382,7 @@ export class PilotService {
     if (source.kind === 'mobile' && !this.mobileCamera?.isReadyForCourt(input.courtSlug)) {
       throw new PilotServiceError(409, 'NOT_READY', 'Prepara primero la cámara móvil para esta pista.');
     }
-    if (source.kind === 'v4l2') {
+    if (source.kind === 'v4l2' || source.kind === 'dshow') {
       const sourceInUse = [...this.sessions.values()].some(({ public: session }) =>
         session.source.id === source.id && session.status !== 'stopped');
       if (sourceInUse) throw new PilotServiceError(409, 'CONFLICT', 'La cámara seleccionada ya está asignada a otra pista.');
@@ -596,7 +622,7 @@ export class PilotService {
     let host: ReturnType<typeof measurePilotHost> | undefined;
     let match: Promise<void> | undefined;
     let destination: ReturnType<PilotYouTubeGateway['health']> | undefined;
-    const audioExpected = usesMobile && (this.mobileCamera?.audioExpectedForCourt(session.public.courtSlug) ?? false);
+    const audioExpected = this.audioExpected(session);
     const previous = session.public.preflight;
     await runPilotPreflight({ ...(previous ? { previous } : {}), ...(check ? { check } : {}), signal,
       metadata: (step) => checkPilotMetadata(step, {
@@ -627,6 +653,8 @@ export class PilotService {
           source: { executable: this.ffmpegPath, source: session.public.source,
             mobileRtspUrl: usesMobile ? this.mobileCamera?.rtspUrl(session.public.courtSlug) ?? null : null,
             mobileAudioAvailable: usesMobile && (this.mobileCamera?.audioAvailableForCourt(session.public.courtSlug) ?? false),
+            includeSourceAudio: session.configuration?.includeSourceAudio,
+            audioInputs: this.resolveAudioInputs(session.configuration),
             sourceReady: () => !usesMobile || this.mobileCamera?.isReadyForCourt(session.public.courtSlug) === true,
             fps, fallback: session.fallbackFrame },
           onProcess: (encoder, capture) => {
@@ -650,12 +678,22 @@ export class PilotService {
 
   private async startSession(id: string, authorization?: string): Promise<PilotSession> {
     const session = this.get(id);
+    if (this.desktop.recordingOnly && session.public.mode !== 'recording')
+      throw new PilotServiceError(409, 'NOT_READY', 'Esta aplicación solo permite grabaciones locales.');
     if (session.remoteStopPending) throw new PilotServiceError(409, 'CONFLICT', 'El cierre remoto está pendiente. Finaliza esta sesión antes de iniciar otra vez.');
     if (['starting', 'live'].includes(session.public.status)) return session.public;
     if (session.public.status !== 'prepared') {
       throw new PilotServiceError(409, 'CONFLICT', 'La sesión no está preparada para emitir.');
     }
     this.invalidatePreflight(session);
+    if (this.desktop.recordingOnly) {
+      const report = session.public.preflight;
+      const required = ['camera', 'audio', 'encoder', 'overlay'] as const;
+      if (!report || !['ready', 'warning'].includes(report.status)
+        || required.some((id) => report.checks.find((check) => check.id === id)?.status !== 'pass')) {
+        throw new PilotServiceError(409, 'NOT_READY', 'Comprueba cámara, sonido, codificación y overlay antes de grabar.');
+      }
+    }
     // Preflight is an optional diagnostic. Its result never authorizes or vetoes a start.
     const active = [...this.sessions.values()].filter(({ public: current }) =>
       ['starting', 'live', 'reconnecting', 'stopping'].includes(current.status)).length;
@@ -665,6 +703,7 @@ export class PilotService {
     }
 
     await this.assertSessionMatch(session, authorization);
+    if (session.configuration) this.assertRecordingAudio(session.configuration, session.public.source, id);
     if (session.public.source.kind === 'mobile') {
       await this.mobileCamera?.recoverRuntimeForCourt(session.public.courtSlug);
       if (!this.mobileCamera?.isReadyForCourt(session.public.courtSlug)) {
@@ -685,6 +724,8 @@ export class PilotService {
 
   private async recoverSession(id: string, authorization?: string): Promise<PilotSession> {
     const session = this.get(id);
+    if (this.desktop.recordingOnly && session.public.mode !== 'recording')
+      throw new PilotServiceError(409, 'NOT_READY', 'Esta aplicación solo permite grabaciones locales.');
     if (session.remoteStopPending) throw new PilotServiceError(409, 'CONFLICT', 'El cierre remoto está pendiente. Pulsa Finalizar emisión para reintentarlo.');
     if (['starting', 'live'].includes(session.public.status)) return session.public;
     if (!['interrupted', 'failed'].includes(session.public.status)) {
@@ -699,6 +740,7 @@ export class PilotService {
     if (source === undefined) {
       throw new PilotServiceError(409, 'NOT_READY', 'La fuente original no está disponible. Conéctala y vuelve a intentar.');
     }
+    if (session.configuration) this.assertRecordingAudio(session.configuration, source, id);
     if (source.kind === 'mobile') {
       await this.mobileCamera?.recoverRuntimeForCourt(session.public.courtSlug);
       if (!this.mobileCamera?.isReadyForCourt(session.public.courtSlug)) {
@@ -795,11 +837,12 @@ export class PilotService {
       recordingPath,
     );
     const child = spawn(command.executable, command.argv, {
-      stdio: ['ignore', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe'],
+      stdio: [process.platform === 'win32' && recordingPath ? 'pipe' : 'ignore', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe'],
       env: ffmpegEnvironment(),
       shell: false,
       windowsHide: true,
     }) as unknown as PilotChildProcess;
+    child.stdin?.on('error', () => undefined);
     session.process = child;
     session.overlayController?.abort();
     session.overlayController = new AbortController();
@@ -824,7 +867,7 @@ export class PilotService {
       (code) => this.handleUnexpectedClose(session, code),
       () => this.queuePersistSessions(),
       new PilotSignalMonitor({ fps: framesPerSecond, remoteOutput: session.ingestUrl !== null,
-        audioExpected: usesMobileCamera && (this.mobileCamera?.audioExpectedForCourt(session.public.courtSlug) ?? false) }),
+        audioExpected: this.audioExpected(session) }),
     );
     const overlayInput = child.stdio[3] as Writable;
     void this.overlayRenderer.start(overlayInput, { ...session.overlay, framesPerSecond,
@@ -842,6 +885,8 @@ export class PilotService {
     const program = this.programFactory({ executable: this.ffmpegPath, source: session.public.source,
       mobileRtspUrl: usesMobileCamera ? this.mobileCamera?.rtspUrl(session.public.courtSlug) ?? null : null,
       mobileAudioAvailable: usesMobileCamera && (this.mobileCamera?.audioAvailableForCourt(session.public.courtSlug) ?? false),
+      includeSourceAudio: session.configuration?.includeSourceAudio,
+      audioInputs: this.resolveAudioInputs(session.configuration),
       ...(usesMobileCamera ? { resolveMobileSource: () => {
         const mobile = this.mobileCamera;
         if (!mobile?.isReadyForCourt(session.public.courtSlug)) return null;
@@ -867,7 +912,49 @@ export class PilotService {
 
   private recordingRoot(session: InternalPilotSession): string {
     return session.configuration?.recordingDirectory
+      ?? this.desktop.defaultRecordingDirectory
       ?? resolve(dirname(this.configurationPath), 'recordings');
+  }
+
+  private assertRecordingMode(input: PreparePilotSessionInput): void {
+    if (this.desktop.recordingOnly && input.mode !== 'recording')
+      throw new PilotServiceError(400, 'INVALID_INPUT', 'Esta aplicación solo permite grabaciones locales.');
+  }
+
+  private resolveAudioInputs(configuration?: PreparePilotSessionInput): readonly { deviceName: string; gain: number }[] {
+    return (configuration?.audioInputs ?? []).map(({ id, gain }) => {
+      const device = this.readiness().audioInputs?.find((candidate) => candidate.id === id);
+      if (!device) throw new PilotServiceError(409, 'NOT_READY', 'Un micrófono seleccionado ya no está disponible.');
+      return { deviceName: device.deviceName, gain };
+    });
+  }
+
+  private audioExpected(session: InternalPilotSession): boolean {
+    return (session.configuration?.audioInputs?.length ?? 0) > 0
+      || (session.public.source.kind === 'mobile' && session.configuration?.includeSourceAudio !== false
+        && (this.mobileCamera?.audioExpectedForCourt(session.public.courtSlug) ?? false));
+  }
+
+  private assertRecordingAudio(input: PreparePilotSessionInput, source: PilotSource, exceptSessionId?: string): void {
+    if (input.mode !== 'recording') return;
+    const selected = input.audioInputs ?? [];
+    if (new Set(selected.map(({ id }) => id)).size !== selected.length)
+      throw new PilotServiceError(400, 'INVALID_INPUT', 'Un micrófono aparece más de una vez.');
+    const available = this.readiness().audioInputs ?? [];
+    if (selected.some(({ id }) => !available.some((candidate) => candidate.id === id)))
+      throw new PilotServiceError(409, 'NOT_READY', 'Un micrófono seleccionado ya no está disponible.');
+    const sourceAudio = source.kind === 'mobile' && input.includeSourceAudio !== false
+      && (this.mobileCamera?.audioExpectedForCourt(input.courtSlug) ?? false);
+    if (this.desktop.recordingOnly && !sourceAudio && selected.length === 0)
+      throw new PilotServiceError(409, 'NOT_READY', 'Selecciona al menos un micrófono antes de grabar.');
+    if (this.desktop.recordingOnly && source.kind === 'synthetic')
+      throw new PilotServiceError(409, 'NOT_READY', 'Conecta una cámara real para grabar esta pista.');
+    for (const current of this.sessions.values()) {
+      if (current.public.id === exceptSessionId || current.public.status === 'stopped') continue;
+      const occupied = new Set(current.configuration?.audioInputs?.map(({ id }) => id) ?? []);
+      if (selected.some(({ id }) => occupied.has(id)))
+        throw new PilotServiceError(409, 'CONFLICT', 'Un micrófono seleccionado ya está reservado por otra pista.');
+    }
   }
 
   private applyComponentHealth(session: InternalPilotSession, wasDegraded: boolean): void {
@@ -998,7 +1085,11 @@ export class PilotService {
     const child = session.process;
     session.overlayController?.abort();
     session.overlayController = null;
-    child?.kill('SIGTERM');
+    if (child && !(session.public.mode === 'recording' && process.platform === 'win32' && child.stdin?.writable)) {
+      child.kill('SIGTERM');
+    } else if (child) {
+      child.stdin?.write('q\n');
+    }
     if (session.program) {
       try { await session.program.close(); session.program = null; }
       catch {
@@ -1010,7 +1101,7 @@ export class PilotService {
     if (child !== null) {
       const forceStop = setTimeout(() => {
         if (session.process === child) child.kill('SIGKILL');
-      }, 3_000);
+      }, session.public.mode === 'recording' && process.platform === 'win32' ? 10_000 : 3_000);
       forceStop.unref();
     }
     let remoteError = false;
@@ -1282,7 +1373,7 @@ export class PilotService {
       // remains compatible while local persistence adopts the discriminated model.
       const legacy = PilotConfigurationsSchema.parse(raw);
       for (const configuration of legacy) {
-        const migrated = configurationFromPlan(planFromConfiguration(configuration, this.configurationPath), configuration.updatedAt);
+        const migrated = configurationFromPlan(planFromConfiguration(configuration, this.configurationPath, this.desktop.defaultRecordingDirectory), configuration.updatedAt);
         this.configurationByCourt.set(migrated.courtSlug, migrated);
       }
       await this.persistConfigurations();
@@ -1296,7 +1387,7 @@ export class PilotService {
     const snapshot = PersistedProductionPlansSchema.parse({
       version: 2,
       entries: this.configurations().map((configuration) => ({
-        plan: planFromConfiguration(configuration, this.configurationPath),
+        plan: planFromConfiguration(configuration, this.configurationPath, this.desktop.defaultRecordingDirectory),
         updatedAt: configuration.updatedAt,
       })),
     });
@@ -1308,7 +1399,7 @@ export class PilotService {
   }
 }
 
-function planFromConfiguration(configuration: PilotConfiguration, configurationPath: string): ProductionPlan {
+function planFromConfiguration(configuration: PilotConfiguration, configurationPath: string, defaultRecordingDirectory?: string): ProductionPlan {
   const common = {
     courtSlug: configuration.courtSlug, sourceId: configuration.sourceId,
     homeTeam: configuration.homeTeam, awayTeam: configuration.awayTeam,
@@ -1320,7 +1411,8 @@ function planFromConfiguration(configuration: PilotConfiguration, configurationP
     description: configuration.description ?? 'Sigue en directo la jornada de Kings Padel League.',
   });
   return ProductionPlanSchema.parse({ ...common, kind: 'recording',
-    recordingDirectory: configuration.recordingDirectory ?? resolve(dirname(configurationPath), 'recordings') });
+    recordingDirectory: configuration.recordingDirectory ?? defaultRecordingDirectory ?? resolve(dirname(configurationPath), 'recordings'),
+    audioInputs: configuration.audioInputs, includeSourceAudio: configuration.includeSourceAudio });
 }
 
 function configurationFromPlan(plan: ProductionPlan, updatedAt: string): PilotConfiguration {
@@ -1499,15 +1591,17 @@ function attachProgress(
 function closeOutputProcess(child: PilotChildProcess): Promise<void> {
   return new Promise((resolve, reject) => {
     let forced: NodeJS.Timeout | undefined;
+    const grace = process.platform === 'win32' && child.stdin?.writable ? 10_000 : 2_000;
     const finished = () => { clearTimeout(timer); clearTimeout(forced); resolve(); };
     const timer = setTimeout(() => {
       forced = setTimeout(() => { child.off('close', finished); reject(new Error('Encoder did not close')); }, 2_000);
       forced.unref();
       child.kill('SIGKILL');
-    }, 2_000);
+    }, grace);
     timer.unref();
     child.once('close', finished);
-    child.kill('SIGTERM');
+    if (process.platform === 'win32' && child.stdin?.writable) child.stdin.write('q\n');
+    else child.kill('SIGTERM');
   });
 }
 

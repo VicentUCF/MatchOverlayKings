@@ -11,7 +11,7 @@ export const CPU_ENCODER: PilotVideoEncoder = {
 export function ffmpegEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { LANG: 'C', LC_ALL: 'C' };
   for (const key of ['PATH', 'LD_LIBRARY_PATH', 'LIBVA_DRIVERS_PATH', 'LIBVA_DRIVER_NAME',
-    'SystemRoot', 'WINDIR', 'TEMP', 'TMP']) {
+    'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA']) {
     if (process.env[key] !== undefined) env[key] = process.env[key];
   }
   return env;

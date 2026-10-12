@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./bootstrap": "./dist/bootstrap/app.js",
+    "./config": "./dist/bootstrap/config.js"
+  },
   "scripts": {
     "dev": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/production-assets && tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",

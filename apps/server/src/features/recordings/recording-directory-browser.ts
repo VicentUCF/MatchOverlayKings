@@ -10,8 +10,9 @@ export interface RecordingDirectoryListing {
 export async function browseRecordingDirectories(
   dataDirectory: string,
   requestedPath?: string,
+  defaultPath?: string,
 ): Promise<RecordingDirectoryListing> {
-  const defaultDirectory = resolve(dataDirectory, 'recordings');
+  const defaultDirectory = defaultPath ?? resolve(dataDirectory, 'recordings');
   if (requestedPath === undefined) await mkdir(defaultDirectory, { recursive: true });
 
   const candidate = requestedPath ?? defaultDirectory;

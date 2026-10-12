@@ -139,11 +139,28 @@ export const PilotSourceSchema = z.discriminatedUnion('kind', [
     devicePath: z.string().regex(/^\/dev\/video\d+$/),
   }),
   z.strictObject({
+    id: z.string().regex(/^dshow:[a-f0-9]{64}$/),
+    kind: z.literal('dshow'),
+    label: z.string().min(1),
+    deviceName: z.string().min(1),
+  }),
+  z.strictObject({
     id: z.literal(PILOT_MOBILE_SOURCE_ID),
     kind: z.literal('mobile'),
     label: z.string().min(1),
   }),
 ]);
+
+export const PilotAudioInputSchema = z.strictObject({
+  id: z.string().regex(/^dshow-audio:[a-f0-9]{64}$/),
+  label: z.string().min(1),
+  deviceName: z.string().min(1),
+});
+
+export const PilotAudioSelectionSchema = z.strictObject({
+  id: PilotAudioInputSchema.shape.id,
+  gain: z.number().finite().min(0).max(2),
+});
 
 export const PilotVideoEncoderSchema = z.strictObject({
   name: z.enum(['libx264', 'h264_nvenc', 'h264_amf', 'h264_vaapi', 'h264_qsv']),
@@ -165,6 +182,8 @@ export const PilotReadinessSchema = z.strictObject({
     authorizationUrl: z.string().min(1).nullable(),
   }),
   sources: z.array(PilotSourceSchema).readonly(),
+  audioInputs: z.array(PilotAudioInputSchema).readonly().optional(),
+  recordingOnly: z.boolean().optional(),
   limitations: z.array(z.string()).readonly(),
 });
 
@@ -178,6 +197,8 @@ export const PreparePilotSessionInputSchema = z.strictObject({
   seasonLabel: z.string().trim().min(1).max(32),
   description: z.string().trim().min(1).max(5_000).optional(),
   recordingDirectory: z.string().trim().min(1).max(4_096).optional(),
+  audioInputs: z.array(PilotAudioSelectionSchema).max(8).optional(),
+  includeSourceAudio: z.boolean().optional(),
   scheduledAt: z.iso.datetime({ offset: true }),
   privacyStatus: PilotPrivacySchema,
 });
@@ -188,10 +209,14 @@ const PilotCommonPlanSchema = PreparePilotSessionInputSchema.omit({
   privacyStatus: true,
   description: true,
   recordingDirectory: true,
+  audioInputs: true,
+  includeSourceAudio: true,
 });
 export const RecordingPlanSchema = PilotCommonPlanSchema.extend({
   kind: z.literal('recording'),
   recordingDirectory: z.string().trim().min(1).max(4_096),
+  audioInputs: z.array(PilotAudioSelectionSchema).max(8).optional(),
+  includeSourceAudio: z.boolean().optional(),
 });
 export const LivePlanSchema = PilotCommonPlanSchema.extend({
   kind: z.literal('live'),
@@ -256,6 +281,8 @@ export type PilotCourtSlug = z.infer<typeof PilotCourtSlugSchema>;
 export type PilotMode = z.infer<typeof PilotModeSchema>;
 export type PilotPrivacy = z.infer<typeof PilotPrivacySchema>;
 export type PilotSource = z.infer<typeof PilotSourceSchema>;
+export type PilotAudioInput = z.infer<typeof PilotAudioInputSchema>;
+export type PilotAudioSelection = z.infer<typeof PilotAudioSelectionSchema>;
 export type PilotReadiness = z.infer<typeof PilotReadinessSchema>;
 export type PreparePilotSessionInput = z.infer<typeof PreparePilotSessionInputSchema>;
 export type RecordingPlan = z.infer<typeof RecordingPlanSchema>;

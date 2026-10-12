@@ -578,7 +578,9 @@ export class PilotMobileCameraService {
     this.runtimeReady = false;
     const child = spawn(this.config.mediaMtxPath, [configPath], {
       cwd: runtimePath,
-      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C' },
+      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C',
+        ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR,
+          TEMP: process.env.TEMP, TMP: process.env.TMP } : {}) },
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: false,
     });

@@ -1,0 +1,43 @@
+{
+  "name": "@kpl/production-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Grabación local de partidos de Kings Padel League para Windows",
+  "author": "Kings Padel League",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "electron .",
+    "package:win": "npm run build --prefix ../.. && npm run build && node scripts/prepare-binaries.mjs && electron-builder --win nsis --x64"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@fastify/static": "^10.1.3",
+    "fastify": "^5.12.4",
+    "socket.io": "^4.8.3",
+    "playwright": "^1.61.1"
+  },
+  "devDependencies": {
+    "@kpl/server": "0.1.0",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "electron": "41.10.7",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.25.12"
+  },
+  "build": {
+    "appId": "es.kingspadelleague.production",
+    "productName": "KPL Producción",
+    "directories": { "output": "release" },
+    "files": ["dist-electron/**", "assets/**", "package.json"],
+    "extraResources": [
+      { "from": "vendor", "to": "bin", "filter": ["**/*"] },
+      { "from": "../web/dist", "to": "web", "filter": ["**/*"] }
+    ],
+    "asarUnpack": ["node_modules/@resvg/**/*.node"],
+    "win": { "target": "nsis", "artifactName": "kpl-produccion-${version}-${arch}.${ext}" },
+    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true },
+    "icon": "../web/public/logos/kpl.png"
+  }
+}

@@ -9,6 +9,7 @@ export function pilotProgramCommand(
   videoEncoding: PilotVideoEncoder,
   preview?: { readonly path: string; readonly seconds: number },
   recordingPath?: string,
+  platform: NodeJS.Platform = process.platform,
 ) {
   const input = ['-thread_queue_size', '8', '-probesize', '32', '-analyzeduration', '0',
     '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv',
@@ -28,7 +29,8 @@ export function pilotProgramCommand(
   return {
     executable,
     argv: [
-      '-nostdin', '-hide_banner', '-loglevel', 'warning', '-progress', 'pipe:1', '-stats_period', '1',
+      ...(recordingPath && platform === 'win32' ? [] : ['-nostdin']),
+      '-hide_banner', '-loglevel', 'warning', '-progress', 'pipe:1', '-stats_period', '1',
       ...encoderInputArguments(videoEncoding),
       ...input,
       '-thread_queue_size', '64', '-probesize', '32', '-fpsprobesize', '0', '-f', 'image2pipe', '-vcodec', 'png',

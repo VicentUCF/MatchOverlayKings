@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "dev": "npm run build -w @kpl/shared && npm run build -w @kpl/production-contracts && npm run build -w @kpl/match-data && npm run build -w @kpl/production-assets && npm run build -w @kpl/editor-core && npm run build -w @kpl/match-presentation && npm run dev -w @kpl/web",
+    "editor": "npm run build:editor && npm run start -w @kpl/editor",
     "preview": "npm run build:web && npm run preview -w @kpl/web -- --host 0.0.0.0 --port 4300",
     "runtime:start": "npm run build && npm run start:production -w @kpl/server",
     "docker:check": "./scripts/local-production.sh check",
@@ -28,7 +29,9 @@
     "supabase:check": "node scripts/check-supabase.mjs",
     "archived-agent:verify": "npm run build -w @kpl/production-agent && npm run test -w @kpl/production-agent && npm run typecheck:test -w @kpl/production-agent",
     "verify": "npm run check:architecture && npm run lint && npm run test && npm run build && npm run build:editor",
-    "build:editor": "npm run build -w @kpl/shared && npm run build -w @kpl/production-assets && npm run build -w @kpl/match-data && npm run build -w @kpl/editor-core && npm run build -w @kpl/match-presentation && npm run build -w @kpl/editor"
+    "build:editor": "npm run build -w @kpl/shared && npm run build -w @kpl/production-assets && npm run build -w @kpl/match-data && npm run build -w @kpl/editor-core && npm run build -w @kpl/match-presentation && npm run build -w @kpl/editor",
+    "build:production-desktop": "npm run build && npm run build -w @kpl/production-desktop",
+    "package:production-win": "npm run package:win -w @kpl/production-desktop"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

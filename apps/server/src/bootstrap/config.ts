@@ -4,6 +4,8 @@ import type { PilotYouTubeConfig } from '../features/pilot/pilot-youtube.js';
 
 export interface PilotServerConfig {
   ffmpegPath: string;
+  recordingOnly?: boolean;
+  defaultRecordingDirectory?: string | undefined;
   supabase?: { url: string; publishableKey: string };
   youtube: PilotYouTubeConfig;
   mobileCamera?: PilotMobileCameraRuntimeConfig;
@@ -57,6 +59,8 @@ export function readConfig(): ServerConfig {
         publishableKey: process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ?? '',
       },
       ffmpegPath: process.env.KPL_PILOT_FFMPEG_PATH?.trim() || '/bin/ffmpeg',
+      recordingOnly: process.env.KPL_RECORDING_ONLY === '1',
+      defaultRecordingDirectory: process.env.KPL_DEFAULT_RECORDING_DIRECTORY?.trim() || undefined,
       controlOrigins: origins(process.env.KPL_PILOT_CONTROL_ORIGINS, cameraPageOrigin),
       mobileCamera: {
         mediaMtxPath: process.env.KPL_PILOT_MEDIAMTX_PATH?.trim() || null,

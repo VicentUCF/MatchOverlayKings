@@ -8,18 +8,19 @@ export function registerRecordingRoutes(
   app: FastifyInstance,
   dependencies: {
     readonly dataDirectory: string;
+    readonly defaultRecordingDirectory?: string | undefined;
     readonly recordings: RecordingLibrary;
     readonly productionAccess: ProductionAccessGuard;
     readonly requireLocal: (ip: string) => void;
   },
 ): void {
-  const { dataDirectory, recordings, productionAccess, requireLocal } = dependencies;
+  const { dataDirectory, recordings, productionAccess, requireLocal, defaultRecordingDirectory } = dependencies;
 
   app.get<{ Querystring: { path?: string } }>('/api/pilot/recording-directories', async (request) => {
     requireLocal(request.ip);
     await productionAccess.require(request.headers.authorization, 'production_admin');
     try {
-      return await browseRecordingDirectories(dataDirectory, request.query.path);
+      return await browseRecordingDirectories(dataDirectory, request.query.path, defaultRecordingDirectory);
     } catch (error) {
       throw new PilotServiceError(400, 'INVALID_INPUT',
         error instanceof Error ? error.message : 'No se puede abrir esta carpeta.');
